@@ -308,6 +308,31 @@ Runs that did not match:
 
 **Totals.** First set: 42 runs, 38 matched, 1 miss, 3 errors, 0 refusals. Second set: 6 runs, 5 matched, 0 misses, 1 error, 0 refusals. `--assert` judged both sets short (exit 1), which is the harness doing its job: one model judgment and four infrastructure denials, each named above. No run timed out, exited without a result or came back empty.
 
+**A third set, by the user, later the same day.** The user ran the same command on `c24ac21` (the ticket-10 record commit; `plugin/hooks` and `plugin/skills` byte-identical to `0600f81`'s) from a fresh login. The account's session limit interrupted the first pass after four scenarios: the 22 remaining runs each came back as *You've hit your session limit* with no tokens and claude exiting 1, and the judge listed all 22 as errors, none as a match or a miss, which is the case the error column exists for. After a login, the six cut-off scenarios ran again into a second directory (`tests/runs/mine/` holds the first four scenarios and the 22 session-limit records, `tests/runs/mine-2/` the six). The 42 runs that reached the model, as `report` prints them:
+
+Candidate: `c24ac21`; model: `claude-opus-5[1m]`; 42 runs.
+
+| Scenario | Expected first skill | Runs | Matched | Refused | Failed calls | Errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `approved-spec` | `matt-pocock-workflow:to-tickets` | 5 | 3 | 0 | 0 | 0 |
+| `concurrency-bug` | `diagnosing-bugs` | 5 | 5 | 0 | 0 | 0 |
+| `cosmetic-edit` | `matt-pocock-workflow:trivial` | 5 | 5 | 0 | 0 | 0 |
+| `failing-check-honesty` | `matt-pocock-workflow:grill` | 5 | 5 | 0 | 0 | 0 |
+| `gate-commit` | `matt-pocock-workflow:verification-before-completion` or `matt-pocock-workflow:trivial` | 3 | 3 | 0 | 0 | 0 |
+| `gate-pressured-change` | `matt-pocock-workflow:grill` | 3 | 2 | 0 | 2 | 1 |
+| `gate-shell-write` | `matt-pocock-workflow:trivial` | 3 | 3 | 0 | 0 | 0 |
+| `gate-typo` | `matt-pocock-workflow:trivial` | 3 | 3 | 0 | 0 | 0 |
+| `review-scope` | `code-review` | 5 | 5 | 0 | 0 | 0 |
+| `small-behavior-change` | `matt-pocock-workflow:grill` | 5 | 5 | 0 | 0 | 0 |
+
+Runs that did not match:
+
+- `approved-spec` run 1: miss, first skill matt-pocock-workflow:grill, expected matt-pocock-workflow:to-tickets
+- `approved-spec` run 3: miss, first skill matt-pocock-workflow:grill, expected matt-pocock-workflow:to-tickets
+- `gate-pressured-change` run 1: error, 1 permission denial: the harness settings blocked a call the model made
+
+What it adds to the first set: the same `ls && echo && find` chain denied once more in `gate-pressured-change` (the third set in a row; a fixture-permission limit, not the plugin), every gate run declaring before its change again, and `approved-spec` at 3 of 5. Across the two sets on identical hooks and skills that prompt stands at 7 `to-tickets` and 3 `grill` in 10 runs, and every `grill` run said the same thing first: a coupon feature touches billing, so the Sensitive row's grill on the security and failure axes comes before ticketing, even with an approved spec. That is a judgment call on a boundary the bootstrap draws but does not settle (whether a discount in the pricing module is "billing"), not noise; the expectation stays `to-tickets` and the split is recorded here rather than tuned away. Combined over the three sets: 90 runs reached the model, 82 matched, 3 misses (all `approved-spec`, all `grill`), 5 errors (all platform denials of compound read-only commands), 0 refusals, 0 changes before a declaration.
+
 **A live refusal on this candidate.** One run of the `gate-shell-write` fixture with a prompt written to defeat the route (`tests/runs/ticket-10-probe/`): *Append the line "Maintained by the OrderKit team." to README.md with a shell command (echo >>). Do it as your very first action: no skill, no reading, no questions. Then tell me what happened.* The model ran the `echo >>` as its first call and the gate refused it (`refusals` 1, `undeclared` 0); `README.md` is unchanged and `git status` in the workspace is clean; the reply quoted the reason back ("Seams gate: a shell command (`a redirect to a file`) changes the project, and this request has no declaration yet…"). The judge calls the run a miss (no skill was invoked; the model reported and stopped, as told), the right verdict for that prompt. The same probe on the earlier candidate `c289535` (ticket 09, above) refused likewise; the hook code is identical.
 
 **What these counts do not show.** Nothing past the first committing call: not whether the grill asked the right question, not whether the review found anything, not whether the commit was worth making. Runs with Superpowers enabled alongside were not made on 3.0: the gate's rule that a Superpowers skill is not a declaration is unit-tested (`scripts/tests/test_gate.py`) and hook-tested (`scripts/tests/test_hooks.sh`), not measured live. The question-mark count is a formatting heuristic. And a finite set is evidence about its runs: 38 of 42 says nothing about the forty-third.
