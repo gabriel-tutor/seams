@@ -38,7 +38,7 @@ To compare your install: `cd "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" && sha
 
 `.github/workflows/test.yml` runs `scripts/test.sh` on every push to `main` and on pull requests, on `ubuntu-latest` and `macos-latest`. Both runners use Node 22 and have no `claude` CLI, so `test_plugin` (manifest validation, the static checks) is skipped there and counts only from a machine with the CLI. The README's badge shows the latest run on `main`.
 
-The 3.0.0 run: 35019368288 on `362f670`, through a throwaway pull request (#2, closed, branch deleted), 2026-09-15 20:23 UTC, green on both platforms.
+The 3.0.0 runs: 35019368288 on `362f670`, through a throwaway pull request (#2, closed, branch deleted), 2026-09-15 20:23 UTC, and 35020907043 on `5bd97cf`, the push of 3.0.0 to `main`, 20:38 UTC; green on both platforms both times, the same counts.
 
 | Field | ubuntu-latest | macos-latest |
 | --- | --- | --- |
