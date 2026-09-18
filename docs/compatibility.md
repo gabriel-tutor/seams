@@ -14,7 +14,7 @@ The plugin under test is this repository at the commit that last changed this fi
 | Python | 3.14.6 at `/usr/local/bin/python3` (first on PATH: the hooks run under it) and 3.9.6 at `/usr/bin/python3` (the system interpreter: the gate unit tests, the hook suite and the session-start suite run under it as well, `scripts/test.sh` adds those runs whenever it differs from the default `python3`) |
 | Node | v22.23.1 (skills.sh and the sandbox fixture) |
 | Shell | bash 3.2.57 at `/bin/bash` (the shell suites run under the system bash; nothing in them needs bash 4) |
-| Claude Code | 2.1.272 (`claude plugin validate --strict`, `claude plugin` install, update, enable and disable against a throwaway `CLAUDE_CONFIG_DIR`, the headless runs; the model those runs reported is `claude-opus-5[1m]`, recorded per run in `results.jsonl`) |
+| Claude Code | 2.1.272 (`claude plugin validate --strict`, `claude plugin` install, update, enable and disable against a throwaway `CLAUDE_CONFIG_DIR`, the headless runs; the model those runs reported is `claude-opus-5[1m]`, recorded per run in `results.jsonl`) and, on 2026-09-18, 2.1.276 (the suite, and the fresh install below) |
 | Matt Pocock's skills | github.com/mattpocock/skills at commit `3cca18b368ae95cdbdebbff572ccafa662551015` (2026-09-04), every skill at that one commit; installed through skills-manager as symlinks from `~/.claude/skills/<name>` to its store (the installer's own path, skills.sh 1.5.26, lays them out the same way); file hashes below |
 | Superpowers alongside | 6.3.0, enabled, from the `claude-plugins-official` marketplace; the four copied skills are byte-identical to its cache (`scripts/tests/test_plugin.sh` checks) |
 
@@ -33,6 +33,10 @@ c9819d7f1e3b198064edc1faa3154224ed67395e9f07f5d3cea4b67cf0a11a98  setup-pre-comm
 ```
 
 To compare your install: `cd "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" && shasum -a 256 -c` with the block above on stdin. A differing hash means his skill moved on since this record; the plugin invokes it by name and does not depend on its text. The three skills Seams adapted from his (`to-spec`, `to-tickets`, `implement`) are recorded with their upstream hashes in `plugin/THIRD_PARTY_NOTICES.md`, and `test_plugin.sh` warns when the installed copies differ.
+
+## Observed as a teammate would install it, 2026-09-18
+
+The README's one-liner, run from GitHub (`origin/main` at `5bd97cf`, version 3.0.0) into an empty scratch home and `CLAUDE_CONFIG_DIR` on the machine above, with Claude Code 2.1.276: prerequisites reported; with no terminal on stdin the skills step stopped and named the command; that command (`npx skills add mattpocock/skills -g -a claude-code --skill '*' -y`) installed 38 skills whose nine required `SKILL.md` files match the hashes above (`shasum -c`: 9 OK, so upstream had not moved since 2026-09-04); the one-liner again added the marketplace from `gabriel-tutor/seams`, installed and enabled the plugin, and `claude plugin list` in that directory reported 3.0.0. The cached plugin equals `origin/main`'s `plugin/` byte for byte (`diff -r`, only Claude Code's `.in_use` marker apart), hooks executable. Fed Claude Code's own event shapes from that cache: the bootstrap injected (2,844 bytes, its `routing.md` path inside the cache), a `Write` refused without a declaration and allowed after `matt-pocock-workflow:trivial`, the done-check blocking once and not on `stop_hook_active`, a `0600` ledger holding paths and skill names only. Two headless sessions on that copy (`--plugin-dir` at the cache, this machine's login): the `echo >>` probe refused with `README.md` untouched, and "which skill applies before a bug fix?" answered `diagnosing-bugs`. A third session confirmed that reading the plugin's `routing.md` is denied headless without a Read rule, so an interactive session asks once; the README says to allow it.
 
 ## Observed on CI
 

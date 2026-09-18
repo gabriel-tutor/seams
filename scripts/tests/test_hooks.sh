@@ -21,7 +21,7 @@ start()      { ev SessionStart "\"source\":\"$1\"" | hook session-start >/dev/nu
 stop()       { ev Stop "\"stop_hook_active\":$1,\"last_assistant_message\":\"done\"" | hook stop; }
 denied()  { grep -q '"permissionDecision": *"deny"' <<< "$1"; }
 blocked() { grep -q '"decision": *"block"' <<< "$1"; }
-LEDGER="$TMPDIR/seams/s1.json"
+LEDGER="$TMPDIR/seams-$(id -u)/s1.json"
 
 for h in pre-tool-use post-tool-use user-prompt-submit session-start stop; do
   [[ -x "$HOOKS/$h" ]] || fail "hook missing or not executable: $h"
@@ -85,7 +85,7 @@ OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "startup should reset th
 
 # 9. Old ledgers are swept at session start; the session's own is kept.
 post_skill "tdd"
-OLD="$TMPDIR/seams/old-session.json"; cp "$LEDGER" "$OLD"; touch -t 202001010000 "$OLD"
+OLD="$TMPDIR/seams-$(id -u)/old-session.json"; cp "$LEDGER" "$OLD"; touch -t 202001010000 "$OLD"
 start compact
 [[ ! -e "$OLD" ]] || fail "an eight-day-old ledger should be removed"
 [[ -e "$LEDGER" ]] || fail "the live ledger should be kept"

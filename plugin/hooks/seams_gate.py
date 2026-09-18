@@ -317,7 +317,10 @@ def _safe_name(session_id: str) -> str:
 
 
 def ledger_root(root: Optional[str] = None) -> str:
-    return root or os.path.join(tempfile.gettempdir(), "seams")
+    """The ledger directory: per user, the tmux convention (`/tmp/tmux-1000`). On a shared
+    Linux `/tmp` one directory for everyone would belong to whoever's session came first, and
+    the next user's chmod would raise EPERM, failing their gate open."""
+    return root or os.path.join(tempfile.gettempdir(), f"seams-{os.getuid()}")
 
 
 def ledger_path(session_id: str, root: Optional[str] = None) -> str:

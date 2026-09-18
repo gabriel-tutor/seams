@@ -1,6 +1,6 @@
 {
   "name": "matt-pocock-workflow",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Unofficial workflow plugin built on Matt Pocock's engineering skills (github.com/mattpocock/skills): a session bootstrap that routes every development task to them, an interactive one-question-at-a-time grill, and gated spec, tickets and implement steps, plus four Superpowers skills for worktrees, verification, review feedback and finishing a branch.",
   "author": {
     "name": "gabriel-tutor",

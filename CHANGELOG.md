@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.1 — 2026-09-18
+
+- The gate's ledger directory is per user: `$TMPDIR/seams-<uid>/`, the tmux convention. In 3.0.0 one `seams/` directory served every user of a shared Linux `/tmp`; it belonged to whoever's session came first, the next user's `chmod` raised `EPERM`, and because the hooks fail open their gate was silently off. macOS was never affected (its `$TMPDIR` is per user). A session running across the upgrade loses its ledger once; one declaration restores it.
+- A `LICENSE` at the repository root, the same MIT text as `plugin/LICENSE`, so GitHub shows the license.
+- `docs/compatibility.md` records the 2026-09-18 checks: Claude Code 2.1.276; a fresh install from GitHub into an empty config directory, its cached hooks driven with Claude Code's event shapes and two headless sessions on that copy; Matt Pocock's upstream skills still at the recorded hashes.
+
 ## 3.0.0 — 2026-09-16
 
 The workflow is enforced by hooks, carried past the merge, and measured by a harness that reports what happened. Grouped by the findings of the 2026-09-15 review (F01–F09), after the one change that is not a finding. The plugin id `matt-pocock-workflow` and the marketplace name `my-workflow-agent-skills` are unchanged: `claude plugin update matt-pocock-workflow@my-workflow-agent-skills` is the whole upgrade. Evidence for each claim is in `docs/plugin-behavior-tests.md` and `docs/compatibility.md`.

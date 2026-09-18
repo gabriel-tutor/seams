@@ -2,7 +2,7 @@
 
 **Design at the seams. Build in slices. Ship what you verified.**
 
-[![version](https://img.shields.io/badge/plugin-3.0.0-4F46E5)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-2563EB)](plugin/LICENSE) [![test](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml/badge.svg)](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml) [![routing evidence](https://img.shields.io/badge/routing%20evidence-docs-16A34A)](docs/plugin-behavior-tests.md)
+[![version](https://img.shields.io/badge/plugin-3.0.1-4F46E5)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-2563EB)](plugin/LICENSE) [![test](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml/badge.svg)](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml) [![routing evidence](https://img.shields.io/badge/routing%20evidence-docs-16A34A)](docs/plugin-behavior-tests.md)
 
 Seams is a Claude Code plugin (plugin id `matt-pocock-workflow`) that makes [Matt Pocock's engineering skills](https://github.com/mattpocock/skills) lead every session, and holds the project closed until they do. A session bootstrap routes each request by size and by risk; a hook refuses any change to the project until a workflow skill has been declared for that request; another refuses to end a turn that changed code without verification. Around his skills sits a senior engineer's process: a grill that asks one clickable question at a time, a design lens, tests first at agreed seams, a review of the committed candidate, a definition of done with evidence, a handover that names the stage reached, a `release` that proves the exact candidate is what runs, and an `incident` route that contains before it diagnoses.
 
@@ -38,7 +38,7 @@ A declaration is a Skill invocation of a Seams skill or one of Matt Pocock's pro
 
 **A change needs verification.** When a turn changed non-documentation files and `matt-pocock-workflow:verification-before-completion` did not run afterwards, the turn cannot end: the Stop hook blocks it once, naming how many unverified changes it counted and one of them, and Claude runs the verification with its real output before finishing. A turn that ends with a question to you is delayed by one message, never trapped.
 
-The ledger behind both is one JSON file per session under the temp directory (`$TMPDIR/seams/<session>.json`) holding skill names, tool names and paths only, never command or prompt text; `/clear` and a new session reset it, compaction and resume keep it. Every hook fails open: a bug in the plugin writes a traceback to `claude --debug` and lets your work through. There is no environment variable that turns the gate off; disabling the plugin is the off switch.
+The ledger behind both is one JSON file per session in a per-user directory under the temp directory (`$TMPDIR/seams-$(id -u)/<session>.json`) holding skill names, tool names and paths only, never command or prompt text; `/clear` and a new session reset it, compaction and resume keep it. Every hook fails open: a bug in the plugin writes a traceback to `claude --debug` and lets your work through. There is no environment variable that turns the gate off; disabling the plugin is the off switch.
 
 ## The workflow
 

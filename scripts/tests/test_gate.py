@@ -272,9 +272,11 @@ class Ledger(unittest.TestCase):
         self.assertFalse(os.path.exists(old))
         self.assertTrue(os.path.exists(gate.ledger_path("new", self.root)))
 
-    def test_the_default_root_is_a_seams_directory_in_the_temp_dir(self):
+    def test_the_default_root_is_this_users_seams_directory_in_the_temp_dir(self):
+        # Per user, the tmux convention (/tmp/tmux-1000): on a shared Linux /tmp a directory owned
+        # by another user would make chmod raise EPERM and the gate fail open for everyone else.
         self.assertEqual(os.path.dirname(gate.ledger_path("s1")),
-                         os.path.join(tempfile.gettempdir(), "seams"))
+                         os.path.join(tempfile.gettempdir(), f"seams-{os.getuid()}"))
 
 
 def event(tool: str, cwd: str = "/proj", agent_id: str = None, **tool_input: object) -> dict:
