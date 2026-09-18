@@ -42,7 +42,7 @@ The README's one-liner, run from GitHub (`origin/main` at `5bd97cf`, version 3.0
 
 `.github/workflows/test.yml` runs `scripts/test.sh` on every push to `main` and on pull requests, on `ubuntu-latest` and `macos-latest`. Both runners use Node 22 and have no `claude` CLI, so `test_plugin` (manifest validation, the static checks) is skipped there and counts only from a machine with the CLI. The README's badge shows the latest run on `main`.
 
-The 3.0.0 runs: 35019368288 on `362f670`, through a throwaway pull request (#2, closed, branch deleted), 2026-09-15 20:23 UTC, and 35020907043 on `5bd97cf`, the push of 3.0.0 to `main`, 20:38 UTC; green on both platforms both times, the same counts.
+The 3.0.0 runs: 35019368288 on `362f670`, through a throwaway pull request (#2, closed, branch deleted), 2026-09-15 20:23 UTC, and 35020907043 on `5bd97cf`, the push of 3.0.0 to `main`, 20:38 UTC; green on both platforms both times, the same counts. The 3.0.1 run: 35334150768 on `263edfb` through the throwaway PR #3 (closed, branch deleted), 2026-09-18 10:19 UTC, green on both platforms with the same counts, the hook suite covering the per-user ledger directory on both.
 
 | Field | ubuntu-latest | macos-latest |
 | --- | --- | --- |
