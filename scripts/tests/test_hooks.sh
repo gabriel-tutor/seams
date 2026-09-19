@@ -62,6 +62,8 @@ OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "domain skill should not
 post_skill "tdd"
 prompt "yes, go ahead"
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a go-ahead should keep the declaration: $OUT"
+prompt "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished"
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a machine-generated notice should keep the declaration: $OUT"
 prompt "now fix the bug in pricing"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a new request should need a new declaration"
 grep -q 'fix the bug' "$LEDGER" && fail "ledger must not record prompt text"

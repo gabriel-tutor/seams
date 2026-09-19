@@ -83,3 +83,18 @@ _Avoid_: deploy (one step of it), ship, launch
 **Operations handover**:
 The closing message of a release: monitoring and alert owner, runbook, follow-ups, stage reached.
 _Avoid_: summary, wrap-up
+
+## Evidence
+
+**Scenario**:
+One prompt, the fixture setup it runs in, and its expectation: the routing harness's unit and a `claude plugin eval` case are the same directory under `plugin/evals/`.
+_Avoid_: test case (the deterministic suites' unit), benchmark
+
+**Arm**:
+One set of a scenario's runs under one condition: with the plugin loaded, or without it. The difference between the two arms' scores is what the plugin contributed.
+_Avoid_: variant, control group
+
+**Run record**:
+What one headless run did, as the harness or the eval wrote it down: the first committing call, refusals, failed calls, denials, how it ended.
+_Avoid_: log, transcript (that is the raw stream the record was read from)
+

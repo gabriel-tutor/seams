@@ -170,6 +170,13 @@ class Declarations(unittest.TestCase):
             with self.subTest(skill=skill):
                 self.assertTrue(gate.is_declaration(skill))
 
+    def test_the_bootstrap_skill_is_not_a_declaration(self):
+        # The routing policy itself is not a route: seen live in an eval run, the model invoked it
+        # after an "Unknown skill" error and the gate opened. Every other Seams skill still declares.
+        self.assertFalse(gate.is_declaration("matt-pocock-workflow:using-matt-pocock-skills"))
+        self.assertTrue(gate.is_declaration("matt-pocock-workflow:trivial"))
+        self.assertTrue(gate.is_declaration("matt-pocock-workflow:grill"))
+
     def test_other_plugins_and_domain_skills_do_not(self):
         for skill in ["superpowers:brainstorming", "superpowers:test-driven-development",
                       "frontend-design", "vercel:deploy", "pdf", "", "matt-pocock-workflow"]:
@@ -192,6 +199,17 @@ class Declarations(unittest.TestCase):
 
 class Continuations(unittest.TestCase):
     """A short go-ahead keeps the request; anything else starts a new one."""
+
+    def test_a_machine_generated_notice_keeps_the_request(self):
+        # Claude Code delivers background-task and monitor notices, and a Stop hook's feedback, as
+        # user turns; none of them is the user asking for something new. Seen three times in one
+        # session: a declared build lost its declaration every time a monitor reported.
+        for notice in ("[SYSTEM NOTIFICATION - NOT USER INPUT]\nThis is an automated background-task event",
+                       "<task-notification>\n<task-id>abc</task-id>\n</task-notification>",
+                       "<system-reminder>\nSomething changed on disk.\n</system-reminder>",
+                       "Stop hook feedback:\nSeams done-check: 2 unverified changes"):
+            self.assertTrue(gate.is_continuation(notice), notice[:40])
+        self.assertFalse(gate.is_continuation("the notification says the build failed, fix it"))
 
     def test_go_aheads_and_bare_options_continue(self):
         for prompt in ["yes", "Yes.", "y", "ok", "OK!", "okay", "sure", "go ahead", "go on",

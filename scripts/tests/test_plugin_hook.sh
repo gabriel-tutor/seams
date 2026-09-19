@@ -109,6 +109,19 @@ for H in "$LINK_HOME" "$DIRLINK_HOME"; do
     || fail "symlinked skills not accepted (HOME=$H): $C"
 done
 
+# Skills installed at project scope (<repo>/.claude/skills, skills.sh without -g, and what an
+# eval run's scaffold provides) count too: a bare home with a project-scope install is installed,
+# named by the project path; a bare home with a partial project install is missing the rest.
+PROJ_SKILLS="$TMP/proj-skills"; mkdir -p "$PROJ_SKILLS"; (cd "$PROJ_SKILLS" && git init -q)
+skills "$PROJ_SKILLS/.claude/skills"
+C=$(context "$FIX" "$BARE_HOME" "$PROJ_SKILLS")
+[[ "$C" == *"$PROJ_SKILLS/.claude/skills"* && "$C" != *"not installed"* && "$C" != *"missing"* ]] \
+  || fail "project-scope skills not counted: $C"
+PROJ_PART="$TMP/proj-partial"; mkdir -p "$PROJ_PART"; (cd "$PROJ_PART" && git init -q)
+skills "$PROJ_PART/.claude/skills" grilling tdd
+C=$(context "$FIX" "$BARE_HOME" "$PROJ_PART")
+[[ "$C" == *"missing"* && "$C" == *"codebase-design"* && "$C" != *"skill files"* ]] || fail "partial project-scope install reported as installed: $C"
+
 # No install at all says so, with the install command.
 C=$(context "$FIX" "$BARE_HOME" "$PLAIN")
 [[ "$C" == *"not installed"* && "$C" == *"npx skills add mattpocock/skills -g -a claude-code"* ]] || fail "MP not-installed line missing for a bare home: $C"

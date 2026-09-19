@@ -19,7 +19,9 @@ which starts with `Seams gate:`), or a change that failed, changed nothing, so i
       adding --plugin-dir plugin for the plugin arm. Each run ends at its confirmed verdict,
       at the end of the reply, or at the timeout. Keeps every raw stream, appends one record
       per run to <out>/results.jsonl, prints a summary. The prompt, the run count and
-      --past-skill default to tests/scenarios/S/{prompt.md,expect.json}.
+      --past-skill default to plugin/evals/S/{prompt.md,expect.json}: the same directory
+      `claude plugin eval` runs as a case (prompt.md's frontmatter is the eval's; the harness
+      sends the body).
       --assert judges every run against expect.json (the first skill expected; `refusal`,
       whether a gate refusal is allowed) and exits 1 when any run is short, naming each miss
       and, apart from them, each run that was not a run at all: a timeout, a process that
@@ -67,7 +69,7 @@ from typing import Optional
 REPO = Path(__file__).resolve().parent.parent
 PLUGIN = REPO / "plugin"
 PREPARE = REPO / "scripts" / "prepare_run.sh"
-SCENARIOS = REPO / "tests" / "scenarios"
+SCENARIOS = PLUGIN / "evals"                 # the scenarios, shared with `claude plugin eval`
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
@@ -386,8 +388,19 @@ def verdict(record: dict) -> str:
     return "reply" if record["result"] is not None else "no commit"
 
 
+def prompt_text(scenario: str) -> str:
+    """The prompt the scenario sends: plugin/evals/<scenario>/prompt.md without the eval's
+    frontmatter block."""
+    text = (SCENARIOS / scenario / "prompt.md").read_text()
+    if text.startswith("---\n"):
+        end = text.find("\n---", 4)
+        if end != -1:
+            text = text[end + 4:]
+    return text.strip()
+
+
 def expectation(scenario: str) -> Optional[dict]:
-    """tests/scenarios/<scenario>/expect.json: the first skill the scenario expects (`skill`, one
+    """plugin/evals/<scenario>/expect.json: the first skill the scenario expects (`skill`, one
     name or a list of acceptable ones), whether a gate refusal is allowed in it (`refusal`),
     whether runs continue past skill calls (`past_skill`), and how many runs its evidence
     takes (`runs`). None when there is none."""
@@ -482,7 +495,7 @@ def judge_records(records: list) -> "tuple[bool, str]":
     lines, ok = [], True
     for scenario, expect, outcomes, tally in outcomes_by_scenario(records):
         if expect is None:
-            lines.append(f"== {scenario}: no expectation file (tests/scenarios/{scenario}/expect.json)")
+            lines.append(f"== {scenario}: no expectation file (plugin/evals/{scenario}/expect.json)")
             ok = False
             continue
         policy = "a refusal allowed" if expect["refusal"] else "no refusal"
@@ -519,7 +532,7 @@ def report_records(records: list) -> "tuple[bool, str]":
     notes, ok = [], True
     for scenario, expect, outcomes, tally in outcomes_by_scenario(records):
         if expect is None:
-            lines.append(f"| `{scenario}` | no expectation file (tests/scenarios/{scenario}/expect.json) "
+            lines.append(f"| `{scenario}` | no expectation file (plugin/evals/{scenario}/expect.json) "
                          f"| {tally['runs']} | | | | |")
             ok = False
             continue
@@ -555,7 +568,8 @@ def candidate() -> Optional[str]:
 
 
 def all_scenarios() -> list:
-    return sorted(p.parent.name for p in SCENARIOS.glob("*/prompt.md"))
+    """Every case directory under plugin/evals; `_fixture`, `_shared` and `results` are not cases."""
+    return sorted(p.parent.name for p in SCENARIOS.glob("*/prompt.md") if not p.parent.name.startswith("_"))
 
 
 def run_scenario(args, scenario: str, sha: Optional[str]) -> list:
@@ -563,7 +577,7 @@ def run_scenario(args, scenario: str, sha: Optional[str]) -> list:
     expect = expectation(scenario)
     runs = args.runs or (expect["runs"] if expect else 5)
     past_skill = args.past_skill or bool(expect and expect["past_skill"])
-    prompt = args.prompt or (SCENARIOS / scenario / "prompt.md").read_text().strip()
+    prompt = args.prompt or prompt_text(scenario)
     label = scenario if not args.label else (args.label if len(args.scenario) == 1 else f"{args.label}-{scenario}")
     if args.out:
         out = args.out if len(args.scenario) == 1 else args.out / scenario
@@ -599,7 +613,7 @@ def main(argv: Optional[list] = None) -> int:
     report_p.add_argument("results", type=Path, nargs="+")
     run_p = sub.add_parser("run", help="run headless sessions and record their first commits")
     run_p.add_argument("--scenario", action="append", required=True,
-                       help="a scenario under tests/scenarios (repeatable), or `all`")
+                       help="a scenario under plugin/evals (repeatable), or `all`")
     run_p.add_argument("--arm", choices=("plugin", "control"), required=True)
     run_p.add_argument("--runs", type=int, help="default: the scenario's expect.json `runs`, else 5")
     run_p.add_argument("--jobs", type=int, default=5)

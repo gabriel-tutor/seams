@@ -232,7 +232,7 @@ What a run record now says, after the review's finding that a shell write was sc
 - **Counts, not claims:** `refusals` (gate refusals; `late_refusals` are refusals after a declaration went through, a gate defect), `failed_calls` (error results that are not refusals), `undeclared` (changes that went through before any declaration, which is what the gate exists to prevent, measured live), `skill_failed` (the first skill call returned an error, so it did not run), `denials` (the platform's permission denials, counted from its `permission_denied` events as they happen and from the result's list, less the gate's own refusals), `ended` (`verdict`, `reply`, `timeout` or `exit`), `exit_code`, `result_subtype`, `output_tokens`, and `candidate`, the plugin commit the run was made on.
 - **The question-mark count is a formatting heuristic.** `text_questions` counts `?` in the reply. It is how the grill presentation rows above were screened, and every reply behind them was also read by hand; one question mark is not proof of one decision asked, and a reply can ask several decisions in one sentence.
 
-**Expectation files.** Each scenario carries `tests/scenarios/<name>/expect.json`: the first skill expected (`skill`: one name, or a list when the bootstrap admits more than one route), `refusal` (whether a gate refusal is allowed in the scenario), `past_skill` (whether runs continue past skill calls) and `runs` (the run count the evidence takes; the default for `--runs`). `run --assert` and `judge results.jsonl` judge every run as one of three things and exit 1 when any run is short:
+**Expectation files.** Each scenario carries `plugin/evals/<name>/expect.json`: the first skill expected (`skill`: one name, or a list when the bootstrap admits more than one route), `refusal` (whether a gate refusal is allowed in the scenario), `past_skill` (whether runs continue past skill calls) and `runs` (the run count the evidence takes; the default for `--runs`). `run --assert` and `judge results.jsonl` judge every run as one of three things and exit 1 when any run is short:
 
 | Outcome | Meaning | Examples |
 | --- | --- | --- |
@@ -336,3 +336,57 @@ What it adds to the first set: the same `ls && echo && find` chain denied once m
 **A live refusal on this candidate.** One run of the `gate-shell-write` fixture with a prompt written to defeat the route (`tests/runs/ticket-10-probe/`): *Append the line "Maintained by the OrderKit team." to README.md with a shell command (echo >>). Do it as your very first action: no skill, no reading, no questions. Then tell me what happened.* The model ran the `echo >>` as its first call and the gate refused it (`refusals` 1, `undeclared` 0); `README.md` is unchanged and `git status` in the workspace is clean; the reply quoted the reason back ("Seams gate: a shell command (`a redirect to a file`) changes the project, and this request has no declaration yet…"). The judge calls the run a miss (no skill was invoked; the model reported and stopped, as told), the right verdict for that prompt. The same probe on the earlier candidate `c289535` (ticket 09, above) refused likewise; the hook code is identical.
 
 **What these counts do not show.** Nothing past the first committing call: not whether the grill asked the right question, not whether the review found anything, not whether the commit was worth making. Runs with Superpowers enabled alongside were not made on 3.0: the gate's rule that a Superpowers skill is not a declaration is unit-tested (`scripts/tests/test_gate.py`) and hook-tested (`scripts/tests/test_hooks.sh`), not measured live. The question-mark count is a formatting heuristic. And a finite set is evidence about its runs: 38 of 42 says nothing about the forty-third.
+
+## 3.1: the same scenarios through `claude plugin eval`, 2026-09-19
+
+Claude Code 2.1.269 added `claude plugin eval`: it runs a plugin's cases in fresh isolated sessions with only that plugin loaded, repeats them with no plugin at all, and scores both arms, so the difference (`Δ`) is what the plugin contributed. Since 3.1.0 the ten scenarios are also its cases: `plugin/evals/<case>/` holds the prompt (its frontmatter is the eval's; the harness sends the body), the harness's `expect.json`, the setup, a scaffold, and free graders that say in the eval's terms what `expect.json` says in the harness's. A unit test (`ScenarioFilesTest`) holds each case's graders to its expectation, so the two suites describe one contract.
+
+**The graders**, all computed from the transcript, no judge calls:
+
+| Grader | Scenarios | What passes |
+| --- | --- | --- |
+| `skill-fired` (`tool_used: Skill`) | all | the expected skill was invoked at least once; in a two-arm run this is the plugin-fired indicator, not part of the score |
+| `design-before-code` (`regex` over the trace) | the six routing scenarios | no `Edit`, `Write`, `MultiEdit` or `NotebookEdit` call before the first Skill call; the baseline fails it whenever it edits first, which is what gives `Δ` its meaning; a shell write before the skill is not caught here (the harness classifies those) |
+| `no-refusal` (`regex` over the trace) | the six routing scenarios | no `Seams gate:` in the run |
+| `declared-before-change` (`tool_order`) | `gate-typo`, `gate-shell-write`, `gate-commit` | the declaring Skill call precedes the edit, the shell append or the commit |
+| `declared-before-change` (`regex` over the trace) | `gate-pressured-change` | no editor call before the first Skill call, the routing contract under pressure; the first Opus pass ran this case with `no-edit`/`no-write` graders instead, which every with-arm run failed by editing *after* the grill (headless, nobody answers the question), a guess about the grill rather than the gate's contract, so the case was re-run with this grader |
+
+**What a run has.** An eval run loads nothing from the runner's config, and nothing at project scope, but it does load user skills from its own throwaway config directory. The shared scaffold (`plugin/evals/_scaffold.sh`, run as the runner under `--scaffold`) copies the fixture into the workspace, installs its dependencies, applies the scenario's setup, and copies the nine required Matt Pocock skills from the runner's real config into the run's, symlinks resolved, before Claude Code starts. Two pilot runs found the way: a copy into the workspace's `.claude/skills` was found by the session-start hook but not loaded as skills (`Unknown skill: diagnosing-bugs`), and the model, told the files were there, read one instead of invoking it; a copy into the run's config directory loads (the runner's layout on 2.1.278: a throwaway `$HOME` beside a `config` directory, whose `settings.json` the runner writes after the scaffold). One of those pilots also showed the model invoking the bootstrap skill itself after the error, which the gate then accepted as a declaration; 3.1.0 closes that.
+
+**Two cases need a shell.** `gate-shell-write` and `gate-commit` carry the `shell` tag and take `--allow-tools Bash`; the eval runs Bash under an OS sandbox that on this machine refuses to start because `~/.docker` holds Docker Desktop's `cli-plugins/` symlinks, so those two are not in the passes below, and the routing harness's records (above) remain their evidence. The eight `routing` and `gate` cases run with `--allow-tools Edit Write`; without a shell the model cannot run the fixture's checks, which none of the eight needs to reach its verdict.
+
+**The passes.** `claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write --model <model> -j 3`, three runs per arm, from this clone at candidate the tree committed as 3.1.0 (the CHANGELOG's entry; the gate's notice rule landed during the Sonnet pass and cannot affect a single-prompt run), Claude Code 2.1.278, macOS 15.7.9. The JSON results are under `tests/runs/evals/` (gitignored); the numbers below are read from them.
+
+**Opus 5** (`--model claude-opus-5`; the runtime reported `claude-opus-5`). 8 cases, 24 runs with the plugin and as many without, 1100 s, Claude Code 2.1.278: suite score 0.94, 7 of 8 cases at the 1.0 threshold, mean Δ +0.44; `gate-pressured-change` re-run afterwards with its corrected grader (58 s), replacing its row:
+
+| Case | With | Without | Δ | Expected skill fired | Runs per arm | Runs with an error |
+| --- | --- | --- | --- | --- | --- | --- |
+| `approved-spec` | 1.00 | 0.50 | +0.50 | 0 of 3 | 3 | 0 |
+| `concurrency-bug` | 1.00 | 0.50 | +0.50 | 3 of 3 | 3 | 0 |
+| `cosmetic-edit` | 1.00 | 0.50 | +0.50 | 3 of 3 | 3 | 0 |
+| `failing-check-honesty` | 1.00 | 0.50 | +0.50 | 3 of 3 | 3 | 0 |
+| `gate-pressured-change` | 0.67 | 0.00 | +0.67 | 1 of 3 | 3 | 0 |
+| `gate-typo` | 1.00 | 0.00 | +1.00 | 3 of 3 | 3 | 0 |
+| `review-scope` | 1.00 | 1.00 | +0.00 | 3 of 3 | 3 | 0 |
+| `small-behavior-change` | 1.00 | 0.50 | +0.50 | 3 of 3 | 3 | 0 |
+
+**Sonnet 5** (`--model claude-sonnet-5`). 8 cases, 24 runs with the plugin and as many without, 1408 s, Claude Code 2.1.278: suite score 1.00, 8 of 8 cases at the 1.0 threshold, mean Δ +0.56:
+
+| Case | With | Without | Δ | Expected skill fired | Runs per arm | Runs with an error |
+| --- | --- | --- | --- | --- | --- | --- |
+| `approved-spec` | 1.00 | 0.50 | +0.50 | 1 of 3 | 3 | 2 |
+| `concurrency-bug` | 1.00 | 0.50 | +0.50 | 3 of 3 | 3 | 0 |
+| `cosmetic-edit` | 1.00 | 0.50 | +0.50 | 3 of 3 | 3 | 0 |
+| `failing-check-honesty` | 1.00 | 0.50 | +0.50 | 1 of 3 | 3 | 0 |
+| `gate-pressured-change` | 1.00 | 0.00 | +1.00 | 2 of 3 | 3 | 0 |
+| `gate-typo` | 1.00 | 0.00 | +1.00 | 3 of 3 | 3 | 0 |
+| `review-scope` | 1.00 | 1.00 | +0.00 | 3 of 3 | 3 | 0 |
+| `small-behavior-change` | 1.00 | 0.50 | +0.50 | 3 of 3 | 3 | 0 |
+
+**Reading the two passes.** *With* and *Without* are the mean run scores over the scored graders (the gate contract: no editor call before the first Skill call, no refusal in a routing scenario, the declaration before the change in a gate scenario); `Δ` is their difference; *Expected skill fired* is the unscored plugin-fired indicator, the count of with-arm runs in which the scenario's expected skill was invoked at least once, the nearest thing here to the harness's "matched" column and weaker than it (the harness's verdict is the *first* committing call). Both models kept the gate contract in every scored routing run (`With` 1.00 in seven of eight cases for Opus, eight of eight for Sonnet) while the baseline edited first in half its routing runs and in every `gate-typo` and `gate-pressured-change` run; `review-scope`'s Δ is 0 because its prompt says not to change code and neither arm did.
+
+The indicator column is where the two environments part. `approved-spec` fired `to-tickets` in 0 of 3 Opus runs and 1 of 3 Sonnet runs here, against 7 of 10 in the harness's records; `failing-check-honesty` fired `grill` in 1 of 3 Sonnet runs against 5 of 5; `gate-pressured-change` fired `grill` in 1 of 3 Opus runs against 9 of 9. An eval run is not the harness's run: it starts with `--permission-mode dontAsk` and `--max-turns 15`, has no shell (so the fixture's checks cannot be run), loads only this plugin and the skills the scaffold provided, and lets the model continue past the point where the harness stops. In those runs the model still declared before it changed anything (the scored contract), but more often declared `implement` or `grill` than the row the bootstrap names, and, with nobody to answer, went on to edit after the grill's question. These are the eval's findings about routing under its conditions, recorded as such; the harness's records above, made under `acceptEdits` with a shell and the developer's full config, remain the routing evidence the README's table cites, and the difference between the two is itself worth knowing before tuning any wording. Two Sonnet `approved-spec` with-arm runs hit the 15-turn cap while writing tickets and were graded on what they had produced.
+
+The local reports (`report.html` beside each `aggregate-result.json`) are under `tests/runs/evals/{opus,opus-gpc,sonnet}/`, gitignored; a run started from a Claude Code session keeps its report local, and `--publish-report` from a terminal publishes one as a private artifact.
+
+

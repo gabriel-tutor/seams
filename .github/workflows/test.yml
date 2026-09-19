@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: tests/fixture/package-lock.json
+          cache-dependency-path: plugin/evals/_fixture/package-lock.json
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

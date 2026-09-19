@@ -30,7 +30,7 @@ else skip "test_plugin" "needs the claude CLI for 'claude plugin validate'"; fi
 if [[ $FAST == 1 ]]; then skip "test_prepare_run" "--fast"
 elif ! command -v node >/dev/null; then skip "test_prepare_run" "needs node"
 else
-  [[ -d "$REPO/tests/fixture/node_modules" ]] || (cd "$REPO/tests/fixture" && npm ci --silent)
+  "$REPO/scripts/fixture_deps.sh" >/dev/null
   run "test_prepare_run" bash "$REPO/scripts/tests/test_prepare_run.sh"
 fi
 

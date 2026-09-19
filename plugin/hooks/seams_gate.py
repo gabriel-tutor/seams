@@ -266,9 +266,15 @@ COURTESIES = {"please", "pls", "thanks", "thank you", "ty"}
 OPTION = re.compile(r"^(option\s+)?[a-d1-9]$")
 
 
+BOOTSTRAP_SKILL = PLUGIN_PREFIX + "using-matt-pocock-skills"   # the routing policy: not a route
+
+
 def is_declaration(skill: str) -> bool:
-    """Whether invoking this skill declares a route for the current request."""
-    if not skill:
+    """Whether invoking this skill declares a route for the current request. Every Seams skill
+    but the bootstrap does (invoking the policy itself is not choosing a process: an eval run
+    showed the model doing exactly that after an "Unknown skill" error), and so do Matt
+    Pocock's process skills by bare name."""
+    if not skill or skill == BOOTSTRAP_SKILL:
         return False
     if skill.startswith(PLUGIN_PREFIX):
         return len(skill) > len(PLUGIN_PREFIX)
@@ -285,8 +291,16 @@ def slash_declaration(prompt: str) -> Optional[str]:
     return name if is_declaration(name) else None
 
 
+# What Claude Code itself delivers as a user turn: a background task's or monitor's notice, a
+# system reminder, a Stop hook's feedback. None of them is the user asking for something new.
+MACHINE_NOTICES = ("[SYSTEM NOTIFICATION", "<task-notification>", "<system-reminder>", "Stop hook feedback:")
+
+
 def is_continuation(prompt: str) -> bool:
-    """A short go-ahead ("yes", "ok, do that", "option 2") that keeps the current request."""
+    """A short go-ahead ("yes", "ok, do that", "option 2") that keeps the current request, or a
+    notice Claude Code generated (a monitor's event, a system reminder, a Stop hook's feedback)."""
+    if (prompt or "").lstrip().startswith(MACHINE_NOTICES):
+        return True
     text = re.sub(r"[^\w\s-]", " ", (prompt or "").lower())
     text = re.sub(r"\s+", " ", text).strip()
     if not text or len(text) > 40:

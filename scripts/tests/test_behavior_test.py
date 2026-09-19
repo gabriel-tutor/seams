@@ -1,6 +1,6 @@
 """The behavior-test harness: its stream scanner through `behavior_test.py scan <stream>`, its
 judge through `behavior_test.py judge <results.jsonl>` against the real expectation files
-under tests/scenarios, and a run's record through `run_once` with a stub `claude` on PATH.
+under plugin/evals, and a run's record through `run_once` with a stub `claude` on PATH.
 
 A run's verdict is its first committing call: a Skill or AskUserQuestion call (a process
 choice), or a change to the workspace (an Edit/Write there, or a shell command the gate's
@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -473,11 +474,56 @@ class ReportTest(unittest.TestCase):
         self.assertIn("expect.json", out)
 
 
-class ScenarioFilesTest(unittest.TestCase):
-    """Every scenario the harness can run carries a prompt, a setup and an expectation whose
-    first skill is a declaration (a Seams skill or one of Matt Pocock's process skills)."""
+def grader_frontmatter(path: Path) -> dict:
+    """A grader file's frontmatter as a flat dict of raw string values (enough for these checks)."""
+    text = path.read_text()
+    assert text.startswith("---\n"), path
+    head = text[4:text.index("\n---", 4)]
+    return {k.strip(): v.strip() for k, v in (l.split(":", 1) for l in head.splitlines() if ":" in l)}
 
-    def test_every_scenario_has_its_three_files_and_a_declaration_to_expect(self):
+
+class EvalReportTest(unittest.TestCase):
+    """scripts/eval_report.py turns `claude plugin eval --json` documents into the docs' table:
+    with and without scores, Δ, runs per arm, errored runs; a later document replaces a case."""
+
+    @staticmethod
+    def doc(name: str, with_scores: list, without_scores: list, delta: float, error_on: int = -1) -> dict:
+        runs = lambda scores: [{"score": s, "error": ("timed out" if i == error_on else None),
+                                "graders": [{"name": "skill-fired", "passed": s >= 1, "scored": False}]}
+                               for i, s in enumerate(scores)]
+        return {"schemaVersion": 1, "partial": False, "cases": [{"name": name, "aggregates": {"score": sum(with_scores) / len(with_scores), "delta": delta},
+                                                                 "arms": {"with": runs(with_scores), "without": runs(without_scores)}}]}
+
+    def test_the_table_reads_scores_delta_runs_and_errors(self):
+        spec = importlib.util.spec_from_file_location("eval_report", REPO / "scripts" / "eval_report.py")
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        out = module.report([self.doc("cosmetic-edit", [1, 1, 1], [0.5, 0.5, 0.5], 0.5, error_on=1)])
+        self.assertIn("| `cosmetic-edit` | 1.00 | 0.50 | +0.50 | 3 of 3 | 3 | 2 |", out)
+
+    def test_a_later_document_replaces_a_case(self):
+        spec = importlib.util.spec_from_file_location("eval_report", REPO / "scripts" / "eval_report.py")
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        out = module.report([self.doc("gate-typo", [0.5, 0.5, 0.5], [0.5, 0.5, 0.5], 0.0),
+                             self.doc("gate-typo", [1, 1, 1], [0, 0, 0], 1.0)])
+        self.assertIn("| `gate-typo` | 1.00 | 0.00 | +1.00 | 3 of 3 | 3 | 0 |", out)
+        self.assertEqual(out.count("`gate-typo`"), 1)
+
+
+class ScenarioFilesTest(unittest.TestCase):
+    """Every scenario is one directory under plugin/evals, shared by the harness and by
+    `claude plugin eval`: a prompt (its frontmatter is the eval's, the harness sends the body),
+    a setup and a scaffold, an expectation whose first skill is a declaration, and graders that
+    agree with that expectation, so the two suites cannot drift apart."""
+
+    def test_the_scenarios_live_in_the_plugin_beside_the_fixture(self):
+        harness = load_harness()
+        self.assertEqual(harness.SCENARIOS, harness.PLUGIN / "evals")
+        self.assertTrue((harness.SCENARIOS / "_fixture" / "package.json").is_file())
+        self.assertTrue((harness.SCENARIOS / "_shared" / "spec-coupons.md").is_file())
+        for name in harness.all_scenarios():
+            self.assertFalse(name.startswith("_") or name == "results", name)
+
+    def test_every_scenario_has_its_files_and_a_declaration_to_expect(self):
         harness = load_harness()
         names = harness.all_scenarios()
         self.assertGreaterEqual(len(names), 10)
@@ -485,12 +531,39 @@ class ScenarioFilesTest(unittest.TestCase):
             with self.subTest(scenario=name):
                 folder = harness.SCENARIOS / name
                 self.assertTrue((folder / "setup.sh").is_file(), "setup.sh")
+                self.assertTrue((folder / "scaffold.sh").is_file(), "scaffold.sh")
+                prompt = harness.prompt_text(name)
+                self.assertTrue(prompt and not prompt.startswith("---"), "the prompt body, no frontmatter")
+                self.assertTrue((folder / "prompt.md").read_text().startswith("---\n"), "eval frontmatter")
                 expect = harness.expectation(name)
                 self.assertIsNotNone(expect, "expect.json")
                 for skill in expect["skill"]:
                     self.assertTrue(harness.gate.is_declaration(skill), skill)
                 self.assertIsInstance(expect["refusal"], bool)
                 self.assertGreater(expect["runs"], 0)
+
+    def test_every_scenario_has_a_skill_grader_that_agrees_with_its_expectation(self):
+        harness = load_harness()
+        for name in harness.all_scenarios():
+            with self.subTest(scenario=name):
+                expect = harness.expectation(name)
+                graders = [grader_frontmatter(p) for p in sorted((harness.SCENARIOS / name / "graders").glob("*.md"))]
+                self.assertTrue(graders, "graders/")
+                skill_graders = [g for g in graders if g.get("type") == "tool_used" and g.get("tool") == "Skill"]
+                self.assertEqual(len(skill_graders), 1, "one tool_used: Skill grader")
+                pattern = re.compile(skill_graders[0]["input_match"].strip("'\""))
+                for skill in expect["skill"]:
+                    self.assertTrue(pattern.search(json.dumps({"skill": skill})), f"input_match should match {skill}")
+                    bare = skill.split(":", 1)[-1]
+                    self.assertTrue(pattern.search(json.dumps({"skill": bare})), f"input_match should match bare {bare}")
+                self.assertFalse(pattern.search(json.dumps({"skill": "superpowers:brainstorming"})),
+                                 "input_match must not match a Superpowers skill")
+                refusal = [g for g in graders if g.get("type") == "regex" and "Seams gate" in g.get("pattern", "")]
+                if expect["refusal"]:
+                    self.assertFalse(refusal, "a gate scenario allows a refusal, so no refusal grader")
+                else:
+                    self.assertEqual(len(refusal), 1, "one grader forbidding a refusal")
+                    self.assertEqual(refusal[0].get("match"), "not_contains")
 
     def test_the_gate_scenarios_allow_a_refusal_and_run_past_the_skill(self):
         harness = load_harness()

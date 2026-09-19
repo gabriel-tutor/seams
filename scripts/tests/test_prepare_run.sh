@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares every scenario into a temp run dir and checks the post-setup state matches the spec (§7.2).
+# Prepares every scenario into a temp run dir through the shared scaffold and checks the post-setup state.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
@@ -80,10 +80,24 @@ grep -q 'recieve' "$WS/src/format.ts" && fail "gate-commit: the typo should alre
 [[ "$(cd "$WS" && git rev-list --count HEAD)" == "1" ]] || fail "gate-commit should sit on the baseline commit"
 
 # Every scenario carries the files the harness reads.
-for dir in "$REPO"/tests/scenarios/*/; do
+for dir in "$REPO"/plugin/evals/*/; do
   name="$(basename "$dir")"
-  [[ $name == _shared ]] && continue
-  for f in prompt.md setup.sh expect.json; do [[ -f "$dir/$f" ]] || fail "$name lacks $f"; done
+  [[ $name == _* || $name == results ]] && continue
+  for f in prompt.md setup.sh expect.json scaffold.sh case.yaml; do [[ -f "$dir/$f" ]] || fail "$name lacks $f"; done
 done
+# In a harness run (a real HOME) the scaffold adds nothing to the workspace: the runner's own
+# config already holds Matt Pocock's skills. In an eval run, whose HOME is a throwaway beside a
+# `config` directory, it copies the nine required skills into that config's skills/ (resolved,
+# not symlinked) before Claude Code starts, since a run loads nothing from the runner's config.
+WS=$(prep gate-typo)
+[[ ! -e "$WS/.claude" ]] || fail "a harness workspace should carry no .claude directory"
+RUN="$TMP/eval-run"; mkdir -p "$RUN/home/cwd"
+(cd "$RUN/home/cwd" && HOME="$RUN/home" SEAMS_FIXTURE_NODE_MODULES="$(ls -d "$TMP"/gate-typo/workspace/node_modules/)" \
+  bash "$REPO/plugin/evals/_scaffold.sh" "$REPO/plugin/evals/gate-typo" >/dev/null 2>"$RUN/scaffold.err")
+for s in grilling tdd diagnosing-bugs; do
+  [[ -f "$RUN/config/skills/$s/SKILL.md" && ! -L "$RUN/config/skills/$s" ]] || fail "eval run: $s should be copied into the run's config skills ($(cat "$RUN/scaffold.err"))"
+done
+[[ ! -e "$RUN/home/cwd/.claude" ]] || fail "eval run: nothing goes into the workspace's .claude"
+[[ -z "$(porcelain "$RUN/home/cwd")" ]] || fail "eval run: the workspace tree should be clean after the scaffold"
 
 echo "test_prepare_run: OK"

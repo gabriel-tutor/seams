@@ -1,1 +1,0 @@
-Support says we sometimes oversell: when two customers check out the last unit of a SKU at the same time, both orders succeed. It's somewhere in src/inventory.ts (reserve). Please investigate and fix it properly.

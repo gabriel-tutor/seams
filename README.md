@@ -2,7 +2,7 @@
 
 **Design at the seams. Build in slices. Ship what you verified.**
 
-[![version](https://img.shields.io/badge/plugin-3.0.1-4F46E5)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-2563EB)](plugin/LICENSE) [![test](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml/badge.svg)](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml) [![routing evidence](https://img.shields.io/badge/routing%20evidence-docs-16A34A)](docs/plugin-behavior-tests.md)
+[![version](https://img.shields.io/badge/plugin-3.1.0-4F46E5)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-2563EB)](plugin/LICENSE) [![test](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml/badge.svg)](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml) [![routing evidence](https://img.shields.io/badge/routing%20evidence-docs-16A34A)](docs/plugin-behavior-tests.md)
 
 Seams is a Claude Code plugin (plugin id `matt-pocock-workflow`) that makes [Matt Pocock's engineering skills](https://github.com/mattpocock/skills) lead every session, and holds the project closed until they do. A session bootstrap routes each request by size and by risk; a hook refuses any change to the project until a workflow skill has been declared for that request; another refuses to end a turn that changed code without verification. Around his skills sits a senior engineer's process: a grill that asks one clickable question at a time, a design lens, tests first at agreed seams, a review of the committed candidate, a definition of done with evidence, a handover that names the stage reached, a `release` that proves the exact candidate is what runs, and an `incident` route that contains before it diagnoses.
 
@@ -34,7 +34,7 @@ Two hooks turn the routing policy from a promise into a rule ([ADR-0001](docs/ad
 
 > Seams gate: editing `/path/to/orderkit/src/pricing.ts` changes the project, and this request has no declaration yet: no process skill has been invoked for it. Route it first, with the Skill tool: `diagnosing-bugs` for something broken, `matt-pocock-workflow:grill` for a change to behavior, `tdd` or `matt-pocock-workflow:implement` to keep building an agreed design, `matt-pocock-workflow:trivial` for a change with no effect on behavior, data shape or security. Then retry this call.
 
-A declaration is a Skill invocation of a Seams skill or one of Matt Pocock's process skills (his `implement`, `to-spec`, `to-tickets`, `grilling`, `tdd`, `diagnosing-bugs`, `code-review` and the rest), by Claude or typed by you as a slash command; a Superpowers skill or another plugin's is not one. A short go-ahead (*yes*, *continue*, *option 2*) keeps the current declaration; any other prompt starts a new request that needs its own. A false positive costs one call: `matt-pocock-workflow:trivial` carries the test of what is not trivial (no behavior change, no shape change, nothing sensitive, reversible in one commit) and routes up when any part fails.
+A declaration is a Skill invocation of a Seams skill or one of Matt Pocock's process skills (his `implement`, `to-spec`, `to-tickets`, `grilling`, `tdd`, `diagnosing-bugs`, `code-review` and the rest), by Claude or typed by you as a slash command; a Superpowers skill or another plugin's is not one, and neither is the routing policy skill itself. A short go-ahead (*yes*, *continue*, *option 2*) keeps the current declaration, and so does a notice Claude Code generates (a background task finishing, a system reminder); any other prompt starts a new request that needs its own. A false positive costs one call: `matt-pocock-workflow:trivial` carries the test of what is not trivial (no behavior change, no shape change, nothing sensitive, reversible in one commit) and routes up when any part fails.
 
 **A change needs verification.** When a turn changed non-documentation files and `matt-pocock-workflow:verification-before-completion` did not run afterwards, the turn cannot end: the Stop hook blocks it once, naming how many unverified changes it counted and one of them, and Claude runs the verification with its real output before finishing. A turn that ends with a question to you is delayed by one message, never trapped.
 
@@ -250,7 +250,13 @@ Three kinds of evidence, in decreasing strength, all reproducible from this repo
 
 The three errors were the platform denying compound read-only commands under the harness's own settings, never the plugin; with those forms allowed, the two scenarios ran again at three runs each: `gate-commit` 3 of 3, `gate-pressured-change` 2 of 3 with the same `ls && find` chain denied once more. A second full set later the same day, on the same hooks from a fresh login, gave 39 of 42 with the same shape (two `approved-spec` misses, that one chain denied again). Over the three sets, 90 runs reached the model: 82 matched, 3 misses, 5 errors, 0 refusals, and no change went through before a declaration. Because every gate run declared before its change, this set has no refusal in it; the refusal was observed in a probe that told the model to write first and invoke no skill: the `echo >>` came back refused with the reason quoted above, and the README was untouched. The tables as `behavior_test.py report` prints them, every run that did not match with its reason, the probe, and what the counts do not show are in [`docs/plugin-behavior-tests.md`](docs/plugin-behavior-tests.md).
 
-The 2.x runs behind every wording decision, the grill's presentation runs and the runs with Superpowers enabled alongside are recorded in the same document; they were made on the 2.x bootstrap and are history, not evidence for 3.0.
+### The same scenarios against a no-plugin baseline
+
+Since 3.1.0 the ten scenarios are also `claude plugin eval` cases, shipped inside the plugin (`plugin/evals/`), so the routing claim can be checked by Anthropic's own tool, with a **no-plugin baseline**: each case runs with the plugin and again without it, and `Δ` is what the plugin added. The graders are the harness's contract in the eval's terms (the expected skill fired; no editor call before the first Skill call; no refusal in a routing scenario; the declaration before the change in a gate scenario), and a unit test keeps them equal to each `expect.json`.
+
+**The 3.1.0 passes** (2026-09-19, eight cases, three runs per arm, Claude Code 2.1.278): Opus 5 suite score 0.94 with mean Δ +0.44; Sonnet 5 suite score 1.00 with mean Δ +0.56. Those scores are the gate contract (a declaration before any change, no refusal on a routing prompt); the unscored indicator of *which* skill fired differed from the harness's records on three prompts, because an eval run is a different environment (`dontAsk`, no shell, only this plugin loaded). The per-case tables, that reading, and the two cases that could not run on this machine are in [`docs/plugin-behavior-tests.md`](docs/plugin-behavior-tests.md).
+
+Any teammate can rerun it against their own machine and model with one command (see [Tests](#tests)). The 2.x runs behind every wording decision, the grill's presentation runs and the runs with Superpowers enabled alongside are recorded in the same document; they were made on the 2.x bootstrap and are history, not evidence for 3.x.
 
 ### A real project, end to end
 
@@ -266,11 +272,11 @@ The 2.x runs behind every wording decision, the grill's presentation runs and th
 
 ## Layout
 
-- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_gate.py`, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptSubmit and Stop hooks), `skills/` (the bootstrap with `references/routing.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, the four Superpowers copies), `THIRD_PARTY_NOTICES.md`
+- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_gate.py`, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptSubmit and Stop hooks), `skills/` (the bootstrap with `references/routing.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, the four Superpowers copies), `evals/` (below), `THIRD_PARTY_NOTICES.md`
 - `.claude-plugin/marketplace.json` — makes this repo a single-plugin marketplace
 - `scripts/install.sh` — the one-command installer; `scripts/behavior_test.py` — the routing-test harness; `scripts/test.sh` and `scripts/tests/` — the test suites
 - `docs/plugin-behavior-tests.md` — the routing evidence and its method; `docs/compatibility.md` — what it was tested with; `docs/adr/` — the decisions; `docs/case-study-web-downloader.md` — one feature end to end on a real repo; `docs/carousel/` — the workflow as five slides for sharing
-- `tests/fixture/`, `tests/scenarios/` — the sandbox project and the prompts, setups and expectations the routing tests run with
+- `plugin/evals/` — the ten scenarios, one directory each, shared by the routing harness and `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
 
 ## Tests
 
@@ -281,8 +287,18 @@ scripts/tests/test_plugin_hook.sh     # the bootstrap hook against fixture homes
 scripts/tests/test_hooks.sh           # the gate hooks fed JSON on stdin (PYTHON=/usr/bin/python3 for the system 3.9)
 scripts/tests/test_install.sh         # the installer in fixture homes, against a stub claude CLI
 scripts/tests/test_prepare_run.sh     # the sandbox workspaces the routing tests run in
-python3 -m unittest discover -s scripts/tests -p 'test_*.py'   # the gate module and the harness (scanner, judge, report, run records)
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'   # the gate module, the harness (scanner, judge, report, run records), the scenarios' files
 python3 scripts/behavior_test.py run --scenario concurrency-bug --arm plugin --assert   # one routing test, headless: exit 1 when a run is short
 python3 scripts/behavior_test.py run --scenario all --arm plugin --assert --out tests/runs/mine   # every scenario at its expect.json run count
 python3 scripts/behavior_test.py report tests/runs/mine/*/results.jsonl                # the counts table the evidence document carries
+claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write   # the same scenarios through claude plugin eval, from the clone
 ```
+
+The eval suite is the same ten scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
+
+```bash
+claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag routing --tag gate --scaffold --allow-tools Edit Write
+claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag shell --scaffold --allow-tools Edit Write Bash   # the two cases that need a shell
+```
+
+`--scaffold` runs each case's scaffold as you: it copies the fixture into the run's workspace, installs its dependencies, and hands the run the nine Matt Pocock skills from your own config directory (a run loads nothing else of yours). The eight `routing` and `gate` cases need only `Edit` and `Write`; `gate-shell-write` and `gate-commit` need `Bash`, which the eval runs under an OS sandbox that refuses to start on a Mac whose `~/.docker` holds symlinks (Docker Desktop's `cli-plugins/` does), so those two run where the sandbox can. Add `--model claude-sonnet-5` to pin the model, `--ablation none` to skip the baseline, `--publish-report` for a shareable report. Every run is billed to your account.
