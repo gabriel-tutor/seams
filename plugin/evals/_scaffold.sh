@@ -28,16 +28,15 @@ bash "$CASE/setup.sh"
 # at project scope either, but it does load user skills from its own config directory: the runner
 # gives this scaffold a throwaway $HOME whose sibling `config` becomes that directory (observed on
 # Claude Code 2.1.278; it writes its settings.json there after the scaffold has run). So when $HOME
-# is not the account's real home, the nine required skills are copied from the runner's real config
-# into <run>/config/skills, symlinks resolved. A harness run (a real $HOME) needs nothing: the
-# runner's own config already holds them. Missing skills are named on stderr and the scaffold goes
-# on, so the run then shows what that machine has.
+# is not the account's real home, the nine required skills are copied from the runner's config into
+# <run>/config/skills, symlinks resolved. The runner's config is what Claude Code's is: CLAUDE_CONFIG_DIR
+# when set, else the account's ~/.claude, and never the other when the one set lacks them (a machine
+# without the skills must look the same to the suite as to a run). A harness run (a real $HOME) needs
+# nothing: the runner's own config already holds them. Missing skills are named on stderr and the
+# scaffold goes on, so the run then shows what that machine has.
 REAL_HOME="$(python3 -c 'import os, pwd; print(pwd.getpwuid(os.getuid()).pw_dir)' 2>/dev/null || true)"
 if [[ -n "$REAL_HOME" && "$HOME" != "$REAL_HOME" ]]; then
-  SKILLS=""
-  for dir in "${CLAUDE_CONFIG_DIR:-}" "$REAL_HOME/.claude"; do
-    [[ -n "$dir" && -f "$dir/skills/grilling/SKILL.md" ]] && { SKILLS="$dir/skills"; break; }
-  done
+  SKILLS="${CLAUDE_CONFIG_DIR:-$REAL_HOME/.claude}/skills"
   TARGET="$(dirname "$HOME")/config/skills"
   missing=()
   for s in "${REQUIRED[@]}"; do

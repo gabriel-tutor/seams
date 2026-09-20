@@ -87,17 +87,34 @@ for dir in "$REPO"/plugin/evals/*/; do
 done
 # In a harness run (a real HOME) the scaffold adds nothing to the workspace: the runner's own
 # config already holds Matt Pocock's skills. In an eval run, whose HOME is a throwaway beside a
-# `config` directory, it copies the nine required skills into that config's skills/ (resolved,
-# not symlinked) before Claude Code starts, since a run loads nothing from the runner's config.
+# `config` directory, it copies the nine required skills from the runner's config (CLAUDE_CONFIG_DIR
+# when set, else the account's ~/.claude) into that config's skills/, resolved, before Claude Code
+# starts, since a run loads nothing from the runner's config. Both cases run against fixture configs,
+# so the suite reads the same on a machine without his skills (CI) as on one with them.
 WS=$(prep gate-typo)
 [[ ! -e "$WS/.claude" ]] || fail "a harness workspace should carry no .claude directory"
-RUN="$TMP/eval-run"; mkdir -p "$RUN/home/cwd"
-(cd "$RUN/home/cwd" && HOME="$RUN/home" SEAMS_FIXTURE_NODE_MODULES="$(ls -d "$TMP"/gate-typo/workspace/node_modules/)" \
-  bash "$REPO/plugin/evals/_scaffold.sh" "$REPO/plugin/evals/gate-typo" >/dev/null 2>"$RUN/scaffold.err")
+eval_scaffold() {   # $1 = the run's directory, $2 = the runner's config directory; stderr to $1/scaffold.err
+  mkdir -p "$1/home/cwd"
+  (cd "$1/home/cwd" && HOME="$1/home" CLAUDE_CONFIG_DIR="$2" SEAMS_FIXTURE_NODE_MODULES="$TMP/gate-typo/workspace/node_modules" \
+    bash "$REPO/plugin/evals/_scaffold.sh" "$REPO/plugin/evals/gate-typo" >/dev/null 2>"$1/scaffold.err")
+}
+CONFIG_WITH="$TMP/config-with-skills"
+for s in grilling domain-modeling tdd diagnosing-bugs code-review codebase-design setup-matt-pocock-skills setup-pre-commit setup-ts-deep-modules; do
+  mkdir -p "$CONFIG_WITH/store/$s"; printf -- '---\nname: %s\n---\nfixture\n' "$s" > "$CONFIG_WITH/store/$s/SKILL.md"
+  mkdir -p "$CONFIG_WITH/skills"; ln -s "$CONFIG_WITH/store/$s" "$CONFIG_WITH/skills/$s"    # as skills.sh lays them out
+done
+RUN="$TMP/eval-run"; eval_scaffold "$RUN" "$CONFIG_WITH"
 for s in grilling tdd diagnosing-bugs; do
-  [[ -f "$RUN/config/skills/$s/SKILL.md" && ! -L "$RUN/config/skills/$s" ]] || fail "eval run: $s should be copied into the run's config skills ($(cat "$RUN/scaffold.err"))"
+  [[ -f "$RUN/config/skills/$s/SKILL.md" && ! -L "$RUN/config/skills/$s" ]] || fail "eval run: $s should be copied into the run's config skills, resolved ($(cat "$RUN/scaffold.err"))"
 done
 [[ ! -e "$RUN/home/cwd/.claude" ]] || fail "eval run: nothing goes into the workspace's .claude"
 [[ -z "$(porcelain "$RUN/home/cwd")" ]] || fail "eval run: the workspace tree should be clean after the scaffold"
+[[ ! -s "$RUN/scaffold.err" ]] || fail "eval run: no warning when every skill was found: $(cat "$RUN/scaffold.err")"
+# An explicit config without the skills is the config: nothing is fetched from the account's home,
+# and the run is told what is missing.
+CONFIG_BARE="$TMP/config-bare"; mkdir -p "$CONFIG_BARE"
+RUN2="$TMP/eval-run-bare"; eval_scaffold "$RUN2" "$CONFIG_BARE"
+[[ ! -e "$RUN2/config/skills" ]] || fail "eval run without skills: nothing should be copied from elsewhere ($(ls "$RUN2/config/skills"))"
+grep -q "not found on this machine.*grilling.*setup-ts-deep-modules" "$RUN2/scaffold.err" || fail "eval run without skills: the missing names should be on stderr: $(cat "$RUN2/scaffold.err")"
 
 echo "test_prepare_run: OK"
