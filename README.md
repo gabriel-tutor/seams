@@ -279,7 +279,7 @@ Any teammate can rerun it against their own machine and model with one command (
 
 ### `/pr-review` on real pull requests
 
-The review skill ran four times, headless, on throwaway pull requests in this repository, and once for real on a 15-pull-request batch of a private repository, whose gaps 3.2.1 closes. Shims made every write to GitHub impossible until the user answered. One pull request broke the gate's tests and quietly changed a documented bound; the other added a README line.
+The review skill ran four times, headless, on throwaway pull requests in this repository, and once for real on a 15-pull-request batch of a private repository, whose gaps 3.2.1 closes. Shims made every write to GitHub impossible until the user answered. In the first three, one pull request broke the gate's tests and quietly changed a documented bound, and the other added a README line.
 
 - **Every run** blamed the broken check on the pull request (passing on the baseline, failing twice on the head), called the first pull request **changes needed**, and left the clone exactly as it found it.
 - **The first run** reviewed both pull requests and proved both planted defects, but its fan-out prompt had pointed at them, which the skill now forbids. After the user's answer it posted two reviews, whose inline comments landed on the lines it had anchored.
