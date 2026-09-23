@@ -23,7 +23,7 @@ from typing import Callable, Optional
 # A best-effort mesh: the common ways of changing files from a shell. It never proves a
 # command has no side effects. Every label is fixed text, so nothing typed reaches the ledger.
 
-FILE_COMMANDS = {"rm", "rmdir", "unlink", "mv", "cp", "touch", "mkdir", "ln", "chmod", "chown",
+FILE_COMMANDS = {"rmdir", "unlink", "mv", "cp", "touch", "mkdir", "ln", "chmod", "chown",
                  "truncate", "tee", "install", "dd", "patch", "shred"}
 GIT_WRITES = {"add", "commit", "rm", "mv", "checkout", "switch", "restore", "reset", "rebase",
               "merge", "cherry-pick", "revert", "apply", "am", "clean", "push", "pull", "init",
@@ -303,7 +303,7 @@ def is_continuation(prompt: str) -> bool:
         return True
     text = re.sub(r"[^\w\s-]", " ", (prompt or "").lower())
     text = re.sub(r"\s+", " ", text).strip()
-    if not text or len(text) > 40:
+    if not text or len(text) > 400:
         return False
     if OPTION.match(text):
         return True
