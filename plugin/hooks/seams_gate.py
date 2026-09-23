@@ -75,13 +75,15 @@ SHELL_KEYWORDS = {"if", "then", "else", "elif", "while", "until", "do", "!", "{"
 ASSIGNING_BUILTINS = {"export", "declare", "local", "readonly", "typeset"}
 # Builtins that may give a variable a value this module cannot follow.
 REBINDING_BUILTINS = {"read", "mapfile", "readarray", "getopts", "unset", "printf", "let"}
-HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|\\?([A-Za-z_][A-Za-z0-9_]*))")
+HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([A-Za-z_][A-Za-z0-9_]*))")
+APPEND = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\+=")
 
 
 def _without_heredoc_text(command: str) -> str:
     """The command with each heredoc's text taken out: its lines are data, not commands. A `<<`
-    inside quotes or a comment opens nothing, and a heredoc whose end line never comes keeps all
-    its lines, so taking text out can never hide a command."""
+    inside quotes or a comment opens nothing; a heredoc whose end line never comes keeps all its
+    lines, and so does one whose word is unquoted when its text holds `$(` or a backquote, since
+    the shell runs those. Taking text out can never hide a command."""
     lines = command.split("\n")
     out, i, quote = [], 0, None
     while i < len(lines):
@@ -107,17 +109,55 @@ def _without_heredoc_text(command: str) -> str:
             elif line.startswith("<<", j) and not line.startswith("<<<", j) and (j == 0 or line[j - 1] != "<"):
                 found = HEREDOC.match(line, j)
                 if found:
-                    ends.append((found.group(2) or found.group(3) or found.group(4), found.group(1) == "-"))
+                    literal = found.group(2) is not None or found.group(3) is not None or found.group(4) == "\\"
+                    ends.append((found.group(2) or found.group(3) or found.group(5), found.group(1) == "-", literal))
                     j = found.end()
                     continue
             j += 1
-        for word, tabs in ends:
+        for word, tabs, literal in ends:
             end = next((k for k in range(i, len(lines))
                         if (lines[k].lstrip("\t") if tabs else lines[k]) == word), None)
             if end is None:
                 return "\n".join(out + lines[i:])
+            if not literal and any("$(" in text or "`" in text for text in lines[i:end]):
+                out += lines[i:end]           # the shell runs these: keep them in view
             i = end + 1
     return "\n".join(out)
+
+
+def _substitutions(command: str) -> list:
+    """The commands inside `$(...)` and backquotes, which the shell runs wherever they stand but
+    inside single quotes (double quotes included). Arithmetic, `$((...))`, runs nothing."""
+    out, i, quote, n = [], 0, None, len(command)
+    while i < n:
+        char = command[i]
+        if quote == "'":
+            if char == "'":
+                quote = None
+            i += 1
+            continue
+        if char == "\\":
+            i += 2
+            continue
+        if char == "'" and quote is None:
+            quote = "'"
+        elif char == '"':
+            quote = None if quote == '"' else '"'
+        elif command.startswith("$(", i) and not command.startswith("$((", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                depth += {"(": 1, ")": -1}.get(command[j], 0)
+                j += 1
+            out.append(command[i + 2:j - 1] if depth == 0 else command[i + 2:])
+            i = j
+            continue
+        elif char == "`":
+            j = command.find("`", i + 1)
+            out.append(command[i + 1:] if j == -1 else command[i + 1:j])
+            i = n if j == -1 else j + 1
+            continue
+        i += 1
+    return out
 
 
 def _tokens(command: str) -> list:
@@ -155,6 +195,11 @@ def _segments(tokens: list) -> list:
     return out
 
 
+def _command_name(token: str) -> str:
+    """A command word as the shell finds it: quotes and a leading backslash (`\\rm`) aside."""
+    return os.path.basename(_unquote(token)).lstrip("\\")
+
+
 def _unquote(token: str) -> str:
     if len(token) >= 2 and token[0] == token[-1] and token[0] in "'\"":
         return token[1:-1]
@@ -171,9 +216,9 @@ def _words(segment: list) -> list:
     while True:
         while words and (ASSIGNMENT.match(words[0]) or _unquote(words[0]) in SHELL_KEYWORDS):
             words.pop(0)
-        if not words or os.path.basename(_unquote(words[0])) not in WRAPPERS:
+        if not words or _command_name(words[0]) not in WRAPPERS:
             return words
-        wrapper = os.path.basename(_unquote(words.pop(0)))
+        wrapper = _command_name(words.pop(0))
         while words and words[0].startswith("-"):
             flag = words.pop(0)
             if flag in WRAPPER_VALUE_FLAGS and words and not words[0].startswith("-"):
@@ -217,7 +262,7 @@ def _split_redirects(segment: list) -> tuple:
 # Single quotes are literal, as in the shell.
 
 VARIABLE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?-)([^}$]*))?\}|([A-Za-z_][A-Za-z0-9_]*))")
-GLOB_CHARS = set("*?[")
+GLOB_CHARS = set("*?[{")                      # { for brace expansion
 PLAIN_OPTION = re.compile(r"^--?[A-Za-z0-9][A-Za-z0-9-]*$")      # an option with no value attached
 SHORT_OPTIONS = re.compile(r"^-[A-Za-z]+$")
 
@@ -243,7 +288,8 @@ def _expand(token: str, env: dict) -> Optional[str]:
         text = token
     if "$(" in text or "`" in text or "\\" in text:
         return None
-    unknown = []
+    bare = token[:1] not in "'\""
+    unknown, values = [], []
 
     def value(match):
         name, operator, default = match.group(1) or match.group(4), match.group(2), match.group(3)
@@ -252,13 +298,20 @@ def _expand(token: str, env: dict) -> Optional[str]:
             return ""
         current = env[name]               # None: known to be unset
         if operator == ":-":
-            return current or default
-        if operator == "-":
-            return default if current is None else current
-        return current or ""
+            result = current or default
+        elif operator == "-":
+            result = default if current is None else current
+        else:
+            result = current or ""
+        values.append(result)
+        return result
 
     text = VARIABLE.sub(value, text)
-    return None if unknown or "$" in text else text
+    if unknown or "$" in text:
+        return None
+    if bare and values and ("IFS" in env or any(set(v) & set(" \t\n*?[{") for v in values)):
+        return None                       # unquoted, the value would split or glob
+    return text
 
 
 def _placed_path(token: str, env: dict) -> Optional[str]:
@@ -499,13 +552,15 @@ def _what_it_writes(segment: list, command: str, env: dict, is_exempt) -> tuple:
     words = _words(segment)
     if not words:
         return None, None
-    base = os.path.basename(_unquote(words[0]))
+    base = _command_name(words[0])
     raw = words[1:]
     args = [_unquote(w) for w in raw]
-    by_xargs = any(os.path.basename(_unquote(w)) == "xargs" for w in segment[:len(segment) - len(words)])
+    by_xargs = any(_command_name(w) == "xargs" for w in segment[:len(segment) - len(words)])
     if base in {"bash", "sh", "zsh"} and "-c" in args:
         inner = args[args.index("-c") + 1:][:1]
         return (_classify(inner[0], is_exempt, dict(env)) if inner else None), None
+    if base == "eval":                        # it runs its arguments, joined, as a command
+        return (_classify(" ".join(args), is_exempt, dict(env)) if args else None), None
     if base in FILE_COMMANDS:                 # xargs supplies its operands; patch names its own files
         if by_xargs or base == "patch" or (base in TARGET_DIRECTORY_COMMANDS and _into_target_directory(args)):
             return base, None
@@ -575,8 +630,17 @@ def _segment_label(segment: list, command: str, env: dict, is_exempt) -> Optiona
 def _classify(command: str, is_exempt, env: dict) -> Optional[str]:
     if not command or not command.strip():
         return None
-    for segment in _segments(_tokens(_without_heredoc_text(command))):
+    text = _without_heredoc_text(command)
+    for inner in _substitutions(text):          # what $(...) and backquotes run
+        label = _classify(inner, is_exempt, dict(env))
+        if label:
+            return label
+    for segment in _segments(_tokens(text)):
         _forget_rebound(_split_redirects(segment)[0], env)
+        for word in segment:
+            appended = APPEND.match(word)
+            if appended:
+                env.pop(appended.group(1), None)
         if _take_assignments(segment, env):
             continue
         label = _segment_label(segment, command, env, is_exempt)

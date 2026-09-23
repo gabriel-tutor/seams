@@ -108,6 +108,11 @@ class ClassifyCommand(unittest.TestCase):
         "rsync -a /tmp/a/ lib/": "rsync",
         "sort -o sorted.txt words.txt": "sort -o",
         "curl --output=vendor.js https://example.com/x.js": "a download to a file",
+        # What a command substitution runs is a command too, in double quotes or backquotes.
+        "echo \"$(rm -rf dist)\"": "rm",
+        "echo \"`rm -rf dist`\"": "rm",
+        "echo `touch src/x`": "touch",
+        "V=\"$(git stash)\"": "git stash",
     }
 
     READS = [
@@ -154,6 +159,9 @@ class ClassifyCommand(unittest.TestCase):
         "tar -tf vendor.tar",
         "unzip -l vendor.zip",
         "sort words.txt",
+        "echo '$(rm -rf dist)'",                  # single quotes: text, not a command
+        "echo $((1 << 2))",
+        "V=\"$(git rev-parse HEAD)\"",
     ]
 
     def test_mutations_get_the_label_the_refusal_will_name(self):
@@ -425,6 +433,8 @@ class ProjectChanges(unittest.TestCase):
             f"cat > {evid}/a.md <<-EOF\n\trm -rf src\n\tEOF",
             f"find {evid} -name '*.log' -delete",
             f"sort -o {evid}/sorted.txt {evid}/words.txt",
+            f"cat > {evid}/y.md <<'EOF'\nrun $(rm -rf src) to break it\nEOF",   # a quoted heredoc is literal
+            f'A={evid}/x; rm -rf "$A" $A',
         ]:
             with self.subTest(command=command):
                 self.assertIsNone(self.change(event("Bash", command=command)))
@@ -468,6 +478,15 @@ class ProjectChanges(unittest.TestCase):
             (f"unzip {t}/v.zip -d /proj", "unzip"),
             (f"rsync -a {t}/a/ /proj/b/", "rsync"),
             (f"sort -o /proj/o {t}/src", "sort -o"),
+            # How the shell expands a word, which placing a path must follow.
+            (f"cat > {t}/x <<EOF\n$(rm -rf src)\nEOF", "rm"),          # an unquoted heredoc runs $(...)
+            (f"cat > {t}/x <<EOF\n`rm -rf src`\nEOF", "rm"),
+            (f'A="{t}/x /proj/src"; rm -rf $A', "rm"),                  # unquoted, the value splits in two
+            (f"IFS=x; A={t}/proxj; rm -rf $A", "rm"),                   # IFS decides where it splits
+            (f"rm -rf {t}/{{x,../../proj}}", "rm"),                     # brace expansion
+            (f'A={t}/x; A+=/../../proj; rm -rf "$A"', "rm"),            # an append is not followed
+            ('eval "rm -rf src"', "rm"),                                # eval runs its text
+            ("\\rm -rf src", "rm"),                                     # a backslash before the name
         ]:
             with self.subTest(command=command):
                 change = self.change(event("Bash", command=command))
