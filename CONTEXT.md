@@ -91,7 +91,7 @@ The merge-base of a pull request with its base branch, checked the same way as t
 _Avoid_: main, master (a base branch moves; its merge-base with the candidate does not)
 
 **Check**:
-A command the repository itself treats as the bar for passing: a step its CI runs, a script that a CI step or a git hook runs, or a package script named like one (audit, check, verify, validate). Each check runs on the baseline and on the candidate, so every failure is attributed.
+A command the repository itself treats as the bar for passing: a step its CI runs, a script that a CI step or a git hook runs, or a package script named as a check. Each check runs on the baseline and on the candidate, so every failure is attributed.
 _Avoid_: test (one kind of check), CI job (where some checks run)
 
 **Probe**:

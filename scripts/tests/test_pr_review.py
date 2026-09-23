@@ -1,7 +1,8 @@
-"""The pr-review skill's three scripts, through their command lines: run_checks.py (the same checks on
+"""The pr-review skill's four scripts, through their command lines: run_checks.py (the same checks on
 a pull request's baseline and candidate, each result attributed), review_payload.py (the review GitHub
 receives: findings anchored inside the diff, the rest in the review's body, only an event GitHub and
-the verdict allow) and batch_report.py (ready to merge, per pull request, and a note per author)."""
+the verdict allow), batch_report.py (ready to merge, per pull request, and a note per author) and
+post_reviews.py (the chosen reviews posted one at a time, paced, never twice)."""
 from __future__ import annotations
 
 import json
@@ -29,7 +30,10 @@ def run_checks(base: Path, head: Path, out: Path, *checks: str, timeout: float =
     for check in checks:
         args += ["--check", check]
     done = subprocess.run(args, capture_output=True, text=True, env=env)
-    data = json.loads((out / "checks.json").read_text()) if (out / "checks.json").is_file() else []
+    try:
+        data = json.loads((out / "checks.json").read_text()) if (out / "checks.json").is_file() else []
+    except ValueError:                        # a test that corrupts it on purpose
+        data = []
     table = (out / "checks.md").read_text() if (out / "checks.md").is_file() else ""
     return done.returncode, {c["name"]: c for c in data}, table + done.stderr
 
@@ -93,7 +97,9 @@ class RunChecksTest(unittest.TestCase):
         globstar = "echo 'bash: line 1: shopt: globstar: invalid shell option name' >&2; echo 799 files"
         (self.base / "OLD_SHELL").write_text("")
         one_side = "if test -f OLD_SHELL; then echo 'bash: mapfile: command not found' >&2; fi; true"
-        code, checks, table = run_checks(self.base, self.head, self.out, f"tests={globstar}", f"lint={one_side}")
+        old = self.fake_bash("old", "3.2.57")                 # the same on every machine: macOS's bash
+        code, checks, table = run_checks(self.base, self.head, self.out, f"tests={globstar}", f"lint={one_side}",
+                                         extra=("--bash", str(old)))
         self.assertEqual(code, 0, table)
         for name in ("tests", "lint"):
             with self.subTest(check=name):
@@ -103,6 +109,19 @@ class RunChecksTest(unittest.TestCase):
         self.assertIn("globstar", checks["tests"]["head"]["reason"])
         self.assertEqual(checks["lint"]["head"]["status"], "pass")
         self.assertIn("could not run", table)
+
+    def test_an_error_that_only_looks_like_an_old_bash_is_still_the_prs(self):
+        # "globstr" is no bash option: a typo the pull request made. And under bash 5, a bad
+        # substitution is the command's own error.
+        new = self.fake_bash("new", "5.2.37")
+        env = dict(os.environ, PATH=f"{new.parent}:{os.environ['PATH']}")
+        (self.base / "OK").write_text("")
+        typo = "test -f OK || { echo 'bash: line 1: shopt: globstr: invalid shell option name' >&2; exit 1; }"
+        subst = "test -f OK || { echo 'bash: ${x!}: bad substitution' >&2; exit 1; }"
+        code, checks, table = run_checks(self.base, self.head, self.out, f"typo={typo}", f"subst={subst}", env=env)
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["typo"]["verdict"], "broken by the PR")
+        self.assertEqual(checks["subst"]["verdict"], "broken by the PR")
 
     def test_a_test_file_the_baseline_does_not_have_is_absent_there_so_the_check_is_new(self):
         # A check aimed at the pull request's own test file used to "fail" on the baseline, which
@@ -118,13 +137,17 @@ class RunChecksTest(unittest.TestCase):
                 self.assertEqual(checks[name]["base"]["status"], "absent")
                 self.assertEqual(checks[name]["verdict"], "new in the PR")
 
-    def test_a_tree_with_files_git_does_not_have_is_refused_before_any_check_runs(self):
-        # Probe tests left in tests/ were counted by a later check: 985 files against 983 committed.
+    def commit_trees(self) -> None:
+        """Make both trees git work trees at a commit, as a review's worktrees are."""
         for tree in (self.base, self.head):
             (tree / "a.txt").write_text("a\n")
             for step in (["init", "-q"], ["add", "a.txt"],
                          ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "x"]):
                 subprocess.run(["git", "-C", str(tree), *step], check=True, capture_output=True)
+
+    def test_a_tree_with_files_git_does_not_have_is_refused_before_any_check_runs(self):
+        # Probe tests left in tests/ were counted by a later check: 985 files against 983 committed.
+        self.commit_trees()
         (self.head / "tests").mkdir()
         (self.head / "tests" / "zz-review-probe.test.js").write_text("probe")
         (self.base / "a.txt").write_text("changed\n")
@@ -137,6 +160,30 @@ class RunChecksTest(unittest.TestCase):
         subprocess.run(["git", "-C", str(self.base), "checkout", "-q", "a.txt"], check=True)
         code, checks, text = run_checks(self.base, self.head, self.out, "ok=true")
         self.assertEqual(code, 0, text)
+
+    def test_what_a_check_itself_leaves_in_a_tree_does_not_block_a_later_run(self):
+        # A report or build cache git does not ignore must not stop the recheck or a check added
+        # later; a probe left behind still does.
+        self.commit_trees()
+        code, _, text = run_checks(self.base, self.head, self.out, "tests=echo ok > report.xml")
+        self.assertEqual(code, 0, text)
+        code, checks, text = run_checks(self.base, self.head, self.out, "audit=true", extra=("--merge",))
+        self.assertEqual(code, 0, text)
+        self.assertEqual(list(checks), ["tests", "audit"])
+        (self.head / "zz-probe.test.js").write_text("probe")
+        code, _, text = run_checks(self.base, self.head, self.out, "audit=true", extra=("--merge",))
+        self.assertEqual(code, 2, text)
+        self.assertIn("zz-probe.test.js", text)
+        self.assertNotIn("report.xml", text)
+
+    def test_an_unreadable_checks_json_is_a_usage_error_not_a_crash(self):
+        self.out.mkdir()
+        (self.out / "checks.json").write_text("{not json")
+        for extra, checks in ((("--merge",), ("audit=true",)), (("--recheck", "tests"), ())):
+            with self.subTest(extra=extra):
+                code, _, text = run_checks(self.base, self.head, self.out, *checks, extra=extra)
+                self.assertEqual(code, 2, text)
+                self.assertNotIn("Traceback", text)
 
     def test_a_check_found_later_joins_the_table_and_the_others_stay(self):
         # A check found after the reviews finished was added by a script that edited 14 reviews by
@@ -661,7 +708,7 @@ class BatchReportTest(unittest.TestCase):
         self.assertIn("acme/api#9", out)
 
 
-# A stand-in for `gh api`: answers from a scenario file it keeps up to date (a review it accepts is
+# A stand-in for `gh api`: answers from a state file it keeps up to date (a review it accepts is
 # listed from then on, as GitHub would list it) and logs every call with the time it came.
 FAKE_GH = r'''#!/usr/bin/env python3
 import json, os, sys, time
@@ -700,6 +747,9 @@ parts = path.split("/")
 if path == "user":
     answer(200, {"login": state["viewer"]})
 key = f"{parts[1]}/{parts[2]}#{parts[4]}"
+if method == "GET" and key in state.get("fail_gets", {}):
+    print("gh: " + state["fail_gets"][key], file=sys.stderr)
+    sys.exit(1)
 reviews = state["reviews"].setdefault(key, [])
 if method == "GET" and len(parts) == 5:
     answer(200, {"number": int(parts[4]), "head": {"sha": state["heads"][key]}})
@@ -861,6 +911,31 @@ class PostReviewsTest(unittest.TestCase):
         self.assertEqual([n for _, n in self.calls()], [1])
         self.assertIn("HTTP 422", out)
         self.assertIn("not posted: o/r#2", out)
+
+    def test_a_failure_of_gh_itself_is_reported_and_ends_the_run(self):
+        folders = [self.evidence(n) for n in (1, 2)]
+        self.state["fail_gets"] = {"o/r#1": "error connecting to api.github.com"}
+        self.save()
+        code, out = self.post(*folders)
+        self.assertEqual(code, 1, out)
+        self.assertNotIn("Traceback", out)
+        self.assertIn("not posted: o/r#1", out)
+        self.assertIn("error connecting to api.github.com", out)
+        self.assertIn("not posted: o/r#2", out)
+        self.assertEqual(self.calls(), [])
+
+    def test_a_limit_that_resets_far_off_is_not_waited_for(self):
+        # The primary limit, run dry: its reset can be most of an hour away.
+        self.evidence(1)
+        reset = int(time.time()) + 3600
+        self.state["posts"]["o/r#1"] = [{"status": 403, "message": "API rate limit exceeded",
+                                         "headers": {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(reset)}}]
+        self.save()
+        started = time.monotonic()
+        code, out = self.post(self.tmp / "o-r-1")
+        self.assertEqual(code, 1, out)
+        self.assertLess(time.monotonic() - started, 20)
+        self.assertIn(time.strftime("%H:%M", time.localtime(reset)), out)
 
     def test_a_pull_request_that_moved_since_its_review_is_not_posted_and_the_rest_are(self):
         folders = [self.evidence(n) for n in (1, 2)]

@@ -99,6 +99,15 @@ class ClassifyCommand(unittest.TestCase):
         "if true; then rm -rf src; fi": "rm",
         "for f in a b; do rm -f \"$f\"; done": "rm",
         "rm src/a.ts 2>&1": "rm",
+        "echo hi\n> src/a.ts": "a redirect to a file",       # a newline right before the redirect
+        # Commands that write, which the classifier once did not know.
+        "tar -xf vendor.tar": "tar -x",
+        "tar -xzf vendor.tgz -C lib": "tar -x",
+        "tar -czf dist.tgz src": "tar -c",
+        "unzip vendor.zip -d lib": "unzip",
+        "rsync -a /tmp/a/ lib/": "rsync",
+        "sort -o sorted.txt words.txt": "sort -o",
+        "curl --output=vendor.js https://example.com/x.js": "a download to a file",
     }
 
     READS = [
@@ -142,6 +151,9 @@ class ClassifyCommand(unittest.TestCase):
         "git tag -n",
         "git worktree prune",
         "git worktree list",
+        "tar -tf vendor.tar",
+        "unzip -l vendor.zip",
+        "sort words.txt",
     ]
 
     def test_mutations_get_the_label_the_refusal_will_name(self):
@@ -236,14 +248,15 @@ class Continuations(unittest.TestCase):
         self.assertFalse(gate.is_continuation("the notification says the build failed, fix it"))
 
     def test_a_subagents_hand_back_keeps_the_request(self):
-        # A background subagent's final report reaches the session as a user turn in this form
-        # (Claude Code 2.1.281). In a 15-pull-request review, 21 of the gate's 25 refusals followed
-        # one: each hand-back started a new request and dropped the review's declaration.
-        hand_back = ('Another Claude session sent a message:\n<agent-message from="a379f038d24b24732">\n'
-                     '[Subagent hand-back] The text below is the final report of a subagent this session '
-                     'delegated to.\n  #1411: request changes\n</agent-message>')
+        # A background subagent's final report reaches the prompt hook in this form (captured from
+        # the hook's own input, Claude Code 2.1.281); the transcript shows it under an "Another
+        # Claude session sent a message:" line the hook never sees. In a 15-pull-request review, 21
+        # of the gate's 25 refusals followed one: each hand-back dropped the review's declaration.
+        hand_back = ('<agent-message from="a9da89eff2d60b60b">\n[Subagent hand-back] The text below is the '
+                     'final report of a subagent this session delegated to.\n  done\n</agent-message>')
         self.assertTrue(gate.is_continuation(hand_back))
-        self.assertFalse(gate.is_continuation("another claude session sent a message: delete the cache"))
+        self.assertTrue(gate.is_continuation("Another Claude session sent a message:\n" + hand_back))
+        self.assertFalse(gate.is_continuation("the agent-message says the build failed, fix it"))
 
     def test_go_aheads_and_bare_options_continue(self):
         for prompt in ["yes", "Yes.", "y", "ok", "OK!", "okay", "sure", "go ahead", "go on",
@@ -407,6 +420,11 @@ class ProjectChanges(unittest.TestCase):
             f"git -C /proj worktree add --detach {evid}/head 0123abc",
             f"git -C /proj worktree remove --force {evid}/head",
             "mkdir -p /private/tmp/claude-501/x/scratchpad/forensics",
+            # A heredoc's text is data: lines that read like commands are not run.
+            f"cat > {evid}/notes.md <<'EOF'\nnpm install left-pad\ngit commit -m fix\ntouch x\nEOF",
+            f"cat > {evid}/a.md <<-EOF\n\trm -rf src\n\tEOF",
+            f"find {evid} -name '*.log' -delete",
+            f"sort -o {evid}/sorted.txt {evid}/words.txt",
         ]:
             with self.subTest(command=command):
                 self.assertIsNone(self.change(event("Bash", command=command)))
@@ -430,11 +448,40 @@ class ProjectChanges(unittest.TestCase):
             (f"sed -i s/a/b/ {t}/x.txt", "sed -i"),                    # in-place editors always count
             (f"rm -rf {t}/evid/*", "rm"),                              # a glob is not placed
             (f"mkdir -p $(mktemp -d)/x", "mkdir"),
+            # Found by the review of 3.2.1: each once let a write into the project through.
+            (f"find {t} -maxdepth 0 -exec touch /proj/f \\;", "find -exec touch"),   # -exec writes where it likes
+            (f"find {t} -name '*.log' -exec rm {{}} \\;", "find -exec rm"),
+            ('rm -rf "${PROJ_ROOT:-/tmp/x}/src"', "rm"),               # an unknown variable, whatever its default
+            (f"cp --target-directory=/proj {t}/x", "cp"),               # a target attached to its option
+            (f"cp -t/proj {t}/x", "cp"),
+            (f"git -C /proj worktree add {t}/evid/head", "git worktree"),          # makes a branch named head
+            (f"git -C /proj worktree add {t}/evid/head main", "git worktree"),
+            (f"echo hi\n> /proj/src/a.ts", "a redirect to a file"),
+            (f"f={t}/x; for f in /proj/src/*; do rm \"$f\"; done", "rm"),         # the loop rebinds f
+            (f"f={t}/x; read -r f < list.txt; rm \"$f\"", "rm"),
+            (f"f={t}/x; unset f; rm \"$f\"", "rm"),
+            ("rm -rf ~/.claude/settings.json", "rm"),                   # scratch means the temp directory only
+            ('rm -rf "$HOME/.claude/projects"', "rm"),
+            (f"echo \"<<EOF\"\nrm -rf src\nEOF", "rm"),                 # a quoted << opens no heredoc
+            (f"cat > {t}/x <<EOF\nrm -rf src", "rm"),                   # an unterminated heredoc hides nothing
+            (f"tar -xf {t}/v.tar -C /proj", "tar -x"),
+            (f"unzip {t}/v.zip -d /proj", "unzip"),
+            (f"rsync -a {t}/a/ /proj/b/", "rsync"),
+            (f"sort -o /proj/o {t}/src", "sort -o"),
         ]:
             with self.subTest(command=command):
                 change = self.change(event("Bash", command=command))
                 self.assertIsNotNone(change)
                 self.assertEqual(change["label"], label)
+
+    def test_the_claude_config_directory_is_not_scratch_for_a_shell_write(self):
+        # Edit and Write may keep notes there; a shell command deleting the user's settings is not scratch.
+        change = gate.change_for_event(event("Bash", command="rm -rf /home/u/.claude/settings.json"),
+                                       config_dir="/home/u/.claude")
+        self.assertIsNotNone(change)
+        self.assertEqual(change["label"], "rm")
+        self.assertIsNone(gate.change_for_event(event("Write", file_path="/home/u/.claude/memory/n.md", content="x"),
+                                                config_dir="/home/u/.claude"))
 
     def test_a_temp_path_that_leads_into_the_project_is_the_project(self):
         project = tempfile.mkdtemp()               # the session's cwd: the project, wherever it lives

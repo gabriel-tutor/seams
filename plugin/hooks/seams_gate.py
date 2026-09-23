@@ -3,9 +3,10 @@
 A change to the project is refused until the current request has a declaration: a Skill
 invocation of a process skill, or a slash command the user typed for one. This module holds
 the pure parts (what counts as a change, what counts as a declaration, what a continuation
-is, the ledger's shape and the decisions) so the hooks stay thin and the routing harness can
-score a shell write the same way the gate does. Python 3.9: macOS's system interpreter runs
-the hooks when nothing newer is first on PATH.
+is, the ledger's shape and the decisions) so the hooks stay thin. The routing harness scores a
+shell write with the same classifier: it counts every write, where the gate also lets through
+a write confined to the temp directory. Python 3.9: macOS's system interpreter runs the hooks
+when nothing newer is first on PATH.
 """
 from __future__ import annotations
 
@@ -32,6 +33,8 @@ GIT_STASH_READS = {"list", "show"}
 GIT_TAG_READ_FLAGS = {"-l", "--list", "-n"}
 GIT_WORKTREE_WRITES = {"add", "remove", "move"}
 GIT_BRANCH_WRITE_FLAGS = {"-d", "-D", "-m", "-M", "--delete", "--move", "--force"}
+GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree"}   # git's own options that take a value
+TARGET_DIRECTORY_COMMANDS = {"cp", "mv", "ln", "install"}         # -t DIR writes into DIR
 NODE_MANAGERS = {"npm", "pnpm", "yarn", "bun"}
 NODE_WRITES = {"install", "i", "add", "remove", "rm", "uninstall", "un", "update", "up", "upgrade",
                "link", "unlink", "init", "create", "ci", "dedupe", "prune"}
@@ -63,11 +66,58 @@ WRITE_PATTERNS = re.compile(
     r"|\bunlink\(|\brename\("                      # perl builtins
     r"|FileUtils\.|File\.(delete|write|rename|unlink|open\([^)]*['\"][wa])|IO\.write")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+PUNCTUATION = set("();<>|&\n")
 SEPARATOR_CHARS = set(";&|\n()")              # a token made of these alone ends a simple command
 REDIRECT_TOKENS = {">", ">>", "&>", "&>>", ">|", ">&", "<>"}
 INPUT_REDIRECTS = {"<", "<<", "<<-", "<<<", "<&"}
 SHELL_KEYWORDS = {"if", "then", "else", "elif", "while", "until", "do", "!", "{", "}"}
 ASSIGNING_BUILTINS = {"export", "declare", "local", "readonly", "typeset"}
+# Builtins that may give a variable a value this module cannot follow.
+REBINDING_BUILTINS = {"read", "mapfile", "readarray", "getopts", "unset", "printf", "let"}
+HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|\\?([A-Za-z_][A-Za-z0-9_]*))")
+
+
+def _without_heredoc_text(command: str) -> str:
+    """The command with each heredoc's text taken out: its lines are data, not commands. A `<<`
+    inside quotes or a comment opens nothing, and a heredoc whose end line never comes keeps all
+    its lines, so taking text out can never hide a command."""
+    lines = command.split("\n")
+    out, i, quote = [], 0, None
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        i += 1
+        ends, j = [], 0
+        while j < len(line):
+            char = line[j]
+            if quote:
+                if char == "\\" and quote == '"':
+                    j += 2
+                    continue
+                if char == quote:
+                    quote = None
+            elif char == "\\":
+                j += 2
+                continue
+            elif char in "'\"":
+                quote = char
+            elif char == "#" and (j == 0 or line[j - 1] in " \t;|&("):
+                break
+            elif line.startswith("<<", j) and not line.startswith("<<<", j) and (j == 0 or line[j - 1] != "<"):
+                found = HEREDOC.match(line, j)
+                if found:
+                    ends.append((found.group(2) or found.group(3) or found.group(4), found.group(1) == "-"))
+                    j = found.end()
+                    continue
+            j += 1
+        for word, tabs in ends:
+            end = next((k for k in range(i, len(lines))
+                        if (lines[k].lstrip("\t") if tabs else lines[k]) == word), None)
+            if end is None:
+                return "\n".join(out + lines[i:])
+            i = end + 1
+    return "\n".join(out)
 
 
 def _tokens(command: str) -> list:
@@ -78,9 +128,16 @@ def _tokens(command: str) -> list:
     lexer.whitespace = " \t\r"
     lexer.whitespace_split = True
     try:
-        return list(lexer)
+        tokens = list(lexer)
     except ValueError:                        # unbalanced quotes: fall back to a rough split
-        return re.findall(r"\n|&&|\|\||[;|&()]|>>|>&|&>|>\||<<|<|>|[^\s;|&()<>]+", text)
+        tokens = re.findall(r"\n|&&|\|\||[;|&()]|>>|>&|&>|>\||<<|<|>|[^\s;|&()<>]+", text)
+    out = []
+    for token in tokens:                      # shlex runs punctuation together: "\n>" is a newline, then ">"
+        if "\n" in token and set(token) <= PUNCTUATION:
+            out += [piece for piece in re.split(r"(\n)", token) if piece]
+        else:
+            out.append(token)
+    return out
 
 
 def _segments(tokens: list) -> list:
@@ -151,22 +208,24 @@ def _split_redirects(segment: list) -> tuple:
 
 
 # --- Where a shell write lands --------------------------------------------------------------
-# A write is let through only when every path it writes is placed and not the project: the
-# rule Edit and Write already follow. A path is placed when it is written out in full, or built
-# from $TMPDIR, $HOME or a variable an earlier assignment in the same command set. A relative
-# path, a glob, a command substitution, an escape or any other variable is not placed, and the
-# write counts. Single quotes are literal, as in the shell.
+# A write is let through only when every path it writes is placed and scratch (see
+# change_for_event): the rule Edit and Write follow for the temp directory. A path is placed when
+# it is written out in full, or built from $TMPDIR or from a variable an earlier assignment in the
+# same command set. A relative path, a glob, a command substitution, an escape, a variable set
+# anywhere else, or one a loop, `read`, `unset` or `eval` may have changed is not placed, and the
+# write counts. So does an option with its value attached (`--target-directory=DIR`, `-tDIR`).
+# Single quotes are literal, as in the shell.
 
 VARIABLE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?-)([^}$]*))?\}|([A-Za-z_][A-Za-z0-9_]*))")
 GLOB_CHARS = set("*?[")
+PLAIN_OPTION = re.compile(r"^--?[A-Za-z0-9][A-Za-z0-9-]*$")      # an option with no value attached
+SHORT_OPTIONS = re.compile(r"^-[A-Za-z]+$")
 
 
 def _initial_env() -> dict:
-    env = {}
-    for name in ("TMPDIR", "HOME"):
-        if os.environ.get(name):
-            env[name] = os.environ[name]
-    return env
+    """The variables known before the command runs: TMPDIR, as the hook sees it (None when unset,
+    so `${TMPDIR:-/tmp}` is /tmp). Any other variable is unknown until the command sets it."""
+    return {"TMPDIR": os.environ.get("TMPDIR") or None}
 
 
 def _expand(token: str, env: dict) -> Optional[str]:
@@ -182,29 +241,27 @@ def _expand(token: str, env: dict) -> Optional[str]:
         if "'" in token or '"' in token:
             return None
         text = token
-        if text == "~" or text.startswith("~/"):
-            if "HOME" not in env:
-                return None
-            text = env["HOME"] + text[1:]
     if "$(" in text or "`" in text or "\\" in text:
         return None
     unknown = []
 
     def value(match):
         name, operator, default = match.group(1) or match.group(4), match.group(2), match.group(3)
-        current = env.get(name)
-        if operator == ":-" and not current or operator == "-" and current is None:
-            return default
-        if current is None:
+        if name not in env:               # set outside this command, or in a way it cannot follow
             unknown.append(name)
             return ""
-        return current
+        current = env[name]               # None: known to be unset
+        if operator == ":-":
+            return current or default
+        if operator == "-":
+            return default if current is None else current
+        return current or ""
 
     text = VARIABLE.sub(value, text)
     return None if unknown or "$" in text else text
 
 
-def _place(token: str, env: dict) -> Optional[str]:
+def _placed_path(token: str, env: dict) -> Optional[str]:
     """The absolute path a token names, or None when it is not placed."""
     text = _expand(token, env)
     if text is None or not text or GLOB_CHARS & set(text) or not os.path.isabs(text):
@@ -212,7 +269,7 @@ def _place(token: str, env: dict) -> Optional[str]:
     return os.path.normpath(text)
 
 
-def _assigns(segment: list, env: dict) -> bool:
+def _take_assignments(segment: list, env: dict) -> bool:
     """Whether the segment only assigns variables; if so, record them. `A=1 cmd` is not one: its
     assignment reaches cmd's environment, not the words the shell expands."""
     words = list(segment)
@@ -230,74 +287,58 @@ def _assigns(segment: list, env: dict) -> bool:
     return True
 
 
-def _operands(args: list) -> list:
+def _forget_rebound(words: list, env: dict) -> None:
+    """Forget the variables a loop or a builtin may give a value this module cannot follow;
+    `eval`, `source` and `.` may set any of them."""
+    words = [_unquote(w) for w in _words(words)]
+    if not words:
+        return
+    head = words[0]
+    if head in ("for", "select") and len(words) > 1:
+        env.pop(words[1], None)
+    elif head in ("eval", "source", "."):
+        env.clear()
+    elif head in REBINDING_BUILTINS or head in ASSIGNING_BUILTINS:
+        for word in words[1:]:
+            name = word.split("=", 1)[0]
+            if NAME.match(name):
+                env.pop(name, None)
+
+
+def _operands(args: list) -> Optional[list]:
     """The arguments that are not options: everything after `--`, and every word that does not
-    start with `-`. An option's value counts as an operand, which only ever makes a write count."""
+    start with `-`. None when an option carries its value attached, since that value may be the
+    path written. An option's separate value counts as an operand, which only makes a write count."""
     out, options_done = [], False
     for arg in args:
-        if not options_done and arg == "--":
+        bare = _unquote(arg)
+        if not options_done and bare == "--":
             options_done = True
-        elif options_done or not _unquote(arg).startswith("-") or _unquote(arg) == "-":
+        elif options_done or not bare.startswith("-") or bare == "-":
             out.append(arg)
+        elif not PLAIN_OPTION.match(bare):
+            return None
     return out
 
 
-def _worktree_paths(words: list) -> Optional[list]:
-    """The worktree paths `git worktree add|remove|move` writes, or None when it makes a branch."""
+def _into_target_directory(args: list) -> bool:
+    """cp, mv, ln or install given -t DIR (in any spelling): what they write lies under DIR."""
+    return any(a.startswith("--target-directory") or (SHORT_OPTIONS.match(a) and "t" in a) for a in args)
+
+
+def _git_parts(words: list) -> tuple:
+    """A git command's subcommand and its raw arguments, after git's own options (-C DIR and the like)."""
     rest = words[1:]
-    while rest and rest[0].startswith("-"):
-        rest = rest[2:] if rest[0] in {"-C", "-c", "--git-dir", "--work-tree"} and len(rest) > 1 else rest[1:]
-    sub, args = (_unquote(rest[1]) if len(rest) > 1 else ""), rest[2:]
-    if any(_unquote(a) in {"-b", "-B", "--orphan"} for a in args):
-        return None
-    operands, skip = [], False
-    for arg in args:
-        if skip:
-            skip = False
-        elif _unquote(arg) == "--reason":
-            skip = True
-        elif not _unquote(arg).startswith("-"):
-            operands.append(arg)
-    if sub == "add":
-        return operands[:1] or None           # the new worktree's path; a commit after it is read
-    return operands or None
-
-
-def _download_targets(base: str, args: list) -> Optional[list]:
-    """The files curl -o or wget -O write, or None when they write under the working directory."""
-    flags = {"curl": ({"-o", "--output"}, "-o", "--output="),
-             "wget": ({"-O", "--output-document"}, "-O", "--output-document=")}[base]
-    targets = []
-    for i, arg in enumerate(args):
-        bare = _unquote(arg)
-        if bare in flags[0] and i + 1 < len(args):
-            targets.append(args[i + 1])
-        elif bare.startswith(flags[2]):
-            targets.append(bare[len(flags[2]):])
-        elif bare.startswith(flags[1]) and len(bare) > 2 and not bare.startswith("--"):
-            targets.append(bare[2:])
-        elif base == "curl" and bare in {"-O", "--remote-name", "--remote-name-all"}:
-            return None
-    return targets or None
-
-
-def _find_roots(args: list) -> list:
-    roots = []
-    for arg in args:
-        if _unquote(arg)[:1] in {"-", "(", "!", ")"}:
-            break
-        roots.append(arg)
-    return roots
+    while rest and _unquote(rest[0]).startswith("-"):
+        rest = rest[2:] if _unquote(rest[0]) in GIT_VALUE_OPTIONS and len(rest) > 1 else rest[1:]
+    return (_unquote(rest[0]), rest[1:]) if rest else ("", [])
 
 
 def _git_label(words: list) -> Optional[str]:
-    rest = words[1:]
-    while rest and rest[0].startswith("-"):
-        takes_value = rest[0] in {"-C", "-c", "--git-dir", "--work-tree"}
-        rest = rest[2:] if takes_value and len(rest) > 1 else rest[1:]
-    if not rest:
+    sub, raw = _git_parts(words)
+    if not sub:
         return None
-    sub, args = _unquote(rest[0]), [_unquote(r) for r in rest[1:]]
+    args = [_unquote(r) for r in raw]
     if sub in GIT_WRITES:
         return f"git {sub}"
     if sub == "branch":                       # a write only with a delete or move flag
@@ -309,6 +350,34 @@ def _git_label(words: list) -> Optional[str]:
     if sub == "worktree":
         return "git worktree" if args and args[0] in GIT_WORKTREE_WRITES else None
     return None
+
+
+def _worktree_paths(words: list) -> Optional[list]:
+    """The worktree paths `git worktree add --detach|remove|move` writes, or None when they cannot
+    be told or a branch may change: without --detach, `add` makes a branch named after the path, or
+    checks out (and may create) the one it names."""
+    _, raw = _git_parts(words)
+    if not raw:
+        return None
+    action, rest = _unquote(raw[0]), raw[1:]
+    flags = {_unquote(a) for a in rest}
+    if action == "add" and (not flags & {"--detach", "-d"} or flags & {"-b", "-B", "--orphan"}):
+        return None
+    operands, skip = [], False
+    for arg in rest:
+        bare = _unquote(arg)
+        if skip:
+            skip = False
+        elif bare == "--reason":
+            skip = True
+        elif bare.startswith("-"):
+            if not PLAIN_OPTION.match(bare):
+                return None
+        else:
+            operands.append(arg)
+    if action == "add":
+        return operands[:1] or None           # the new worktree's path; the commit after it is read
+    return operands or None
 
 
 def _manager_label(base: str, args: list) -> Optional[str]:
@@ -323,18 +392,98 @@ def _manager_label(base: str, args: list) -> Optional[str]:
     return None
 
 
-def _download_label(base: str, args: list) -> Optional[str]:
-    if base == "curl":
-        to_file = any(a in {"-o", "-O", "--output", "--remote-name"} or (a.startswith("-o") and len(a) > 2)
-                      for a in args)
-        return "a download to a file" if to_file else None
+def _download(base: str, raw: list) -> tuple:
+    """curl or wget writing a file: the label and the paths written, None for the paths when they
+    lie under the working directory. (None, None) when the download only goes to stdout."""
+    args = [_unquote(a) for a in raw]
+    targets, somewhere = [], False           # somewhere: a file named by the server, in the cwd
+    for i, arg in enumerate(args):
+        after = raw[i + 1] if i + 1 < len(raw) else None
+        if base == "curl":
+            if arg in ("-o", "--output"):
+                targets.append(after or "")
+            elif arg.startswith("--output="):
+                targets.append(arg[len("--output="):])
+            elif arg in ("-O", "--remote-name", "--remote-name-all") or arg.startswith("--output-dir"):
+                somewhere = True
+            elif SHORT_OPTIONS.match(arg) and ("o" in arg or "O" in arg):
+                if "O" in arg:
+                    somewhere = True
+                elif arg.endswith("o"):
+                    targets.append(after or "")
+                else:
+                    targets.append(arg[arg.index("o") + 1:])
+        else:
+            if arg in ("-O", "--output-document"):
+                targets.append(after or "")
+            elif arg.startswith("--output-document="):
+                targets.append(arg[len("--output-document="):])
+            elif arg.startswith("-O") and len(arg) > 2 and not arg.startswith("--"):
+                targets.append(arg[2:])
     if base == "wget":
-        to_stdout = any(a in {"-O-", "-qO-"} for a in args)
-        for i, a in enumerate(args):
-            if a in {"-O", "--output-document"} and args[i + 1:i + 2] == ["-"]:
-                to_stdout = True
-        return None if to_stdout else "a download to a file"
-    return None
+        if any(a in ("-O-", "-qO-") for a in args) or any(_unquote(t) == "-" for t in targets):
+            return None, None                 # to stdout
+        return "a download to a file", (targets or None)
+    if not targets and not somewhere:
+        return None, None
+    return "a download to a file", (None if somewhere else targets)
+
+
+def _archive(base: str, raw: list) -> tuple:
+    """tar extracting or creating, and unzip extracting: the label and the paths written, None when
+    they lie under the working directory. (None, None) when it only lists or tests."""
+    args = [_unquote(a) for a in raw]
+
+    def value(*names: str):
+        for i, arg in enumerate(args):
+            for name in names:
+                if arg == name and i + 1 < len(raw):
+                    return [raw[i + 1]]
+                if name.startswith("--") and arg.startswith(name + "="):
+                    return [arg[len(name) + 1:]]
+        return None
+
+    if base == "unzip":
+        if any(a in ("-l", "-t", "-v", "-Z", "-p", "-z") for a in args):
+            return None, None
+        return "unzip", value("-d")
+    letters = set()
+    for i, arg in enumerate(args):
+        if SHORT_OPTIONS.match(arg) or (i == 0 and re.match(r"^[A-Za-z]+$", arg)):
+            letters |= set(arg.lstrip("-"))
+    longs = {a.split("=", 1)[0] for a in args if a.startswith("--")}
+    if "x" in letters or longs & {"--extract", "--get"}:
+        return "tar -x", value("-C", "--directory")
+    if letters & set("cruA") or longs & {"--create", "--append", "--update", "--catenate", "--concatenate",
+                                          "--delete"}:
+        archive = value("--file")
+        for i, arg in enumerate(args):
+            if (SHORT_OPTIONS.match(arg) or (i == 0 and re.match(r"^[A-Za-z]+$", arg))) and "f" in arg \
+                    and i + 1 < len(raw):
+                archive = [raw[i + 1]]
+        return "tar -c", archive
+    return None, None
+
+
+def _sort_output(raw: list) -> tuple:
+    args = [_unquote(a) for a in raw]
+    for i, arg in enumerate(args):
+        if arg == "-o":
+            return "sort -o", ([raw[i + 1]] if i + 1 < len(raw) else None)
+        if arg.startswith("--output="):
+            return "sort -o", [arg[len("--output="):]]
+        if arg.startswith("-o") and len(arg) > 2:
+            return "sort -o", [arg[2:]]
+    return None, None
+
+
+def _find_roots(args: list) -> list:
+    roots = []
+    for arg in args:
+        if _unquote(arg)[:1] in {"-", "(", "!", ")"}:
+            break
+        roots.append(arg)
+    return roots
 
 
 def _inline_program_writes(base: str, args: list, command: str) -> bool:
@@ -344,7 +493,7 @@ def _inline_program_writes(base: str, args: list, command: str) -> bool:
     return bool(inline and WRITE_PATTERNS.search(command))
 
 
-def _write(segment: list, command: str, env: dict, is_exempt) -> tuple:
+def _what_it_writes(segment: list, command: str, env: dict, is_exempt) -> tuple:
     """What a simple command (its redirections removed) writes: its label and the raw tokens of
     the paths it writes, or None for the paths when they cannot be told. (None, None): no write."""
     words = _words(segment)
@@ -358,7 +507,9 @@ def _write(segment: list, command: str, env: dict, is_exempt) -> tuple:
         inner = args[args.index("-c") + 1:][:1]
         return (_classify(inner[0], is_exempt, dict(env)) if inner else None), None
     if base in FILE_COMMANDS:                 # xargs supplies its operands; patch names its own files
-        return base, (None if by_xargs or base == "patch" else _operands(raw))
+        if by_xargs or base == "patch" or (base in TARGET_DIRECTORY_COMMANDS and _into_target_directory(args)):
+            return base, None
+        return base, _operands(raw)
     if base == "sed" and any(SED_IN_PLACE.match(a) for a in args):
         return "sed -i", None
     if base in {"perl", "ruby"} and any(PERL_RUBY_IN_PLACE.match(a) for a in args):
@@ -369,9 +520,17 @@ def _write(segment: list, command: str, env: dict, is_exempt) -> tuple:
     label = _manager_label(base, args)
     if label:
         return label, None
-    label = _download_label(base, args)
-    if label:
-        return label, _download_targets(base, raw)
+    for known, parse in (({"curl", "wget"}, _download), ({"tar", "unzip"}, _archive)):
+        if base in known:
+            label, targets = parse(base, raw)
+            if label:
+                return label, targets
+    if base == "rsync":                       # its options can write logs and backups anywhere
+        return "rsync", None
+    if base == "sort":
+        label, targets = _sort_output(raw)
+        if label:
+            return label, targets
     if "--write" in args:
         return "a --write flag", None
     if "--fix" in args:
@@ -379,14 +538,13 @@ def _write(segment: list, command: str, env: dict, is_exempt) -> tuple:
     if "-w" in args and any(a in FORMATTERS for a in [base] + args):
         return "a --write flag", None
     if base == "find":
-        roots = _find_roots(raw) or None      # no root: the working directory
-        if "-delete" in args:
-            return "find -delete", roots
-        for flag in ("-exec", "-execdir"):
+        for flag in ("-exec", "-execdir", "-ok", "-okdir"):
             if flag in args:
                 after = args[args.index(flag) + 1:]
-                if after and os.path.basename(after[0]) in FILE_COMMANDS:
-                    return f"find -exec {os.path.basename(after[0])}", roots
+                if after and os.path.basename(after[0]) in FILE_COMMANDS:   # it writes where its command says
+                    return f"find -exec {os.path.basename(after[0])}", None
+        if "-delete" in args:
+            return "find -delete", _find_roots(raw) or None   # no root: the working directory
     if _inline_program_writes(base, args, command):
         return "an inline program that writes", None
     return None, None
@@ -396,7 +554,7 @@ def _all_exempt(tokens: Optional[list], env: dict, is_exempt) -> bool:
     if tokens is None:
         return False
     for token in tokens:
-        path = _place(token, env)
+        path = _placed_path(token, env)
         if path is None or not is_exempt(path):
             return False
     return True
@@ -404,7 +562,7 @@ def _all_exempt(tokens: Optional[list], env: dict, is_exempt) -> bool:
 
 def _segment_label(segment: list, command: str, env: dict, is_exempt) -> Optional[str]:
     words, redirects = _split_redirects(segment)
-    label, targets = _write(words, command, env, is_exempt)
+    label, targets = _what_it_writes(words, command, env, is_exempt)
     if is_exempt is None:                     # every write counts; a redirection names it first
         return "a redirect to a file" if redirects else label
     if label and not _all_exempt(targets, env, is_exempt):
@@ -417,8 +575,9 @@ def _segment_label(segment: list, command: str, env: dict, is_exempt) -> Optiona
 def _classify(command: str, is_exempt, env: dict) -> Optional[str]:
     if not command or not command.strip():
         return None
-    for segment in _segments(_tokens(command)):
-        if _assigns(segment, env):
+    for segment in _segments(_tokens(_without_heredoc_text(command))):
+        _forget_rebound(_split_redirects(segment)[0], env)
+        if _take_assignments(segment, env):
             continue
         label = _segment_label(segment, command, env, is_exempt)
         if label:
@@ -430,8 +589,8 @@ def classify_command(command: str, is_exempt: Optional[Callable[[str], bool]] = 
     """The label for what a shell command changes, or None when it looks read-only.
 
     With `is_exempt`, a write whose every path is placed (see above) and exempt is not a change:
-    the gate passes the rule Edit and Write follow. Without it every write counts, which is how
-    the routing harness scores a shell write before the first Skill call.
+    the gate passes its scratch rule. Without it every write counts, which is how the routing
+    harness scores a shell write before the first Skill call.
     """
     return _classify(command, is_exempt, _initial_env())
 
@@ -527,9 +686,10 @@ def slash_declaration(prompt: str) -> Optional[str]:
 
 # What Claude Code itself delivers as a user turn: a background task's or monitor's notice, a
 # system reminder, a Stop hook's feedback, a subagent's hand-back. None of them is the user asking
-# for something new.
+# for something new. A hand-back reaches the hook as `<agent-message from="...">`; the transcript
+# shows it under an "Another Claude session sent a message:" line, kept here as well.
 MACHINE_NOTICES = ("[SYSTEM NOTIFICATION", "<task-notification>", "<system-reminder>", "Stop hook feedback:",
-                   "Another Claude session sent a message:")
+                   "<agent-message ", "Another Claude session sent a message:")
 
 
 def is_continuation(prompt: str) -> bool:
@@ -694,13 +854,24 @@ def is_exempt_path(path: str, config: Optional[str] = None, cwd: Optional[str] =
     return any(_under(real, root) for root in roots)
 
 
+def is_scratch_path(path: str, cwd: Optional[str] = None) -> bool:
+    """Where a shell command may write without a declaration: /dev/null, or under a temp directory
+    and outside the session's working directory. Narrower than is_exempt_path: the Claude config
+    directory is not scratch, since a shell command there could delete the user's settings."""
+    real = os.path.realpath(path)
+    if real == "/dev/null":
+        return True
+    if cwd and _under(real, cwd):
+        return False
+    return any(_under(real, root) for root in (tempfile.gettempdir(),) + TEMP_ROOTS)
+
+
 def change_for_event(event: dict, config_dir: Optional[str] = None) -> Optional[dict]:
     """The project change a PreToolUse event would make, or None when it makes none.
 
     Editor tools: the file, unless it is under a temp or config directory. Bash: the
-    classifier's label, unless every path the command writes is placed and exempt by the same
-    rule (a pull-request review writes only its evidence under the temp directory). Anything
-    else: nothing.
+    classifier's label, unless every path the command writes is placed and scratch (a pull-request
+    review writes only its evidence under the temp directory). Anything else: nothing.
     """
     tool = event.get("tool_name") or ""
     tool_input = event.get("tool_input") or {}
@@ -716,8 +887,7 @@ def change_for_event(event: dict, config_dir: Optional[str] = None) -> Optional[
         return {"tool": tool, "path": path, "doc": path.lower().endswith(DOC_SUFFIXES)}
     if tool == "Bash":
         cwd = event.get("cwd")
-        label = classify_command(tool_input.get("command") or "",
-                                 is_exempt=lambda path: is_exempt_path(path, config_dir, cwd))
+        label = classify_command(tool_input.get("command") or "", is_exempt=lambda path: is_scratch_path(path, cwd))
         if label:
             return {"tool": "Bash", "label": label, "doc": False}
     return None

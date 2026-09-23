@@ -74,7 +74,7 @@ EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
 sys.path.insert(0, str(PLUGIN / "hooks"))
-import seams_gate as gate  # noqa: E402  (the gate's classifier: a shell write scores as the gate scores it)
+import seams_gate as gate  # noqa: E402  (the gate's classifier; every shell write counts here, temp-only ones too)
 
 
 def settings(superpowers: bool) -> str:

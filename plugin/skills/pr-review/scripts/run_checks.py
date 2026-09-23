@@ -2,7 +2,7 @@
 """Run a pull request's checks on its baseline and on its candidate, and say whose each failure is.
 
   run_checks.py --base DIR --head DIR --out DIR --check NAME=COMMAND [--check ...] [--timeout SECONDS]
-                [--merge] [--slots N] [--slot-dir DIR]
+                [--merge] [--slots N] [--slot-dir DIR] [--bash PATH]
   run_checks.py --base DIR --head DIR --out DIR --recheck NAME [--recheck ...]
 
 Each check runs with `bash -c COMMAND`, in the newest bash on PATH or in the usual install places
@@ -11,8 +11,9 @@ closed and CI=1 (unless already set), its output kept in <out>/<name>.<base|head
 disagree, the side that failed runs once more, so a flaky check is called flaky rather than blamed on
 the pull request. Whatever a check leaves running when it ends is ended with it.
 
-Both trees must be as their commits have them: a file git does not have (a probe left behind) is a
-usage error, before anything runs. The run waits for one of the machine's check slots (--slots, half
+Both trees must be as their commits have them and their checks left them: a file git does not
+have that no earlier run's check left (a probe left behind) is a usage error, before anything runs;
+what checks leave (a report, a build cache git does not ignore) is kept in <out>/left.json. The run waits for one of the machine's check slots (--slots, half
 its cores by default, shared through --slot-dir), so reviews started together take turns. --merge
 keeps the checks already in checks.json and adds or replaces these; --recheck runs a check broken by
 the PR once more on the candidate, alone after a batch, and calls it flaky when it passes. The verdicts:
@@ -63,33 +64,56 @@ BLOCKING = {"broken by the PR", "removed by the PR"}
 BASH_VERSION = re.compile(r"version (\d+)\.(\d+)(?:\.(\d+))?")
 # What a bash older than 4 prints when a command needs 4 or newer, and then often carries on from:
 # `shopt -s globstar` fails and `**` walks one directory, so a suite silently runs part of itself.
-OLD_BASH = re.compile(r"shopt: (\w+): invalid shell option name|(?:declare|local|typeset): (-[nA]): invalid option"
-                      r"|\b(mapfile|readarray): command not found|wait: (-n): invalid option|: (bad substitution)")
+# A bash 4 shell option rejected means an old bash ran, whichever bash was chosen (a script's
+# `#!/bin/bash` is macOS's 3.2); the rest mean it only when the chosen bash is itself older than 4,
+# since under a newer one they are the command's own errors.
+BASH4_OPTION = re.compile(r"shopt: (globstar|autocd|checkjobs|dirspell|lastpipe|direxpand|globasciiranges|"
+                          r"inherit_errexit|localvar_inherit|localvar_unset|assoc_expand_once|progcomp_alias|"
+                          r"globskipdots|patsub_replacement|varredir_close|noexpand_translation): "
+                          r"invalid shell option name")
+OLD_BASH = re.compile(r"(?:declare|local|typeset): (-[nA]): invalid option|\b(mapfile|readarray): command not found"
+                      r"|wait: (-n): invalid option|: (bad substitution)")
 KNOWN_BASHES = ("/opt/homebrew/bin/bash", "/usr/local/bin/bash", "/bin/bash", "/usr/bin/bash")
+
+
+def bash_at(path: str):
+    """A bash and its version as {"path", "version", "key"}, or None when it is not a bash that runs."""
+    if not (os.path.isfile(path) and os.access(path, os.X_OK)):
+        return None
+    try:
+        text = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5,
+                              stdin=subprocess.DEVNULL).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = BASH_VERSION.search(text)
+    if not found:
+        return None
+    return {"path": path, "version": ".".join(g for g in found.groups() if g),
+            "key": tuple(int(part or 0) for part in found.groups())}
 
 
 def find_bash() -> dict:
     """The newest bash on PATH or in the usual install places, as {"path", "version"}. CI's bash is
     4 or newer; macOS ships 3.2, which has no globstar, associative arrays or mapfile."""
-    best, best_key, seen = None, None, set()
+    best, seen = None, set()
     folders = os.environ.get("PATH", "").split(os.pathsep)
     for path in [os.path.join(f, "bash") for f in folders if f] + list(KNOWN_BASHES):
         real = os.path.realpath(path)
-        if real in seen or not (os.path.isfile(path) and os.access(path, os.X_OK)):
+        if real in seen:
             continue
         seen.add(real)
-        try:
-            text = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5,
-                                  stdin=subprocess.DEVNULL).stdout
-        except (OSError, subprocess.SubprocessError):
-            continue
-        found = BASH_VERSION.search(text)
-        if not found:
-            continue
-        key = tuple(int(part or 0) for part in found.groups())
-        if best_key is None or key > best_key:
-            best, best_key = {"path": path, "version": ".".join(g for g in found.groups() if g)}, key
-    return best or {"path": "bash", "version": "unknown"}
+        found = bash_at(path)
+        if found and (best is None or found["key"] > best["key"]):
+            best = found
+    return {"path": best["path"], "version": best["version"]} if best else {"path": "bash", "version": "unknown"}
+
+
+def bash_major(shell: dict) -> int:
+    """The chosen bash's major version; 0 when it is not known, which reads as old."""
+    try:
+        return int(shell["version"].split(".")[0])
+    except (KeyError, ValueError):
+        return 0
 
 
 def run_side(command: str, tree: Path, log: Path, timeout: float, shell: dict) -> dict:
@@ -115,7 +139,8 @@ def run_side(command: str, tree: Path, log: Path, timeout: float, shell: dict) -
         if timed_out:
             proc.wait()
     seconds = round(time.monotonic() - started)
-    old = OLD_BASH.search(log.read_text(errors="replace"))
+    text = log.read_text(errors="replace")
+    old = BASH4_OPTION.search(text) or (OLD_BASH.search(text) if bash_major(shell) < 4 else None)
     if old:
         feature = next(g for g in old.groups() if g)
         return {"status": "unsupported", "exit": None if timed_out else code, "seconds": seconds,
@@ -128,7 +153,7 @@ def run_side(command: str, tree: Path, log: Path, timeout: float, shell: dict) -
     if code in (126, 127):
         return {"status": "absent", "exit": code, "seconds": seconds,
                 "reason": f"command not found (exit {code})", "log": log.name}
-    if MISSING_SCRIPT.search(log.read_text(errors="replace")):
+    if MISSING_SCRIPT.search(text):
         return {"status": "absent", "exit": code, "seconds": seconds, "reason": "script not found", "log": log.name}
     return {"status": "fail", "exit": code, "seconds": seconds, "reason": f"exit {code}", "log": log.name}
 
@@ -198,8 +223,13 @@ def cell(run: dict, rerun: "dict | None") -> str:
     else:
         text = f"fail, {run['reason']} ({run['seconds']} s)"
     if rerun:
-        text += "; again: " + ("pass" if rerun["status"] == "pass" else rerun["reason"] or rerun["status"])
+        text += "; again: " + outcome(rerun)
     return text
+
+
+def outcome(run: dict) -> str:
+    """How a second run of a check went, in a table cell."""
+    return "pass" if run["status"] == "pass" else run["reason"] or run["status"]
 
 
 def table(results: list) -> str:
@@ -209,7 +239,7 @@ def table(results: list) -> str:
         base = cell(r["base"], rerun if rerun and rerun["side"] == "base" else None)
         head = cell(r["head"], rerun if rerun and rerun["side"] == "head" else None)
         if r.get("alone"):
-            head += "; alone: " + ("pass" if r["alone"]["status"] == "pass" else r["alone"]["reason"] or r["alone"]["status"])
+            head += "; alone: " + outcome(r["alone"])
         shown = f"**{r['verdict']}**" if r["verdict"] in BLOCKING else r["verdict"]
         lines.append(f"| `{r['name']}` | {base} | {head} | {shown} |")
     shells = sorted({r["shell"]["version"] for r in results if r.get("shell")})
@@ -280,7 +310,7 @@ def broken_check(earlier: list, name: str) -> dict:
     raise ValueError(f"no check named {name} in checks.json")
 
 
-def alone(result: dict, head: Path, out: Path, timeout: float, shell: dict) -> dict:
+def run_alone(result: dict, head: Path, out: Path, timeout: float, shell: dict) -> dict:
     """A check broken by the PR, run once more on the candidate with nothing else running (after a
     batch): passing now, the failures were the machine's load, and the verdict is flaky."""
     again = dict(result, alone=run_side(result["command"], head, out / f"{result['name']}.head.alone.log",
@@ -291,8 +321,29 @@ def alone(result: dict, head: Path, out: Path, timeout: float, shell: dict) -> d
 
 
 def earlier_results(out: Path) -> list:
+    """The checks already in OUT/checks.json; ValueError when it cannot be read as checks."""
     path = out / "checks.json"
-    return json.loads(path.read_text()) if path.is_file() else []
+    if not path.is_file():
+        return []
+    results = json.loads(path.read_text())
+    if not isinstance(results, list) or not all(isinstance(r, dict) and "name" in r for r in results):
+        raise ValueError(f"{path} is not a list of checks")
+    return results
+
+
+def left_behind(out: Path) -> dict:
+    """The files earlier runs' checks left in each tree (a report, a build cache git does not
+    ignore): a later run in the same trees accepts these, and only these."""
+    try:
+        data = json.loads((out / "left.json").read_text())
+        return {side: set(data.get(side) or []) for side in ("base", "head")}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return {"base": set(), "head": set()}
+
+
+def remember_left(out: Path, trees: dict, known: dict) -> None:
+    left = {side: sorted(known[side] | set(stray_files(tree))) for side, tree in trees.items()}
+    (out / "left.json").write_text(json.dumps(left, indent=2) + "\n")
 
 
 def merged(earlier: list, new: list) -> list:
@@ -324,6 +375,7 @@ def main(argv: "list | None" = None) -> int:
                         help="run a check broken by the PR again, alone, on the candidate (repeatable)")
     parser.add_argument("--slots", type=int, default=default_slots(),
                         help="checks the machine runs at once, across every review (default: half its cores)")
+    parser.add_argument("--bash", help="run the checks with this bash (default: the newest one found)")
     parser.add_argument("--slot-dir", type=Path,
                         default=Path(os.environ.get("TMPDIR") or "/tmp") / "seams-pr-review" / "slots",
                         help="where the slots are kept; reviews that share it take turns")
@@ -336,36 +388,45 @@ def main(argv: "list | None" = None) -> int:
             raise ValueError("--check and --recheck do not mix: a recheck runs a check already in checks.json")
         if not checks and not args.recheck:
             raise ValueError("no --check given")
-        rechecks = [broken_check(earlier_results(args.out), name) for name in args.recheck]
+        earlier = earlier_results(args.out) if (args.merge or args.recheck) else []
+        rechecks = [broken_check(earlier, name) for name in args.recheck]
+        shell = None
+        if args.bash:
+            shell = bash_at(args.bash)
+            if shell is None:
+                raise ValueError(f"--bash {args.bash}: not a bash that runs")
+            shell = {"path": shell["path"], "version": shell["version"]}
         names = [name.casefold() for name, _ in checks]
         if len(set(names)) != len(names):
             raise ValueError("two checks share a name (case aside); each writes its own log files")
         for tree in (args.base, args.head):
             if not tree.is_dir():
                 raise ValueError(f"not a directory: {tree}")
+        known = left_behind(args.out)
         dirty = []
-        for tree in (args.base, args.head):
-            stray = stray_files(tree)
+        for side, tree in (("base", args.base), ("head", args.head)):
+            stray = [f for f in stray_files(tree) if f not in known[side]]
             if stray:
                 shown = ", ".join(stray[:10]) + (f" and {len(stray) - 10} more" if len(stray) > 10 else "")
-                dirty.append(f"{tree} has files its commit does not have: {shown}")
+                dirty.append(f"{tree} has files neither its commit nor an earlier check left: {shown}")
         if dirty:
             raise ValueError("; ".join(dirty) + ". Remove them (a probe belongs in the evidence directory) "
-                             "so every check sees the tree as committed")
-    except ValueError as err:
+                             "so every check sees the tree as its commit and its checks left it")
+    except (ValueError, OSError) as err:
         print(f"run_checks.py: {err}", file=sys.stderr)
         return 2
     args.out.mkdir(parents=True, exist_ok=True)
     slot = take_slot(args.slot_dir, args.slots)      # held until this process ends
-    shell = find_bash()
+    shell = shell or find_bash()
     if rechecks:
-        results = merged(earlier_results(args.out), [alone(r, args.head, args.out, args.timeout, shell) for r in rechecks])
+        results = merged(earlier, [run_alone(r, args.head, args.out, args.timeout, shell) for r in rechecks])
     else:
         results = [compare(name, command, args.base, args.head, args.out, args.timeout, shell)
                    for name, command in checks]
         if args.merge:
-            results = merged(earlier_results(args.out), results)
+            results = merged(earlier, results)
     write_results(args.out, results)
+    remember_left(args.out, {"base": args.base, "head": args.head}, known)
     if slot is not None:
         slot.close()
     return 0

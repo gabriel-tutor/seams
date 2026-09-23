@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Post the reviews a person chose, one at a time, paced under GitHub's limits, and say where each landed.
 
-  post_reviews.py [--per-minute N] [--per-hour N] [--backoff SECONDS] [--slow SECONDS] [--tries N] EVID [EVID ...]
+  post_reviews.py [--per-minute N] [--per-hour N] [--minute SECONDS] [--backoff SECONDS] [--slow SECONDS]
+                  [--tries N] EVID [EVID ...]
 
 Each EVID is one pull request's evidence directory: review.json (which pull request, at which
 commit) and payload.json (the review GitHub receives, from review_payload.py), posted in the order
@@ -15,8 +16,10 @@ posts stay under half of each limit. A post GitHub blocks for a rate limit (403 
 GitHub asks (retry-after, or the reset time; otherwise --backoff seconds, doubling), is looked for
 again (a refused post is sometimes kept), and is tried again, up to --tries times; from the first
 block on, posts are --slow seconds apart. Retrying the same approved review needs no new approval.
-Any other refusal, or a block that does not lift, ends the run: the reviews after it are not tried,
-so the person can decide, and running it again finds what is already posted.
+A wait longer than all the tries' backoff together (a primary limit resetting within the hour) is
+not taken: the run says when to post again. Any other refusal, a failure of gh itself, or a block
+that does not lift ends the run: the reviews after it are not tried, so the person can decide, and
+running it again finds what is already posted. --minute shortens the budget's minute for tests.
 
 Each review posted is recorded in EVID/posted.json and its link printed. Exits 0 when every review
 is on GitHub, 1 when any is not (each says why), and 2 on a usage error, before anything is posted.
@@ -131,7 +134,7 @@ class Pace:
         self.blocked = False
 
     def wait(self, units: int, name: str) -> None:
-        told = False
+        told, started = False, time.monotonic()
         while True:
             now = time.monotonic()
             gap = self.slow if self.blocked else self.minute / 60
@@ -141,7 +144,7 @@ class Pace:
                     and (in_hour == 0 or in_hour + units <= self.per_hour))
             if fits and (not self.sent or now - self.sent[-1][0] >= gap):
                 return
-            if not told and self.minute >= 60:
+            if not told and now - started > self.minute / 30:
                 print(f"waiting before {name}, to stay under GitHub's limits for creating content", flush=True)
                 told = True
             time.sleep(max(0.01, min(self.minute / 120, 1.0)))
@@ -176,7 +179,7 @@ def main(argv: "list | None" = None) -> int:
         return 2
     try:
         viewer = gh_json("user")["login"]
-    except (GhError, KeyError, ValueError) as err:
+    except (GhError, KeyError, ValueError, TypeError) as err:
         print(f"post_reviews.py: cannot tell who is posting: {err}", file=sys.stderr)
         return 2
     pace = Pace(args.per_minute, args.per_hour, args.minute, args.slow)
@@ -186,47 +189,59 @@ def main(argv: "list | None" = None) -> int:
             print(f"not posted: {review['name']}: not tried, {stopped}")
             missing += 1
             continue
-        posted = already_posted(review, viewer)
-        if posted:
-            print(f"already posted: {review['name']}: {posted.get('html_url')}")
-            continue
-        now = gh_json(f"repos/{review['repo']}/pulls/{review['number']}")["head"]["sha"]
-        if now != review["head"]:
-            print(f"not posted: {review['name']}: the pull request moved to {now[:7]} since the review; "
-                  f"review the new head")
+        try:
+            on_github, stopped = post_one(review, viewer, pace, args)
+        except (GhError, ValueError, KeyError, TypeError) as err:
+            print(f"not posted: {review['name']}: gh failed: {err}")
+            on_github, stopped = False, "since gh itself failed above: fix that, then run this again"
+        if not on_github:
             missing += 1
-            continue
-        units = 1 + len(review["payload"].get("comments") or [])
-        blocks = 0
-        while True:
-            pace.wait(units, review["name"])
-            status, headers, body = submit(review)
-            pace.sent_now(units)              # counted from when GitHub answered
-            if 200 <= status < 300 and isinstance(body, dict):
-                print(f"posted: {review['name']}: {record(review, body)}")
-                break
-            if not rate_limited(status, headers, body):
-                print(f"not posted: {review['name']}: HTTP {status}: {message(body)}")
-                missing += 1
-                stopped = "since GitHub refused the review above: decide what to do about it, then run this again"
-                break
-            blocks += 1
-            if blocks >= args.tries:
-                print(f"not posted: {review['name']}: GitHub still blocks it after {blocks} tries "
-                      f"(HTTP {status}: {message(body)})")
-                missing += 1
-                stopped = "since GitHub is still blocking posts: run this again later"
-                break
-            pace.blocked = True
-            wait = delay(headers, args.backoff, blocks)
-            print(f"GitHub blocked {review['name']} (HTTP {status}: {message(body)}); waiting {wait:g} s, "
-                  f"then posting more slowly", flush=True)
-            time.sleep(wait)
-            posted = already_posted(review, viewer)
-            if posted:                    # refused, yet kept
-                print(f"posted: {review['name']}: {record(review, posted)}")
-                break
     return 1 if missing else 0
+
+
+def post_one(review: dict, viewer: str, pace: Pace, args) -> "tuple[bool, str | None]":
+    """Post one review, or find it already posted: whether it is on GitHub, and why the run
+    stops (None to go on)."""
+    posted = already_posted(review, viewer)
+    if posted:
+        print(f"already posted: {review['name']}: {posted.get('html_url')}")
+        return True, None
+    now = gh_json(f"repos/{review['repo']}/pulls/{review['number']}")["head"]["sha"]
+    if now != review["head"]:
+        print(f"not posted: {review['name']}: the pull request moved to {now[:7]} since the review; "
+              f"review the new head")
+        return False, None
+    units = 1 + len(review["payload"].get("comments") or [])
+    blocks = 0
+    while True:
+        pace.wait(units, review["name"])
+        status, headers, body = submit(review)
+        pace.sent_now(units)                  # counted from when GitHub answered
+        if 200 <= status < 300 and isinstance(body, dict):
+            print(f"posted: {review['name']}: {record(review, body)}")
+            return True, None
+        if not rate_limited(status, headers, body):
+            print(f"not posted: {review['name']}: HTTP {status}: {message(body)}")
+            return False, "since GitHub refused the review above: decide what to do about it, then run this again"
+        blocks += 1
+        if blocks >= args.tries:
+            print(f"not posted: {review['name']}: GitHub still blocks it after {blocks} tries "
+                  f"(HTTP {status}: {message(body)})")
+            return False, "since GitHub is still blocking posts: run this again later"
+        wait = delay(headers, args.backoff, blocks)
+        if wait > args.backoff * 2 ** (args.tries - 1):
+            at = time.strftime("%H:%M", time.localtime(time.time() + wait))
+            print(f"not posted: {review['name']}: GitHub's rate limit lifts at {at} "
+                  f"(HTTP {status}: {message(body)}); run this again then")
+            return False, f"since GitHub's rate limit lifts at {at}"
+        pace.blocked = True
+        print(f"GitHub blocked {review['name']} (HTTP {status}: {message(body)}); waiting {wait:g} s, "
+              f"then posting more slowly", flush=True)
+        time.sleep(wait)
+        posted = already_posted(review, viewer)
+        if posted:                            # refused, yet kept
+            print(f"posted: {review['name']}: {record(review, posted)}")
+            return True, None
 
 
 if __name__ == "__main__":

@@ -67,7 +67,7 @@ prompt "yes, go ahead"
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a go-ahead should keep the declaration: $OUT"
 prompt "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished"
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a machine-generated notice should keep the declaration: $OUT"
-prompt 'Another Claude session sent a message:\n<agent-message from=\"a1\">\n[Subagent hand-back] #12: request changes\n</agent-message>'
+prompt '<agent-message from=\"a1\">\n[Subagent hand-back] #12: request changes\n</agent-message>'
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a subagent's hand-back should keep the declaration: $OUT"
 prompt "now fix the bug in pricing"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a new request should need a new declaration"
