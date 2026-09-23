@@ -279,7 +279,14 @@ Any teammate can rerun it against their own machine and model with one command (
 
 ### `/pr-review` on real pull requests
 
-The review skill ran once, headless, on two throwaway pull requests in this repository, with every write to GitHub made impossible by shims until the user answered: one pull request broke the gate's tests and quietly changed a documented bound, the other added a README line. It attributed the broken check to the pull request (passing on the baseline, failing twice on the head), proved both planted defects (the fan-out prompt had pointed at them, which the skill now forbids; the proof that the pull request's own example still failed on both trees was the subagent's), called the first **changes needed** and the second **ready to merge**, left the clone exactly as it found it, and after the answer posted two reviews whose inline comments landed on the lines it had anchored. The platform itself refuses to let the model start the skill. What that run did and did not exercise is in [`docs/plugin-behavior-tests.md`](docs/plugin-behavior-tests.md).
+The review skill ran three times, headless, on two throwaway pull requests in this repository. Shims made every write to GitHub impossible until the user answered. One pull request broke the gate's tests and quietly changed a documented bound; the other added a README line.
+
+- **Every run** blamed the broken check on the pull request (passing on the baseline, failing twice on the head), called the first pull request **changes needed**, and left the clone exactly as it found it.
+- **The first run** reviewed both pull requests and proved both planted defects, but its fan-out prompt had pointed at them, which the skill now forbids. After the user's answer it posted two reviews, whose inline comments landed on the lines it had anchored.
+- **The later two** found the defects with reviewers given only the pull request's facts. One reviewed the first pull request alone, typed as bare `/pr-review`. The other reviewed both and called the second **ready to merge**.
+- **The second run found a bug in Seams itself:** a finding with an empty suggestion became an empty GitHub suggestion block, which deletes the line it sits on. It is fixed and tested.
+
+The platform itself refuses to let the model start the skill. What those runs did and did not exercise is in [`docs/plugin-behavior-tests.md`](docs/plugin-behavior-tests.md).
 
 ### A real project, end to end
 

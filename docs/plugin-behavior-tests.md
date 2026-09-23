@@ -409,3 +409,44 @@ The skill's deterministic parts are unit-tested through their command lines (`sc
 
 **Not exercised live.** The single-review path (Matt Pocock's `code-review` through the Skill tool beside the parallel risk reviewer; only the batch path ran), the bare `/pr-review` form (the run typed the namespaced one; the gate's rule for it is unit- and hook-tested), AskUserQuestion (a headless run has none, so every question arrived as text), an untrusted pull request (both were the viewer's own), an app that has to be started for its end-to-end suite (this repository has none), a batch over four pull requests, and every model but the one above. The run was made on `21d369d`; the review that followed changed the three scripts (line splitting, quoting, process cleanup, the approve rules, unreadable reviews) and the skill's text (checkout records, facts-only subagents, static review running nothing), each change unit- or static-tested, none of them re-run live. One batch of two is evidence about that batch.
 
+## 3.2: `/pr-review`, a second live round, 2026-09-23
+
+After the review that followed round 1, the scripts and the skill's text had changed and none of the changes had run live; round 1 had also left the single review and the bare `/pr-review` unrun, and it had steered its subagents. This round ran both paths, each on that day's candidate, on the same two changes opened again as #6 and #7 (heads `cd11698` and `deb9909`, baseline `aea109b`). Each run started headless from a fresh clone with round 1's setup: `--plugin-dir` at the candidate, the installed copy and Superpowers disabled, Claude Code 2.1.280, the runtime reporting `claude-opus-5-5[1m]`, `gh` and `git` shims refusing every write to GitHub, and deny rules on top. Nothing was posted in this round. Both pull requests were closed and their branches deleted after the second run.
+
+**Run 1: one pull request, bare name, on `d874905`.** The command was `claude -p "/pr-review 6"`, and the gate took the bare name as the declaration (no refusal in the run). It ran `scripts/test.sh` on both trees through `run_checks.py`: 9 of 9 suites on the baseline, 7 of 9 on the head twice, **broken by the PR** (six cases of `test_gate.ClassifyCommand` fail on both Pythons). Then, all in the background, it invoked Matt Pocock's `code-review` through the Skill tool, with the merge-base as the fixed point and the pull request's body as the spec, and ran the risk reviewer beside `code-review`'s Standards and Spec reviewers.
+- **The risk reviewer's prompt** named the trees, the diff command, the risky file and the axes, and said nothing about what was wrong. It found the `rm` removal and proved it with probes on both trees: `rm -rf dist`, `sudo rm`, `xargs rm` and `find -exec rm` are labeled on the baseline and unseen on the head. With no declaration, the head's gate allows `rm -rf src` and still refuses `touch src/x`.
+- **The Spec reviewer**, given the body alone, found both defects. The pull request's own example, `is_continuation("yes, go ahead with the plan you described above")`, is False on both trees, because the length was never what rejected it.
+- **The review:** request changes, with one blocking finding (the `rm` removal, with a suggestion block restoring it), two should fix (the example still fails; the 400 bound comes with no test and contradicts its docstring), and three lines under not verified.
+
+One turn of 443 seconds, 35 shell commands (15 by the subagents), zero write attempts. The clone's status and worktree list were identical before and after, and GitHub showed no review on #6.
+
+**What run 1 found in Seams.** Three things, fixed in `8c0e487` before run 2:
+- **An empty suggestion block.** The first should-fix finding (the example still fails) carried `"suggestion": ""`, and `review_payload.py` drafted an empty suggestion block from it. On GitHub, committing an empty suggestion deletes the line it sits on, so posted, it would have offered the author a button that deletes line 306. An empty or blank suggestion is now no suggestion (unit-tested), and the skill says a deletion is proposed in words.
+- **A pointer in a prompt.** The Standards reviewer's prompt, which the main session writes for `code-review`, listed "the comment above FILE_COMMANDS and above GO_PHRASES" among the standards sources. Those are the two places the defects were. It was a pointer rather than a summary, but still a pointer. `code-review`'s reviewers now get facts, not conclusions, as the risk reviewer and the batch subagents already did.
+- **No post question.** Without AskUserQuestion, it said it could not ask whether to post and stopped there. Now it asks the question in text, with its options, and ends the turn.
+
+**Run 2: a batch, facts only, on `8c0e487`.** The command was `claude -p "/matt-pocock-workflow:pr-review 6 7"`: one subagent per pull request, in the background. Each prompt held the pull request's facts (number, title, body, author, head, baseline, GitHub's check results, its trees and evidence folder) and the instruction to carry out the skill's sections. The only words about the change in either prompt were the pull request's own title, body and commit message.
+- **Checks:** #6 `test` passed on the baseline and failed on the head twice, **broken by the PR**. #7 `test` was ok on both.
+- **#6: request changes.** Two blocking findings: the `rm` removal at line 26, with a suggestion block restoring it, and the raised bound, which does not fix the reported case, at 306. One should fix, no test for the continuation change, and one question, why 400.
+- **#7: approve.** One should fix: "Remove it entirely" leaves the marketplace behind. The subagent proved it by running the README's commands in a throwaway Claude config inside the evidence folder (`CLAUDE_CONFIG_DIR`); after the uninstall, `claude plugin marketplace list` still listed the marketplace. One nit, on "Instead". The user's own Claude config was not touched: its plugin files were last written before the run, and its marketplace list is unchanged.
+- **The handover** opened with `batch_report.py`'s report exactly as the script prints it; compared after the run, the text is identical. #6 was **changes needed** (2 blocking, `test` broken) and #7 ready to merge, with a note for the author. Then it asked in text which reviews to post: A, #6 at `cd11698` as `COMMENT`; B, #7 at `deb9909` as `COMMENT`; C, both; D, neither.
+- **Stale outputs:** run 1 had left #6's evidence folder at the same head, and run 2 cleared it: every file in it was written during run 2.
+
+Two turns (135 and 134 seconds), 15:55:13 to 16:01:48 UTC, 41 shell commands (27 by the subagents), zero write attempts. The clone's status and worktree list were identical before and after, and neither pull request had a review or a comment when the run ended.
+
+**Seen, and not hidden.**
+- **Severity varied.** The example that still fails got two severities: should fix in run 1 and blocking in run 2. The skill calls a proven bug blocking; whether a fix that does not fix is one is a judgement, and it was made both ways. The verdict was request changes both times, on the `rm` removal alone.
+- **The done-check blocked twice in run 2**, on a `mkdir` and on a redirect under the temp directory, as in round 1. Each time the run invoked `verification-before-completion` and went on.
+- **The shim log's one refused call** is the smoke test of the shim itself, 13 seconds before run 1 began.
+
+**Not exercised live.**
+- AskUserQuestion: the runs were headless, so every question arrived as text.
+- An untrusted pull request and a static review: both pull requests were the viewer's own.
+- An app that has to be started for its end-to-end suite.
+- A batch over four pull requests.
+- A re-review after the author pushes.
+- A post since round 1. The payload's one change since then, the empty suggestion, is unit-tested.
+- Every model but the one above.
+
+Two runs are evidence about those two runs.
+
