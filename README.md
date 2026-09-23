@@ -215,6 +215,8 @@ claude plugin disable matt-pocock-workflow@my-workflow-agent-skills
 claude plugin enable superpowers@claude-plugins-official
 ```
 
+To remove it entirely instead: `claude plugin uninstall matt-pocock-workflow@my-workflow-agent-skills`.
+
 Disabling the plugin removes the bootstrap, the gate and the done-check together; there is no partial switch. Matt Pocock's skills stay installed and usable on their own.
 
 ## Compatibility
