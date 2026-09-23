@@ -71,6 +71,11 @@ prompt "/to-spec"
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a typed /to-spec should declare: $OUT"
 prompt "/superpowers:brainstorming"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a typed superpowers command should not declare"
+prompt "/pr-review 42"
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a typed bare /pr-review (a Seams skill, manual only) should declare: $OUT"
+grep -q '"skill": *"matt-pocock-workflow:pr-review"' "$LEDGER" || fail "the bare /pr-review should be recorded under its full name"
+prompt "/using-matt-pocock-skills"
+OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "typing the routing policy itself should not declare"
 
 # 7. A subagent's call is judged by the same session ledger.
 post_skill "matt-pocock-workflow:implement"

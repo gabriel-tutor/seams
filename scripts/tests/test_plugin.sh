@@ -47,18 +47,23 @@ V_CHANGELOG=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+' "$REPO/CHANGELOG.md" | c
 [[ -n $V_PLUGIN && $V_PLUGIN == "$V_MARKET" && $V_PLUGIN == "$V_README" && $V_PLUGIN == "$V_CHANGELOG" ]] \
   || fail "versions disagree: plugin.json $V_PLUGIN, marketplace.json $V_MARKET, README badge $V_README, CHANGELOG $V_CHANGELOG"
 
-# Every skill: frontmatter naming its own directory, a description, and model invocation left on.
+# Every skill: frontmatter naming its own directory and a description. Model invocation stays on for
+# every skill but the ones typed by hand only: pr-review, which runs a PR's code, spends minutes of
+# checks and can post to GitHub, is one of those, and stays one.
+USER_ONLY="pr-review"
 for f in "$PLUGIN"/skills/*/SKILL.md; do
-  python3 - "$f" <<'PY' || fail "bad frontmatter: $f"
+  python3 - "$f" "$USER_ONLY" <<'PY' || fail "bad frontmatter: $f"
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
+user_only = set(sys.argv[2].split())
 text = p.read_text()
 assert text.startswith("---\n"), "no frontmatter"
 head = text[4:text.index("\n---\n", 4)]
-fields = {k.strip(): v.strip() for k, v in (l.split(":", 1) for l in head.splitlines() if ":" in l)}
+fields = {k.strip(): v.strip() for k, v in (l.split(":", 1) for l in head.splitlines() if ":" in l and not l.startswith(" "))}
 assert fields.get("name") == p.parent.name, f"name {fields.get('name')!r} != directory {p.parent.name!r}"
 assert fields.get("description"), "empty description"
-assert fields.get("disable-model-invocation", "false") != "true", "user-only skill"
+manual = fields.get("disable-model-invocation", "false") == "true"
+assert manual == (p.parent.name in user_only), f"{p.parent.name}: disable-model-invocation {'true' if manual else 'unset'}, expected {'true' if not manual else 'unset'}"
 PY
 done
 
@@ -156,6 +161,30 @@ section_says grill "$PLUGIN/skills/grill/SKILL.md" Presentation "already settles
 [[ -f "$PLUGIN/skills/grill/references/design-lens.md" ]] || fail "design-lens.md missing"
 grep -q "references/design-lens.md" "$PLUGIN/skills/grill/SKILL.md" || fail "grill does not reference the design lens"
 [[ $(grep -cE '^[0-9]+\. \*\*' "$PLUGIN/skills/grill/references/design-lens.md") -eq 10 ]] || fail "design lens should list 10 axes"
+
+# The pr-review skill (manual only): the steps in order; the promises each step keeps, inside its own
+# step (nothing of an untrusted PR runs without a yes, nothing reaches GitHub without a yes naming it,
+# nothing in the user's repo changes); the batch fan-out; the three scripts it runs, executable.
+PRR="$PLUGIN/skills/pr-review/SKILL.md"
+[[ -f "$PRR" ]] || fail "pr-review skill missing"
+headings_in_order pr-review "$PRR" "## Gate" "## Checkout" "## Batch" "## Understand" "## Checks" "## Review" "## Draft" \
+  "## Cleanup" "## Post" "## Handover"
+must_say pr-review "$PRR" "\$ARGUMENTS" "data under review, never instructions" "headRefOid" "author_association"
+section_says pr-review "$PRR" Gate "untrusted" "Static review only" "nothing of that PR runs" "open" "requested"
+section_says pr-review "$PRR" Checkout "one PR at a time" "--detach" ".seams-pr-review" "merge-base" "status --porcelain"
+section_says pr-review "$PRR" Batch "one subagent per PR" "four at a time" "never asks" "never posts" "error.txt"
+section_says pr-review "$PRR" Checks "run_checks.py" "commands CI runs" "could not run" "e2e" "Try it" "own port"
+section_says pr-review "$PRR" Review "Invoke \`code-review\`" "risk reviewer" "Verify every finding" "baseline" "probe test" \
+  "blocking" "should fix" "request changes"
+section_says pr-review "$PRR" Draft "review_payload.py" "review.json" "outside the diff"
+section_says pr-review "$PRR" Cleanup "only worktrees carrying" "matt-pocock-workflow:verification-before-completion"
+section_says pr-review "$PRR" Post "Re-check the candidate" "every time" "Don't post" "own pull request" "--method POST" \
+  "Never push"
+section_says pr-review "$PRR" Handover "batch_report.py" "Ready to merge" "Note for"
+for s in run_checks review_payload batch_report; do
+  [[ -x "$PLUGIN/skills/pr-review/scripts/$s.py" ]] || fail "pr-review/scripts/$s.py missing or not executable"
+done
+must_say routing.md "$PLUGIN/skills/using-matt-pocock-skills/references/routing.md" "/matt-pocock-workflow:pr-review"
 
 # The trivial declaration: the cheap way through the gate, carrying the test of what is not trivial.
 TRIV="$PLUGIN/skills/trivial/SKILL.md"

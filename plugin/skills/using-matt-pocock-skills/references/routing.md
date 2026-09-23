@@ -25,6 +25,7 @@ A new app starts with `foundations` (the run and verify commands, CI, the produc
 - **Down or degraded for users now** → `incident`. Impact, then the safest reversible containing action behind a yes, restore, and only then `diagnosing-bugs`.
 - **A huge, foggy effort** → `/wayfinder` (user-only). It charts a map of decision tickets and resolves one per session. When the way is clear, it hands off to `to-spec`.
 - **Unsure where to start** → suggest `/ask-matt` (user-only), Matt's own routing.
+- **A pull request to review, or several** → suggest `/matt-pocock-workflow:pr-review <number or URL> [...]` (user-only; bare `/pr-review` works too, and `open` or `requested` take a batch). It runs the repo's checks on each pull request's head and baseline, reviews with `code-review` and a risk reviewer, proves its findings, posts nothing without a yes, and ends by saying which pull requests are ready to merge.
 
 ## Upkeep
 

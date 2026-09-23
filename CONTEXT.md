@@ -84,6 +84,16 @@ _Avoid_: deploy (one step of it), ship, launch
 The closing message of a release: monitoring and alert owner, runbook, follow-ups, stage reached.
 _Avoid_: summary, wrap-up
 
+## Review
+
+**Baseline**:
+The merge-base of a pull request with its base branch, checked the same way as the candidate, so a failure the change did not cause is not blamed on it.
+_Avoid_: main, master (a base branch moves; its merge-base with the candidate does not)
+
+**Finding**:
+A review's claim about a candidate, with a severity (blocking, should fix, nit) and the evidence behind it: a failing check, a failing probe test, a reproduced behavior, or a cited line with its reasoning. A suspicion without evidence is a question, not a finding.
+_Avoid_: issue (the tracker's word), comment (where a finding gets posted)
+
 ## Evidence
 
 **Scenario**:

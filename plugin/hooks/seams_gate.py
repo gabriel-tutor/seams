@@ -281,14 +281,32 @@ def is_declaration(skill: str) -> bool:
     return skill in PROCESS_SKILLS
 
 
+SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills")
+
+
+def seams_skill(bare: str) -> Optional[str]:
+    """The full name of this plugin's skill called `bare`, or None: Claude Code runs a plugin
+    skill typed by its bare name (`/pr-review 42`) when no other command has that name."""
+    if not bare or "/" in bare or bare.startswith("."):
+        return None
+    if not os.path.isfile(os.path.join(SKILLS_DIR, bare, "SKILL.md")):
+        return None
+    return PLUGIN_PREFIX + bare
+
+
 def slash_declaration(prompt: str) -> Optional[str]:
-    """The process skill a typed slash command names, or None."""
+    """The process skill a typed slash command names, or None. Matt Pocock's bare names win over
+    this plugin's, as they do in Claude Code (`/implement` is his); any other bare name of a Seams
+    skill declares under its full name, the routing policy excepted."""
     text = (prompt or "").strip()
     if not text.startswith("/"):
         return None
     parts = text[1:].split()
     name = parts[0] if parts else ""
-    return name if is_declaration(name) else None
+    if is_declaration(name):
+        return name
+    full = seams_skill(name)
+    return full if full and is_declaration(full) else None
 
 
 # What Claude Code itself delivers as a user turn: a background task's or monitor's notice, a
