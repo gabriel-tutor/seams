@@ -90,6 +90,14 @@ _Avoid_: summary, wrap-up
 The merge-base of a pull request with its base branch, checked the same way as the candidate, so a failure the change did not cause is not blamed on it.
 _Avoid_: main, master (a base branch moves; its merge-base with the candidate does not)
 
+**Check**:
+A command the repository itself treats as the bar for passing: a step its CI runs, a script that a CI step or a git hook runs, or a package script named like one (audit, check, verify, validate). Each check runs on the baseline and on the candidate, so every failure is attributed.
+_Avoid_: test (one kind of check), CI job (where some checks run)
+
+**Probe**:
+A test a review writes to prove or disprove a finding. It belongs to the review, not to the pull request: it is never committed, never left in a tree a check runs on, and is offered to the author as a suggested test.
+_Avoid_: repro, scratch test
+
 **Finding**:
 A review's point about a candidate: a claim with its severity (blocking, should fix, nit) and the evidence behind it (a failing check, a failing probe test, a reproduced behavior, or a cited line with its reasoning), or a question the review could not settle. A suspicion without evidence is only ever a question.
 _Avoid_: issue (the tracker's word), comment (where a finding gets posted)

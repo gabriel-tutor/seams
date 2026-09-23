@@ -93,6 +93,12 @@ class ClassifyCommand(unittest.TestCase):
         "git worktree add ../x": "git worktree",
         "git worktree remove ../x": "git worktree",
         "ls | tee listing.txt": "tee",
+        # A newline, a subshell or a shell keyword ends one command and starts the next.
+        "echo hi\nrm -rf src": "rm",
+        "(rm -rf src)": "rm",
+        "if true; then rm -rf src; fi": "rm",
+        "for f in a b; do rm -f \"$f\"; done": "rm",
+        "rm src/a.ts 2>&1": "rm",
     }
 
     READS = [
@@ -228,6 +234,16 @@ class Continuations(unittest.TestCase):
                        "Stop hook feedback:\nSeams done-check: 2 unverified changes"):
             self.assertTrue(gate.is_continuation(notice), notice[:40])
         self.assertFalse(gate.is_continuation("the notification says the build failed, fix it"))
+
+    def test_a_subagents_hand_back_keeps_the_request(self):
+        # A background subagent's final report reaches the session as a user turn in this form
+        # (Claude Code 2.1.281). In a 15-pull-request review, 21 of the gate's 25 refusals followed
+        # one: each hand-back started a new request and dropped the review's declaration.
+        hand_back = ('Another Claude session sent a message:\n<agent-message from="a379f038d24b24732">\n'
+                     '[Subagent hand-back] The text below is the final report of a subagent this session '
+                     'delegated to.\n  #1411: request changes\n</agent-message>')
+        self.assertTrue(gate.is_continuation(hand_back))
+        self.assertFalse(gate.is_continuation("another claude session sent a message: delete the cache"))
 
     def test_go_aheads_and_bare_options_continue(self):
         for prompt in ["yes", "Yes.", "y", "ok", "OK!", "okay", "sure", "go ahead", "go on",
@@ -374,6 +390,61 @@ class ProjectChanges(unittest.TestCase):
         self.assertFalse(change["doc"])
         self.assertIsNone(self.change(event("Bash", command="cat src/a.ts")))
 
+    def test_a_shell_write_confined_to_the_temp_dir_is_not_a_change(self):
+        # Edit and Write under the temp dir were never changes; the same work done from a shell
+        # was, so a pull-request review writing only its evidence met the gate 25 times.
+        t = tempfile.gettempdir()
+        evid = f"{t}/seams-pr-review/o-r-12-abc1234"
+        for command in [
+            f"mkdir -p {evid}/checks",
+            f"cat > {evid}/review.json <<'EOF'\n{{\"verdict\": \"approve\"}}\nEOF",
+            f"echo done | tee -a {evid}/log.txt",
+            f"rm -rf {evid}/head/tests/zz-probe.test.js",
+            f"cp {evid}/probes/p.test.js {evid}/head/tests/p.test.js",
+            "curl -s -o /dev/null -w '%{http_code}' http://localhost:4101/health",
+            f'EVID="{evid}"; mkdir -p "$EVID/checks" && echo ok > "$EVID/checks/x.log"',
+            'mkdir -p "${TMPDIR:-/tmp}/seams-pr-review/x"',
+            f"git -C /proj worktree add --detach {evid}/head 0123abc",
+            f"git -C /proj worktree remove --force {evid}/head",
+            "mkdir -p /private/tmp/claude-501/x/scratchpad/forensics",
+        ]:
+            with self.subTest(command=command):
+                self.assertIsNone(self.change(event("Bash", command=command)))
+
+    def test_a_shell_write_that_reaches_the_project_or_cannot_be_placed_is_a_change(self):
+        t = tempfile.gettempdir()
+        for command, label in [
+            ("mkdir -p src/new", "mkdir"),
+            (f"cp {t}/p.test.js /proj/tests/p.test.js", "cp"),
+            (f"mv /proj/src/a.ts {t}/a.ts", "mv"),
+            (f"rm -rf {t}/x /proj/src", "rm"),
+            ('mkdir -p "$EVID/checks"', "mkdir"),                     # a variable this command never set
+            (f"echo x > {t}/log; rm -rf src", "rm"),
+            (f"cat > {t}/notes <<'EOF'\nhello\nEOF\nrm -rf src", "rm"),     # the line after a heredoc runs
+            (f"EVID='$HOME/x'; mkdir -p \"$EVID\"", "mkdir"),            # single quotes: a literal $HOME
+            (f"npm ci > {t}/install.log", "npm ci"),                   # the install is the write, not the log
+            (f"cd {t}/evid/head && npm ci", "npm ci"),
+            (f"python3 - <<'EOF'\nopen('{t}/x.json', 'w').write('x')\nEOF", "an inline program that writes"),
+            (f"git -C {t}/evid/head checkout -b fix", "git checkout"),
+            (f"git -C /proj worktree add -b review {t}/evid/head", "git worktree"),
+            (f"sed -i s/a/b/ {t}/x.txt", "sed -i"),                    # in-place editors always count
+            (f"rm -rf {t}/evid/*", "rm"),                              # a glob is not placed
+            (f"mkdir -p $(mktemp -d)/x", "mkdir"),
+        ]:
+            with self.subTest(command=command):
+                change = self.change(event("Bash", command=command))
+                self.assertIsNotNone(change)
+                self.assertEqual(change["label"], label)
+
+    def test_a_temp_path_that_leads_into_the_project_is_the_project(self):
+        project = tempfile.mkdtemp()               # the session's cwd: the project, wherever it lives
+        os.makedirs(os.path.join(project, "src"))
+        link = os.path.join(tempfile.mkdtemp(), "proj-link")
+        os.symlink(project, link)
+        change = self.change(event("Bash", cwd=project, command=f"rm -rf {link}/src"))
+        self.assertIsNotNone(change)
+        self.assertEqual(change["label"], "rm")
+
     def test_other_tools_are_not_changes(self):
         self.assertIsNone(self.change(event("Read", file_path="/proj/src/a.ts")))
         self.assertIsNone(self.change(event("Grep", pattern="x")))
@@ -398,6 +469,8 @@ class PreToolUseDecision(unittest.TestCase):
         for route in ["diagnosing-bugs", "matt-pocock-workflow:grill", "tdd",
                       "matt-pocock-workflow:implement", "matt-pocock-workflow:trivial"]:
             self.assertIn(route, reason)
+        # Scratch work is not a change: the reason says so, so it is not declared as trivial.
+        self.assertIn("absolute path under the temp directory needs no declaration", reason)
 
     def test_a_shell_mutation_without_a_declaration_is_refused_by_its_label(self):
         decision = self.decide(event("Bash", command="sed -i 's/a/b/' src/a.ts"))

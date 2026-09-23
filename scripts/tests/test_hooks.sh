@@ -43,6 +43,9 @@ OUT=$(pre_bash "git status"); [[ -z "$OUT" ]] || fail "git status should pass si
 # 3. A write under the temp dir or the config dir is not a project change.
 OUT=$(pre_edit "$TMPDIR/scratch.py"); [[ -z "$OUT" ]] || fail "temp-dir write should pass: $OUT"
 OUT=$(pre_edit "$CLAUDE_CONFIG_DIR/memory/note.md"); [[ -z "$OUT" ]] || fail "config-dir write should pass: $OUT"
+OUT=$(pre_bash "mkdir -p $TMPDIR/evid/checks && echo ok > $TMPDIR/evid/checks/x.log"); [[ -z "$OUT" ]] || fail "a shell write confined to the temp dir should pass: $OUT"
+OUT=$(pre_bash "cp $TMPDIR/evid/checks/x.log $PROJ/src/x.log"); denied "$OUT" || fail "a copy into the project should still be denied: $OUT"
+[[ ! -e "$LEDGER" ]] || ! grep -q '"label"' "$LEDGER" || fail "a temp-only shell write should not be recorded as a change"
 
 # 4. A declaration opens the gate, and the allowed change is recorded (path, no content).
 post_skill "matt-pocock-workflow:grill"
@@ -64,6 +67,8 @@ prompt "yes, go ahead"
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a go-ahead should keep the declaration: $OUT"
 prompt "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished"
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a machine-generated notice should keep the declaration: $OUT"
+prompt 'Another Claude session sent a message:\n<agent-message from=\"a1\">\n[Subagent hand-back] #12: request changes\n</agent-message>'
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a subagent's hand-back should keep the declaration: $OUT"
 prompt "now fix the bug in pricing"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a new request should need a new declaration"
 grep -q 'fix the bug' "$LEDGER" && fail "ledger must not record prompt text"

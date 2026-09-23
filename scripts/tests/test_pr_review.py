@@ -18,15 +18,17 @@ SCRIPTS = REPO / "plugin" / "skills" / "pr-review" / "scripts"
 RUN_CHECKS = SCRIPTS / "run_checks.py"
 REVIEW_PAYLOAD = SCRIPTS / "review_payload.py"
 BATCH_REPORT = SCRIPTS / "batch_report.py"
+POST_REVIEWS = SCRIPTS / "post_reviews.py"
 
 
-def run_checks(base: Path, head: Path, out: Path, *checks: str, timeout: float = 30) -> "tuple[int, dict, str]":
+def run_checks(base: Path, head: Path, out: Path, *checks: str, timeout: float = 30, extra: tuple = (),
+               env: "dict | None" = None) -> "tuple[int, dict, str]":
     """run_checks.py on two trees; the exit status, checks.json by check name, and checks.md."""
     args = [sys.executable, str(RUN_CHECKS), "--base", str(base), "--head", str(head), "--out", str(out),
-            "--timeout", str(timeout)]
+            "--timeout", str(timeout), "--slot-dir", str(out.parent / "slots"), *extra]
     for check in checks:
         args += ["--check", check]
-    done = subprocess.run(args, capture_output=True, text=True)
+    done = subprocess.run(args, capture_output=True, text=True, env=env)
     data = json.loads((out / "checks.json").read_text()) if (out / "checks.json").is_file() else []
     table = (out / "checks.md").read_text() if (out / "checks.md").is_file() else ""
     return done.returncode, {c["name"]: c for c in data}, table + done.stderr
@@ -63,6 +65,142 @@ class RunChecksTest(unittest.TestCase):
     def both(self, name: str, text: str = "") -> None:
         (self.base / name).write_text(text)
         (self.head / name).write_text(text)
+
+    def fake_bash(self, folder: str, version: str) -> Path:
+        """A `bash` that reports `version` and runs the system's bash for everything else."""
+        path = self.tmp / folder / "bash"
+        path.parent.mkdir()
+        path.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then\n'
+                        f'  echo "GNU bash, version {version}(1)-release (fake)"; exit 0\nfi\nexec /bin/bash "$@"\n')
+        path.chmod(0o755)
+        return path
+
+    def test_checks_run_in_the_newest_bash_found_and_the_table_names_its_version(self):
+        # macOS ships bash 3.2, where CI's `shopt -s globstar` fails and `**` walks one level: a
+        # 1,000-file suite ran 799 files and still reported pass or fail as if it were whole.
+        old, new = self.fake_bash("old", "3.2.57"), self.fake_bash("new", "5.2.37")
+        env = dict(os.environ, PATH=f"{old.parent}:{new.parent}:{os.environ['PATH']}")
+        code, checks, table = run_checks(self.base, self.head, self.out, "shell=bash --version", env=env)
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["shell"]["shell"]["version"], "5.2.37")
+        self.assertEqual(checks["shell"]["shell"]["path"], str(new))
+        self.assertIn("version 5.2.37", (self.out / "shell.head.log").read_text())   # its directory leads PATH
+        self.assertIn("bash 5.2.37", table)
+        self.assertNotIn(str(self.tmp), table)                                          # no local paths
+
+    def test_a_run_the_local_bash_could_not_make_as_ci_does_could_not_run(self):
+        # What bash 3.2 prints and then carries on from: the run is not CI's, whatever its exit code.
+        globstar = "echo 'bash: line 1: shopt: globstar: invalid shell option name' >&2; echo 799 files"
+        (self.base / "OLD_SHELL").write_text("")
+        one_side = "if test -f OLD_SHELL; then echo 'bash: mapfile: command not found' >&2; fi; true"
+        code, checks, table = run_checks(self.base, self.head, self.out, f"tests={globstar}", f"lint={one_side}")
+        self.assertEqual(code, 0, table)
+        for name in ("tests", "lint"):
+            with self.subTest(check=name):
+                self.assertEqual(checks[name]["verdict"], "could not run")
+                self.assertIsNone(checks[name]["rerun"])
+        self.assertIn("bash 4", checks["tests"]["head"]["reason"])
+        self.assertIn("globstar", checks["tests"]["head"]["reason"])
+        self.assertEqual(checks["lint"]["head"]["status"], "pass")
+        self.assertIn("could not run", table)
+
+    def test_a_test_file_the_baseline_does_not_have_is_absent_there_so_the_check_is_new(self):
+        # A check aimed at the pull request's own test file used to "fail" on the baseline, which
+        # read as "fixed by the PR" until a reviewer wrapped it by hand.
+        (self.head / "new.test.js").write_text("")
+        (self.head / "test_new.py").write_text("")
+        node = "test -f new.test.js || { echo \"Could not find '$PWD/new.test.js'\" >&2; exit 1; }"
+        pytest = "test -f test_new.py || { echo 'ERROR: file or directory not found: test_new.py' >&2; exit 4; }"
+        code, checks, table = run_checks(self.base, self.head, self.out, f"node={node}", f"pytest={pytest}")
+        self.assertEqual(code, 0, table)
+        for name in ("node", "pytest"):
+            with self.subTest(check=name):
+                self.assertEqual(checks[name]["base"]["status"], "absent")
+                self.assertEqual(checks[name]["verdict"], "new in the PR")
+
+    def test_a_tree_with_files_git_does_not_have_is_refused_before_any_check_runs(self):
+        # Probe tests left in tests/ were counted by a later check: 985 files against 983 committed.
+        for tree in (self.base, self.head):
+            (tree / "a.txt").write_text("a\n")
+            for step in (["init", "-q"], ["add", "a.txt"],
+                         ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "x"]):
+                subprocess.run(["git", "-C", str(tree), *step], check=True, capture_output=True)
+        (self.head / "tests").mkdir()
+        (self.head / "tests" / "zz-review-probe.test.js").write_text("probe")
+        (self.base / "a.txt").write_text("changed\n")
+        code, checks, text = run_checks(self.base, self.head, self.out, "ok=true")
+        self.assertEqual(code, 2, text)
+        self.assertEqual(checks, {})
+        self.assertIn("tests/zz-review-probe.test.js", text)
+        self.assertIn("a.txt", text)
+        (self.head / "tests" / "zz-review-probe.test.js").unlink()
+        subprocess.run(["git", "-C", str(self.base), "checkout", "-q", "a.txt"], check=True)
+        code, checks, text = run_checks(self.base, self.head, self.out, "ok=true")
+        self.assertEqual(code, 0, text)
+
+    def test_a_check_found_later_joins_the_table_and_the_others_stay(self):
+        # A check found after the reviews finished was added by a script that edited 14 reviews by
+        # hand; it now runs through here, beside the checks already run.
+        (self.base / "AUDIT_OK").write_text("")
+        run_checks(self.base, self.head, self.out, "tests=true", "lint=true")
+        code, checks, table = run_checks(self.base, self.head, self.out, "docs-audit=test -f AUDIT_OK",
+                                         extra=("--merge",))
+        self.assertEqual(code, 0, table)
+        self.assertEqual(list(checks), ["tests", "lint", "docs-audit"])
+        self.assertEqual(checks["docs-audit"]["verdict"], "broken by the PR")
+        self.assertIn("| `tests` |", table)
+        self.assertIn("| `docs-audit` |", table)
+        code, checks, table = run_checks(self.base, self.head, self.out, "lint=false", extra=("--merge",))
+        self.assertEqual(list(checks), ["tests", "lint", "docs-audit"])       # replaced in place
+        self.assertEqual(checks["lint"]["verdict"], "already broken")
+
+    def test_a_check_broken_by_the_pr_under_load_is_flaky_when_it_passes_alone(self):
+        # Thirteen reviews at once ran a 14-core machine at a load of 53, and two verdicts were
+        # relabelled by hand. After a batch, a broken check runs again alone before it can block.
+        load = self.tmp / "LOAD"
+        load.write_text("")
+        (self.base / "BASE").write_text("")
+        suite = f"test -f BASE || ! test -f {load}"     # the candidate fails only while LOAD exists
+        run_checks(self.base, self.head, self.out, f"suite={suite}", "stays=test -f BASE")
+        load.unlink()
+        code, checks, table = run_checks(self.base, self.head, self.out,
+                                         extra=("--recheck", "suite", "--recheck", "stays"))
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["suite"]["verdict"], "flaky")
+        self.assertEqual(checks["suite"]["alone"]["status"], "pass")
+        self.assertEqual(checks["stays"]["verdict"], "broken by the PR")
+        self.assertIn("alone: pass", table)
+        self.assertTrue((self.out / "suite.head.alone.log").is_file())
+        code, _, text = run_checks(self.base, self.head, self.out, extra=("--recheck", "suite"))
+        self.assertEqual(code, 2, text)                  # only a check broken by the PR runs again alone
+
+    def two_reviews_at_once(self, slots: int) -> "tuple[float, float]":
+        """Two run_checks.py started together, sharing a slot directory: when the second review's
+        first check started, and when the first review's last check ended."""
+        stamp = "python3 -c 'import time; print(\"at\", time.time())'"
+        check = f"slow={stamp}; sleep 1; {stamp}"
+        runs = []
+        for n in (1, 2):
+            args = [sys.executable, str(RUN_CHECKS), "--base", str(self.base), "--head", str(self.head),
+                    "--out", str(self.tmp / f"out{slots}-{n}"), "--slots", str(slots),
+                    "--slot-dir", str(self.tmp / f"slots{slots}"), "--check", check]
+            runs.append(subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT))
+            time.sleep(0.4)
+        for run in runs:
+            output = run.communicate(timeout=30)[0]
+            self.assertEqual(run.returncode, 0, output)
+
+        def times(n: int, side: str) -> list:
+            text = (self.tmp / f"out{slots}-{n}" / f"slow.{side}.log").read_text()
+            return [float(line.split()[1]) for line in text.splitlines() if line.startswith("at ")]
+        return times(2, "base")[0], times(1, "head")[-1]
+
+    def test_the_machine_runs_only_as_many_checks_at_once_as_it_has_slots(self):
+        # Fifteen reviewers can read and review at once; their installs and suites take turns.
+        second_starts, first_ends = self.two_reviews_at_once(slots=1)
+        self.assertGreaterEqual(second_starts, first_ends)
+        second_starts, first_ends = self.two_reviews_at_once(slots=2)
+        self.assertLess(second_starts, first_ends)
 
     def test_each_combination_of_pass_and_fail_gets_its_verdict(self):
         self.both("PASS_OK")
@@ -521,6 +659,233 @@ class BatchReportTest(unittest.TestCase):
         code, out, err = batch(review(9, "ann", "approve", repo="acme/shop"), review(9, "ann", "approve", repo="acme/api"))
         self.assertIn("acme/shop#9", out)
         self.assertIn("acme/api#9", out)
+
+
+# A stand-in for `gh api`: answers from a scenario file it keeps up to date (a review it accepts is
+# listed from then on, as GitHub would list it) and logs every call with the time it came.
+FAKE_GH = r'''#!/usr/bin/env python3
+import json, os, sys, time
+state_path, log_path = os.environ["FAKE_GH_STATE"], os.environ["FAKE_GH_LOG"]
+args = sys.argv[1:]
+with open(log_path, "a") as log:
+    log.write(json.dumps({"at": time.time(), "args": args}) + "\n")
+state = json.load(open(state_path))
+if args[:1] != ["api"]:
+    sys.exit("fake gh: only api")
+rest = [a for a in args[1:] if a not in ("--include",)]
+method, payload_path, path = "GET", None, None
+i = 0
+while i < len(rest):
+    if rest[i] == "--method":
+        method, i = rest[i + 1], i + 2
+    elif rest[i] == "--input":
+        payload_path, i = rest[i + 1], i + 2
+    else:
+        path, i = rest[i], i + 1
+path = path.split("?")[0]
+def answer(status, body, headers=None):
+    if "--include" in args:
+        print(f"HTTP/2.0 {status} {'OK' if status < 300 else 'Refused'}")
+        for key, value in (headers or {}).items():
+            print(f"{key}: {value}")
+        print("Content-Type: application/json; charset=utf-8")
+        print()
+    print(json.dumps(body))
+    json.dump(state, open(state_path, "w"))
+    if status >= 300:
+        print(f"gh: {body.get('message', 'refused')} (HTTP {status})", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+parts = path.split("/")
+if path == "user":
+    answer(200, {"login": state["viewer"]})
+key = f"{parts[1]}/{parts[2]}#{parts[4]}"
+reviews = state["reviews"].setdefault(key, [])
+if method == "GET" and len(parts) == 5:
+    answer(200, {"number": int(parts[4]), "head": {"sha": state["heads"][key]}})
+if method == "GET":
+    page = 1
+    for piece in (rest[-1].split("?")[1] if "?" in rest[-1] else "").split("&"):
+        if piece.startswith("page="):
+            page = int(piece[5:])
+    answer(200, reviews[(page - 1) * 100:page * 100])
+payload = json.load(open(payload_path))
+queue = state["posts"].get(key, [])
+step = queue.pop(0) if queue else {"status": 200}
+review = {"id": 100 + len(reviews), "user": {"login": state["viewer"]}, "commit_id": payload["commit_id"],
+          "body": payload["body"], "state": payload["event"],
+          "html_url": f"https://github.com/{parts[1]}/{parts[2]}/pull/{parts[4]}#pullrequestreview-{100 + len(reviews)}"}
+if step["status"] < 300 or step.get("creates"):
+    reviews.append(review)
+if step["status"] < 300:
+    answer(step["status"], review)
+answer(step["status"], {"message": step.get("message", "refused")}, step.get("headers"))
+'''
+
+
+class PostReviewsTest(unittest.TestCase):
+    """post_reviews.py posts the reviews the user chose, one at a time, paced under GitHub's limits
+    for creating content, never twice, and stops to ask on any refusal that is not a rate limit."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp = Path(self.tmp_dir.name)
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "gh").write_text(FAKE_GH)
+        (bin_dir / "gh").chmod(0o755)
+        self.env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}",
+                        FAKE_GH_STATE=str(self.tmp / "state.json"), FAKE_GH_LOG=str(self.tmp / "calls.log"))
+        self.state = {"viewer": "me", "heads": {}, "reviews": {}, "posts": {}}
+        self.save()
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def save(self) -> None:
+        (self.tmp / "state.json").write_text(json.dumps(self.state))
+
+    def evidence(self, number: int, comments: int = 0, head: str = "a" * 40) -> Path:
+        """One pull request's evidence directory, drafted and ready to post."""
+        folder = self.tmp / f"o-r-{number}"
+        folder.mkdir()
+        (folder / "review.json").write_text(json.dumps({
+            "pr": {"repo": "o/r", "number": number, "url": f"https://github.com/o/r/pull/{number}", "title": "t",
+                   "author": "them", "head": head, "mergeable": "MERGEABLE"},
+            "verdict": "comment", "summary": "s", "findings": [], "not_verified": []}))
+        (folder / "payload.json").write_text(json.dumps({
+            "commit_id": head, "event": "COMMENT", "body": f"Review of #{number}",
+            "comments": [{"path": "a.py", "line": i + 1, "side": "RIGHT", "body": "c"} for i in range(comments)]}))
+        self.state["heads"][f"o/r#{number}"] = head
+        self.save()
+        return folder
+
+    def post(self, *folders: Path, pacing: tuple = ("--minute", "0.5", "--backoff", "0.2", "--slow", "0.3")) -> "tuple[int, str]":
+        done = subprocess.run([sys.executable, str(POST_REVIEWS), *pacing, *map(str, folders)],
+                              capture_output=True, text=True, env=self.env, timeout=60)
+        return done.returncode, done.stdout + done.stderr
+
+    def calls(self, method: str = "POST", listing: bool = False) -> list:
+        """The fake gh's calls about pull requests, in order: (time, pull request number). GETs are
+        either reads of the pull request or, with `listing`, of its reviews."""
+        out = []
+        for line in (self.tmp / "calls.log").read_text().splitlines():
+            call = json.loads(line)
+            path = next((a.split("?")[0] for a in call["args"] if a.startswith("repos/")), None)
+            if path is None or ("POST" in call["args"]) != (method == "POST"):
+                continue
+            if method == "POST" or path.endswith("/reviews") == listing:
+                out.append((call["at"], int(path.split("/")[4])))
+        return out
+
+    def reviews(self, number: int) -> list:
+        return json.loads((self.tmp / "state.json").read_text())["reviews"].get(f"o/r#{number}", [])
+
+    def test_the_chosen_reviews_post_one_at_a_time_in_order_and_each_link_is_shown(self):
+        folders = [self.evidence(n) for n in (7, 3, 12)]
+        code, out = self.post(*folders)
+        self.assertEqual(code, 0, out)
+        self.assertEqual([n for _, n in self.calls()], [7, 3, 12])
+        for folder, number in zip(folders, (7, 3, 12)):
+            with self.subTest(pr=number):
+                self.assertEqual(len(self.reviews(number)), 1)
+                posted = json.loads((folder / "posted.json").read_text())
+                self.assertIn(f"/pull/{number}#pullrequestreview-", posted["html_url"])
+                self.assertIn(posted["html_url"], out)
+
+    def test_each_minute_stays_under_the_content_budget(self):
+        # GitHub blocked a batch after 10 reviews in 34 seconds, far under 80 requests: a review's
+        # inline comments count too. Here each review is 1 + 4 comments, and a minute allows 10.
+        folders = [self.evidence(n, comments=4) for n in (1, 2, 3)]
+        code, out = self.post(*folders, pacing=("--minute", "1", "--per-minute", "10", "--backoff", "0.2"))
+        self.assertEqual(code, 0, out)
+        (first, _), (second, _), (third, _) = self.calls()
+        self.assertLess(second - first, 0.6)            # the first two fit in one minute
+        self.assertGreaterEqual(third - first, 0.95)    # the third waits for the first to leave it
+
+    SECONDARY = ("You have exceeded a secondary rate limit and have been temporarily blocked from content "
+                 "creation. Please retry your request again later.")
+
+    def test_a_rate_limit_block_is_waited_out_and_posting_slows_down(self):
+        # GitHub's own words from the 15-review batch; no retry-after came with them.
+        folders = [self.evidence(n) for n in (1, 2, 3)]
+        self.state["posts"]["o/r#2"] = [{"status": 403, "message": self.SECONDARY}]
+        self.save()
+        code, out = self.post(*folders)                           # backoff 0.2 s, then 0.3 s apart
+        self.assertEqual(code, 0, out)
+        posts = self.calls()
+        self.assertEqual([n for _, n in posts], [1, 2, 2, 3])
+        self.assertGreaterEqual(posts[2][0] - posts[1][0], 0.2)
+        self.assertGreaterEqual(posts[3][0] - posts[2][0], 0.3)
+        self.assertEqual([n for _, n in self.calls("GET", listing=True)].count(2), 2)   # looked again before the retry
+        self.assertEqual(len(self.reviews(2)), 1)
+        self.assertIn("secondary rate limit", out)
+
+    def test_a_refused_post_that_github_kept_anyway_is_not_posted_again(self):
+        folder = self.evidence(1)
+        self.state["posts"]["o/r#1"] = [{"status": 403, "message": self.SECONDARY, "creates": True}]
+        self.save()
+        code, out = self.post(folder)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(self.calls()), 1)
+        self.assertEqual(len(self.reviews(1)), 1)
+        self.assertIn("pullrequestreview-100", json.loads((folder / "posted.json").read_text())["html_url"])
+
+    def test_retry_after_is_waited_for_exactly_as_github_asks(self):
+        self.evidence(1)
+        self.state["posts"]["o/r#1"] = [{"status": 429, "message": "too many", "headers": {"Retry-After": "1"}}]
+        self.save()
+        code, out = self.post(self.tmp / "o-r-1")
+        self.assertEqual(code, 0, out)
+        (blocked, _), (again, _) = self.calls()
+        self.assertGreaterEqual(again - blocked, 1.0)
+
+    def test_a_block_that_does_not_lift_ends_the_run_after_four_tries_and_says_what_was_not_posted(self):
+        # Retrying while blocked can get an integration banned: four tries, then stop and say so.
+        folders = [self.evidence(n) for n in (1, 2)]
+        self.state["posts"]["o/r#1"] = [{"status": 403, "message": self.SECONDARY}] * 9
+        self.save()
+        code, out = self.post(*folders, pacing=("--minute", "0.5", "--backoff", "0.05", "--slow", "0.05"))
+        self.assertEqual(code, 1, out)
+        self.assertEqual([n for _, n in self.calls()], [1, 1, 1, 1])
+        self.assertIn("not posted: o/r#1", out)
+        self.assertIn("not posted: o/r#2", out)
+        self.assertEqual(self.reviews(2), [])
+
+    def test_any_other_refusal_stops_the_run_so_the_person_can_decide(self):
+        folders = [self.evidence(n) for n in (1, 2)]
+        self.state["posts"]["o/r#1"] = [{"status": 422, "message": "Unprocessable Entity: pull_request_review_thread.line"}]
+        self.save()
+        code, out = self.post(*folders)
+        self.assertEqual(code, 1, out)
+        self.assertEqual([n for _, n in self.calls()], [1])
+        self.assertIn("HTTP 422", out)
+        self.assertIn("not posted: o/r#2", out)
+
+    def test_a_pull_request_that_moved_since_its_review_is_not_posted_and_the_rest_are(self):
+        folders = [self.evidence(n) for n in (1, 2)]
+        self.state["heads"]["o/r#1"] = "b" * 40
+        self.save()
+        code, out = self.post(*folders)
+        self.assertEqual(code, 1, out)
+        self.assertEqual([n for _, n in self.calls()], [2])
+        self.assertIn("moved to bbbbbbb", out)
+
+    def test_posting_again_finds_what_is_already_on_github_and_posts_nothing_twice(self):
+        folders = [self.evidence(n) for n in (1, 2)]
+        self.assertEqual(self.post(*folders)[0], 0)
+        code, out = self.post(*folders)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(self.calls()), 2)
+        self.assertEqual(out.count("already posted"), 2)
+
+    def test_a_draft_built_for_another_commit_is_a_usage_error_before_anything_is_posted(self):
+        good, stale = self.evidence(1), self.evidence(2)
+        payload = json.loads((stale / "payload.json").read_text())
+        (stale / "payload.json").write_text(json.dumps(dict(payload, commit_id="c" * 40)))
+        code, out = self.post(good, stale)
+        self.assertEqual(code, 2, out)
+        self.assertFalse((self.tmp / "calls.log").exists() and self.calls())
 
 
 if __name__ == "__main__":

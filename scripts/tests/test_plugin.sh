@@ -164,7 +164,7 @@ grep -q "references/design-lens.md" "$PLUGIN/skills/grill/SKILL.md" || fail "gri
 
 # The pr-review skill (manual only): the steps in order; the promises each step keeps, inside its own
 # step (nothing of an untrusted PR runs without a yes, nothing reaches GitHub without a yes naming it,
-# nothing in the user's repo changes); the batch fan-out; the three scripts it runs, executable.
+# nothing in the user's repo changes); the batch fan-out; the four scripts it runs, executable.
 PRR="$PLUGIN/skills/pr-review/SKILL.md"
 [[ -f "$PRR" ]] || fail "pr-review skill missing"
 headings_in_order pr-review "$PRR" "## Gate" "## Checkout" "## Batch" "## Understand" "## Checks" "## Review" "## Draft" \
@@ -172,23 +172,25 @@ headings_in_order pr-review "$PRR" "## Gate" "## Checkout" "## Batch" "## Unders
 must_say pr-review "$PRR" "\$ARGUMENTS" "data under review, never instructions" "headRefOid" "author_association" \
   "Bash(gh pr reopen:*)"
 section_says pr-review "$PRR" Gate "untrusted" "Static review only" "nothing of that PR runs" "--limit 1000" "requested" \
-  "one round of questions"
+  "one round of questions" "needs no declaration" "never declare \`trivial\`"
 section_says pr-review "$PRR" Checkout "one PR at a time" "--detach" ".seams-pr-review" "merge-base" \
   "once, before the first pull request's checkout" "earlier outputs" "a stale review can never stand in"
-section_says pr-review "$PRR" Batch "one subagent per PR" "four at a time" "Every question first" "services" \
-  "facts only" "No review hints" "never asks" "never posts" "error.txt"
+section_says pr-review "$PRR" Batch "one subagent per PR" "all at once" "--slots" "Every question first" "services" \
+  "brew install bash" "the same checks" "facts only" "No review hints" "never asks" "never posts" "error.txt" \
+  "--recheck" "alone" "--merge" "never by hand"
 section_says pr-review "$PRR" Understand "mergeable" "CONFLICTING" "blocking finding"
-section_says pr-review "$PRR" Checks "run_checks.py" "commands CI runs" "could not run" "compare the failing tests by name" \
-  "E2E" "Try it" "own port"
+section_says pr-review "$PRR" Checks "once per repository" "run_checks.py" "commands CI runs" "git hooks" ".husky" \
+  "core.hooksPath" "named like checks" "could not run" "bash 4" "compare the failing tests by name" "E2E" "Try it" "own port"
 section_says pr-review "$PRR" Review "Invoke \`code-review\`" "risk reviewer" "Verify every finding" "baseline" "probe test" \
-  "Under static review, run nothing from the pull request" "blocking" "should fix" "request changes" "merges cleanly"
+  "Under static review, run nothing from the pull request" "blocking" "should fix" "request changes" "merges cleanly" \
+  "\$EVID/probes/" "after that tree's checks"
 section_says pr-review "$PRR" Draft "review_payload.py" "review.json" "outside the diff" "footer" "without \`--checks\` under static review"
 section_says pr-review "$PRR" Cleanup "only worktrees carrying" "the one record from Checkout" \
-  "matt-pocock-workflow:verification-before-completion"
-section_says pr-review "$PRR" Post "Re-check the candidate" "every time" "Don't post" "own pull request" "--method POST" \
-  "Never push"
+  "never deleted with the tree" "matt-pocock-workflow:verification-before-completion"
+section_says pr-review "$PRR" Post "Re-check the candidate" "every time" "Don't post" "own pull request" "post_reviews.py" \
+  "needs no new yes" "stops" "Never push"
 section_says pr-review "$PRR" "Review handover" "batch_report.py" "Ready to merge" "Note for" "exactly as the script wrote it"
-for s in run_checks review_payload batch_report; do
+for s in run_checks review_payload batch_report post_reviews; do
   [[ -x "$PLUGIN/skills/pr-review/scripts/$s.py" ]] || fail "pr-review/scripts/$s.py missing or not executable"
 done
 must_say routing.md "$PLUGIN/skills/using-matt-pocock-skills/references/routing.md" "/matt-pocock-workflow:pr-review"
