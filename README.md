@@ -12,7 +12,7 @@ Seams is a Claude Code plugin (plugin id `matt-pocock-workflow`) that makes [Mat
 curl -fsSL https://raw.githubusercontent.com/gabriel-tutor/seams/main/scripts/install.sh | bash
 ```
 
-Restart Claude Code, open any repo, and say one of these:
+Restart Claude Code, open any repository, and say one of these:
 
 | Say | What happens |
 | --- | --- |
