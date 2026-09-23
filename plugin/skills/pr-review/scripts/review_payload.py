@@ -19,7 +19,7 @@ review (422) when one comment misses; so a finding becomes an inline comment onl
 whole range, within one hunk) is in the diff on its side, RIGHT for the candidate's lines, LEFT for
 removed ones. Every other finding goes into the review's body under "Outside the diff". A suggestion
 becomes a GitHub suggestion block on the RIGHT side, plain code on the LEFT (removed lines cannot take
-one). The author of a pull request can only COMMENT on it (GitHub refuses the other two events), and
+one); an empty or blank suggestion is none, since an empty block would delete the lines it sits on. The author of a pull request can only COMMENT on it (GitHub refuses the other two events), and
 APPROVE needs the verdict "approve", no blocking finding, no check broken or removed by the PR (read
 from the checks.json beside --checks) and no merge conflict (pr.mergeable).
 
@@ -167,15 +167,23 @@ def where(finding: dict) -> str:
     return f"`{path}:{line}-{end}`" if end and end != line else f"`{path}:{line}`"
 
 
+def suggestion(finding: dict) -> "str | None":
+    """The finding's suggested replacement, or None. An empty or blank suggestion is none: on GitHub an
+    empty suggestion block deletes the lines it is attached to when the author commits it, so a
+    deletion is proposed in words, never by an empty block."""
+    text = finding.get("suggestion")
+    return text if isinstance(text, str) and text.strip() else None
+
+
 def comment_body(finding: dict, side: str) -> str:
     parts = [f"**{finding['severity']}** · {finding.get('title') or ''}".rstrip(" ·")]
     if finding.get("body"):
         parts.append(finding["body"].strip())
     if finding.get("evidence"):
         parts.append("Evidence:\n\n" + "\n".join("> " + l for l in str(finding["evidence"]).strip().splitlines()))
-    if finding.get("suggestion") is not None:
+    if suggestion(finding) is not None:
         fence = "```suggestion" if side == "RIGHT" else "```"
-        parts.append(f"{fence}\n{finding['suggestion']}\n```")
+        parts.append(f"{fence}\n{suggestion(finding)}\n```")
     return _cap("\n\n".join(parts))
 
 
@@ -204,8 +212,8 @@ def body(review: dict, checks: str, outside: list) -> str:
                 detail.append(f["body"].strip())
             if f.get("evidence"):
                 detail.append("Evidence:\n\n" + "\n".join("> " + l for l in str(f["evidence"]).strip().split("\n")))
-            if f.get("suggestion") is not None:        # no diff line to suggest on: plain code
-                detail.append(f"```\n{f['suggestion']}\n```")
+            if suggestion(f) is not None:              # no diff line to suggest on: plain code
+                detail.append(f"```\n{suggestion(f)}\n```")
             for block in detail:
                 lines += [""] + ["  " + l if l else "" for l in block.split("\n")]
             lines.append("")

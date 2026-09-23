@@ -317,6 +317,19 @@ class ReviewPayloadTest(unittest.TestCase):
         self.assertNotIn("```suggestion", left["body"])
         self.assertIn("```\nexport const OLD = 1;\n```", left["body"])
 
+    def test_an_empty_suggestion_is_no_suggestion_never_a_deletion(self):
+        # An empty suggestion block on GitHub deletes the lines it is attached to when the author
+        # commits it; a finding whose suggestion is empty or blank means "no suggestion". Seen live:
+        # a reviewer wrote "suggestion": "" and the draft carried an empty block.
+        code, payload, preview, err = build([finding("should fix", "blank", "src/pricing.ts", 5, suggestion=""),
+                                             finding("nit", "spaces", "src/pricing.ts", 8, suggestion="  \n "),
+                                             finding("nit", "outside", "src/pricing.ts", 25, suggestion="")])
+        self.assertEqual(code, 0, err)
+        for c in payload["comments"]:
+            self.assertNotIn("```suggestion", c["body"])
+            self.assertNotIn("```\n\n```", c["body"])
+        self.assertNotIn("```\n\n```", payload["body"])
+
     def test_a_dotted_directory_keeps_its_dot(self):
         diff = ("diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n--- a/.github/workflows/ci.yml\n"
                 "+++ b/.github/workflows/ci.yml\n@@ -1 +1 @@\n-on: push\n+on: [push, pull_request]\n")
