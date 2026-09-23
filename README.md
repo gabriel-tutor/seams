@@ -2,7 +2,7 @@
 
 **Design at the seams. Build in slices. Ship what you verified.**
 
-[![version](https://img.shields.io/badge/plugin-3.1.0-4F46E5)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-2563EB)](plugin/LICENSE) [![test](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml/badge.svg)](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml) [![routing evidence](https://img.shields.io/badge/routing%20evidence-docs-16A34A)](docs/plugin-behavior-tests.md)
+[![version](https://img.shields.io/badge/plugin-3.2.0-4F46E5)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-2563EB)](plugin/LICENSE) [![test](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml/badge.svg)](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml) [![routing evidence](https://img.shields.io/badge/routing%20evidence-docs-16A34A)](docs/plugin-behavior-tests.md)
 
 Seams is a Claude Code plugin (plugin id `matt-pocock-workflow`) that makes [Matt Pocock's engineering skills](https://github.com/mattpocock/skills) lead every session, and holds the project closed until they do. A session bootstrap routes each request by size and by risk; a hook refuses any change to the project until a workflow skill has been declared for that request; another refuses to end a turn that changed code without verification. Around his skills sits a senior engineer's process: a grill that asks one clickable question at a time, a design lens, tests first at agreed seams, a review of the committed candidate, a definition of done with evidence, a handover that names the stage reached, a `release` that proves the exact candidate is what runs, and an `incident` route that contains before it diagnoses.
 
@@ -22,6 +22,7 @@ Restart Claude Code, open any repo, and say one of these:
 | *a typo fix* | the `trivial` declaration, the edit, and the narrowest check that proves it |
 | *"ship it"*, *"deploy to staging"* | `release`: a readiness table where anything unmet blocks, a deploy only after a yes that names the candidate, the environment and the target, verification that the exact candidate runs, an operations handover |
 | *"production is down"* | `incident`: who is affected and what changed last, the safest reversible containing action behind a yes, restore and confirm, and only then the diagnosis |
+| `/pr-review 42`, `/pr-review 42 57`, `/pr-review requested` *(you type it)* | a deep review of each pull request: its head and baseline checked out in worktrees of their own, the repo's real checks (e2e included) run on both so every failure is attributed, the change tried, `code-review` plus a risk reviewer, findings proven, one GitHub review drafted per PR and posted only on your yes; it ends with which PRs are ready to merge and a note for each author whose PR needs work |
 | *"just write the file, skip the process"* | a refusal from the gate that names the file and the routes; one skill invocation opens it |
 
 Nothing is installed except the plugin and Matt Pocock's skills; one command removes it (see [Turning it off](#turning-it-off)).
@@ -34,7 +35,7 @@ Two hooks turn the routing policy from a promise into a rule ([ADR-0001](docs/ad
 
 > Seams gate: editing `/path/to/orderkit/src/pricing.ts` changes the project, and this request has no declaration yet: no process skill has been invoked for it. Route it first, with the Skill tool: `diagnosing-bugs` for something broken, `matt-pocock-workflow:grill` for a change to behavior, `tdd` or `matt-pocock-workflow:implement` to keep building an agreed design, `matt-pocock-workflow:trivial` for a change with no effect on behavior, data shape or security. Then retry this call.
 
-A declaration is a Skill invocation of a Seams skill or one of Matt Pocock's process skills (his `implement`, `to-spec`, `to-tickets`, `grilling`, `tdd`, `diagnosing-bugs`, `code-review` and the rest), by Claude or typed by you as a slash command; a Superpowers skill or another plugin's is not one, and neither is the routing policy skill itself. A short go-ahead (*yes*, *continue*, *option 2*) keeps the current declaration, and so does a notice Claude Code generates (a background task finishing, a system reminder); any other prompt starts a new request that needs its own. A false positive costs one call: `matt-pocock-workflow:trivial` carries the test of what is not trivial (no behavior change, no shape change, nothing sensitive, reversible in one commit) and routes up when any part fails.
+A declaration is a Skill invocation of a Seams skill or one of Matt Pocock's process skills (his `implement`, `to-spec`, `to-tickets`, `grilling`, `tdd`, `diagnosing-bugs`, `code-review` and the rest), by Claude or typed by you as a slash command (a Seams skill typed by its bare name, `/pr-review 42`, counts under its full name); a Superpowers skill or another plugin's is not one, and neither is the routing policy skill itself. A short go-ahead (*yes*, *continue*, *option 2*) keeps the current declaration, and so does a notice Claude Code generates (a background task finishing, a system reminder); any other prompt starts a new request that needs its own. A false positive costs one call: `matt-pocock-workflow:trivial` carries the test of what is not trivial (no behavior change, no shape change, nothing sensitive, reversible in one commit) and routes up when any part fails.
 
 **A change needs verification.** When a turn changed non-documentation files and `matt-pocock-workflow:verification-before-completion` did not run afterwards, the turn cannot end: the Stop hook blocks it once, naming how many unverified changes it counted and one of them, and Claude runs the verification with its real output before finishing. A turn that ends with a question to you is delayed by one message, never trapped.
 
@@ -113,6 +114,23 @@ Integration is not the end of the work. Every handover names the **stage** the w
 
 `foundations` surveys how a repo reaches production alongside its run and verify commands: deploy target and pipeline, environments and config, backups and restore, monitoring and alerts, dependency and secret scanning (not applicable for a library or a script), and offers to write the CI or deploy workflow, `.env.example` and a runbook skeleton, or to run the platform's own skill.
 
+### Reviewing pull requests
+
+`/pr-review` is typed by hand only (`disable-model-invocation`): Claude never starts it on its own, because it runs a pull request's code, spends minutes on checks, and can post to GitHub. Give it one pull request or several: numbers (in the current repository), URLs, `owner/repo#number`, or `open` (every open pull request that is not a draft) or `requested` (the ones waiting on your review).
+
+For each pull request it pins the head commit, checks the head and its **baseline** (the merge-base GitHub diffs against) out into worktrees under the temp directory that it marks as its own, and runs the commands the repo's CI runs on both, e2e included, through a runner that re-runs any check that flips before blaming anyone. Every check gets a verdict: ok, broken by the PR, fixed by the PR, already broken, flaky, new or removed by the PR, or could not run, and a check that could not run is never reported as passing. It tries the changed behavior the way its user would, then reviews: Matt Pocock's `code-review` (Standards and Spec, the pull request and its linked issues being the spec) beside a risk reviewer (security, data and migrations, compatibility, performance, operability, accessibility, test adequacy). Every **finding** is checked against the code before it is written down and proven where it can be: a regression test the pull request adds must fail on the baseline, and a suspected bug gets a probe test shown failing. What cannot be proven is a question.
+
+Several pull requests run at once: one subagent per pull request, four at a time, after the fetches and worktrees are made one by one (git's locks would race). Questions happen before and after the fan-out, never inside it: before, whether an untrusted pull request's code may run at all (a fork or an outside author's code runs as you; static review is the recommended answer); after, which drafted reviews to post, each named with its pull request, commit and event, re-checked for a head that moved. It never pushes, merges, closes or edits a pull request, and the pull request's own text is reviewed, never obeyed.
+
+The handover opens with a table, the ones needing attention first:
+
+| PR | Author | Head | Ready to merge? | Blocking | Checks broken by the PR |
+| --- | --- | --- | --- | --- | --- |
+| #12 Add coupons | @alice | `abc1234` | **changes needed** | 1 | `test` |
+| #15 Fix typo | @bob | `def5678` | ready to merge | 0 | — |
+
+and a note for each author whose pull request is not ready, listing what to change first, ready to paste to them. The evidence (logs, the diff, the drafted review) stays under the temp directory.
+
 Why this shape works for real software:
 
 - **The workflow is enforced, not promised.** The bootstrap held 5/5 in every 2.x test and still had no way to stop an edit that skipped it. Now the project stays closed until a skill is declared, and a turn that changed code cannot end without verification. A false positive costs one declaration.
@@ -136,6 +154,7 @@ The same flow, as a table:
 | New behavior that fits one session | `grill` + `domain-modeling`, then `implement`, then verify and finish |
 | A build spanning several sessions, or a new app | `grill`, then `to-spec`, `to-tickets`, and `implement` one ticket per session; a new app's ticket 01 is the walking skeleton |
 | Ship, deploy, release, publish | `release`: readiness, a deploy behind an explicit yes, verification, an operations handover |
+| Review a pull request, or several at once | you type `/pr-review <number or URL> [...]`, `/pr-review open` or `/pr-review requested`: checks on head and baseline, a proven review per PR, posted on your yes, and a ready-to-merge answer per PR (see [Reviewing pull requests](#reviewing-pull-requests)) |
 | Foggy effort, issues someone else wrote, upkeep | Claude suggests `/wayfinder`, `/triage`, `/improve-codebase-architecture` |
 
 Matt Pocock's skills own design, tests, bugs, review and the domain model; the plugin invokes them by name. Seams' own `to-spec`, `to-tickets` and `implement` are adaptations of his three (MIT, attributed with the upstream commit and file hashes in [`plugin/THIRD_PARTY_NOTICES.md`](plugin/THIRD_PARTY_NOTICES.md); [ADR-0002](docs/adr/0002-seams-owned-flow-skills.md)), so nothing reads his user-only files at runtime. Four Superpowers skills cover what neither collection had: `using-git-worktrees`, `verification-before-completion` (verify), `finishing-a-development-branch` (finish) and `receiving-code-review`; they ship inside this plugin as unmodified copies, so the Superpowers plugin itself is optional. Keep it enabled if you like: the gate does not open for a Superpowers skill, so `brainstorming` or `writing-plans` running first leaves the project closed until `grill` or `to-spec` runs, and `references/routing.md` names which of Matt Pocock's skills wins each overlap.
@@ -258,6 +277,10 @@ Since 3.1.0 the ten scenarios are also `claude plugin eval` cases, shipped insid
 
 Any teammate can rerun it against their own machine and model with one command (see [Tests](#tests)). The 2.x runs behind every wording decision, the grill's presentation runs and the runs with Superpowers enabled alongside are recorded in the same document; they were made on the 2.x bootstrap and are history, not evidence for 3.x.
 
+### `/pr-review` on real pull requests
+
+The review skill ran once, headless, on two throwaway pull requests in this repository, with every write to GitHub made impossible by shims until the user answered: one pull request broke the gate's tests and quietly changed a documented bound, the other added a README line. It attributed the broken check to the pull request (passing on the baseline, failing twice on the head), proved both planted defects (one by showing the pull request's own example still failed on both trees), called the first **changes needed** and the second **ready to merge**, left the clone exactly as it found it, and after the answer posted two reviews whose inline comments landed on the lines it had anchored. The platform itself refuses to let the model start the skill. What that run did and did not exercise is in [`docs/plugin-behavior-tests.md`](docs/plugin-behavior-tests.md).
+
 ### A real project, end to end
 
 [`docs/case-study-web-downloader.md`](docs/case-study-web-downloader.md): one feature on a 6,600-line Chrome extension through the 2.1 workflow, from the foundations survey through a seven-question grill (which surfaced four design questions the user hadn't asked), the spec, three tickets, and the first ticket's implementation, review and handover. The actual artifacts, in order. It shows a ticket built and reviewed; it does not show a release or an incident, and it predates the gate.
@@ -268,11 +291,12 @@ Any teammate can rerun it against their own machine and model with one command (
 - **It won't evidence outcomes.** The harness stops at the first committing call, so its counts say which skill fired first, not that the grill asked the right question, that the review found the defect, or that the readiness table was judged honestly. The thirteen-scenario outcome matrix an outside review proposed (a greenfield app to a test deployment, a migration, tenant isolation, a concurrent webhook, a failed release, a resumed session, and the rest) is not evidenced anywhere in this repository. Outcome evidence here is the case study and the 2.1 `implement` runs read by hand.
 - **It won't replace judgment inside a skill.** Once a skill runs, what happens is the model following prose. The hooks prove that a route was declared and that verification ran, not that either was done well; the grill's recommendations are defaults to accept or overrule, and the definition of done is a checklist Claude runs, not a guarantee.
 - **It won't skip the questions.** On an ambiguous request it asks instead of guessing; in headless or unattended runs that means it stops. Give it a spec, or answer the grill.
+- **It won't post, push, merge or approve a pull request on its own.** `/pr-review` drafts; you pick what gets posted, and GitHub's own rule holds too: nobody approves or requests changes on their own pull request.
 - **It won't run Matt Pocock's user-only skills for you** (`/wayfinder`, `/triage`, `/improve-codebase-architecture`, `/ask-matt`); it suggests them by name, and you type them. Typing one is a declaration.
 
 ## Layout
 
-- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_gate.py`, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptSubmit and Stop hooks), `skills/` (the bootstrap with `references/routing.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, the four Superpowers copies), `evals/` (below), `THIRD_PARTY_NOTICES.md`
+- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_gate.py`, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptSubmit and Stop hooks), `skills/` (the bootstrap with `references/routing.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, `pr-review` (typed by hand only, with its three scripts), the four Superpowers copies), `evals/` (below), `THIRD_PARTY_NOTICES.md`
 - `.claude-plugin/marketplace.json` — makes this repo a single-plugin marketplace
 - `scripts/install.sh` — the one-command installer; `scripts/behavior_test.py` — the routing-test harness; `scripts/test.sh` and `scripts/tests/` — the test suites
 - `docs/plugin-behavior-tests.md` — the routing evidence and its method; `docs/compatibility.md` — what it was tested with; `docs/adr/` — the decisions; `docs/case-study-web-downloader.md` — one feature end to end on a real repo; `docs/carousel/` — the workflow as five slides for sharing
