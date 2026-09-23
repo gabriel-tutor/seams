@@ -444,6 +444,7 @@ Two turns (135 and 134 seconds), 15:55:13 to 16:01:48 UTC, 41 shell commands (27
 - An untrusted pull request and a static review: both pull requests were the viewer's own.
 - An app that has to be started for its end-to-end suite.
 - A batch over four pull requests.
+- The other argument forms: a URL, `owner/repo#number`, `open` and `requested`. On 2026-09-24 their `gh` lookups ran read-only on this repository: both lists exit 0 (empty, as no pull request was open), and the URL resolves. The skill never ran end to end on them.
 - A re-review after the author pushes.
 - A post since round 1. The payload's one change since then, the empty suggestion, is unit-tested.
 - Every model but the one above.
