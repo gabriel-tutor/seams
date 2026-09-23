@@ -6,7 +6,7 @@
 
 PR.diff is `git diff <baseline> <candidate>`, the diff GitHub shows for the pull request. review.json:
 
-  {"pr": {"repo", "number", "url", "title", "author", "head"},
+  {"pr": {"repo", "number", "url", "title", "author", "head", "mergeable"},
    "verdict": "approve" | "request changes" | "comment",
    "summary": "...",
    "findings": [{"severity": "blocking" | "should fix" | "nit" | "question" | "praise",
@@ -20,7 +20,8 @@ whole range, within one hunk) is in the diff on its side, RIGHT for the candidat
 removed ones. Every other finding goes into the review's body under "Outside the diff". A suggestion
 becomes a GitHub suggestion block on the RIGHT side, plain code on the LEFT (removed lines cannot take
 one). The author of a pull request can only COMMENT on it (GitHub refuses the other two events), and
-APPROVE needs the verdict "approve" and no blocking finding.
+APPROVE needs the verdict "approve", no blocking finding, no check broken or removed by the PR (read
+from the checks.json beside --checks) and no merge conflict (pr.mergeable).
 
 Writes payload.json ({commit_id, event, body, comments}), ready for
 `gh api --method POST repos/<owner>/<repo>/pulls/<number>/reviews --input payload.json`.
@@ -49,10 +50,30 @@ class Usage(Exception):
     """The inputs are malformed; exit 2."""
 
 
+ESCAPES = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+
+
 def _unquote(path: str) -> str:
-    if path.startswith('"') and path.endswith('"'):
-        path = path[1:-1].encode("latin-1", "backslashreplace").decode("unicode_escape").encode("latin-1").decode("utf-8", "replace")
-    return path
+    """A path as git quotes it: C-style, with octal escapes for bytes (core.quotePath on) or raw
+    UTF-8 characters (quotePath off), either way inside double quotes."""
+    if not (len(path) >= 2 and path.startswith('"') and path.endswith('"')):
+        return path
+    out, i, text = bytearray(), 0, path[1:-1]
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\" and i + 1 < len(text):
+            nxt = text[i + 1]
+            if nxt in "01234567" and i + 3 < len(text) + 1 and all(c in "01234567" for c in text[i + 1:i + 4]):
+                out.append(int(text[i + 1:i + 4], 8))
+                i += 4
+                continue
+            if nxt in ESCAPES:
+                out.append(ESCAPES[nxt])
+                i += 2
+                continue
+        out += ch.encode("utf-8")
+        i += 1
+    return out.decode("utf-8", "replace")
 
 
 def _strip_prefix(path: str) -> "str | None":
@@ -72,7 +93,8 @@ def parse_diff(text: str) -> dict:
     hunk = None
     old_left = new_left = 0
     old_no = new_no = 0
-    for raw in text.splitlines():
+    for raw in text.split("\n"):          # not splitlines(): a form feed or U+2028 is part of its line
+        raw = raw[:-1] if raw.endswith("\r") else raw
         if hunk is not None and (old_left > 0 or new_left > 0):
             if raw.startswith("\\"):    # "\ No newline at end of file"
                 continue
@@ -176,46 +198,70 @@ def body(review: dict, checks: str, outside: list) -> str:
         lines += ["### Outside the diff", ""]
         for f in outside:
             spot = where(f)
-            text = f"- **{f['severity']}** {spot + ' ' if spot else ''}{f.get('title') or ''}"
+            lines.append(f"- **{f['severity']}** {spot + ' ' if spot else ''}{f.get('title') or ''}".rstrip())
+            detail = []
             if f.get("body"):
-                text += f": {' '.join(f['body'].split())}"
-            lines.append(text)
-        lines.append("")
+                detail.append(f["body"].strip())
+            if f.get("evidence"):
+                detail.append("Evidence:\n\n" + "\n".join("> " + l for l in str(f["evidence"]).strip().split("\n")))
+            if f.get("suggestion") is not None:        # no diff line to suggest on: plain code
+                detail.append(f"```\n{f['suggestion']}\n```")
+            for block in detail:
+                lines += [""] + ["  " + l if l else "" for l in block.split("\n")]
+            lines.append("")
     if review.get("not_verified"):
         lines += ["### Not verified", ""] + [f"- {item}" for item in review["not_verified"]] + [""]
-    lines.append("<sub>Checks ran locally on the merge-base and on the head. Drafted with Claude Code "
-                 "(Seams `pr-review`) and posted by a person who read it first.</sub>")
+    ran = ("Checks ran locally on the merge-base and on the head." if checks.strip()
+           else "No checks were run on this machine: a static review reads the code only.")
+    lines.append(f"<sub>{ran} Drafted with Claude Code (Seams `pr-review`) and posted by a person who "
+                 "read it first.</sub>")
     return _cap("\n".join(lines))
 
 
-def validate(review: dict, event: str, viewer: str) -> None:
+def _line(value) -> bool:
+    return value is None or (isinstance(value, int) and not isinstance(value, bool) and value > 0)
+
+
+def validate(review: dict, event: str, viewer: str, broken: list) -> None:
+    """Refuse malformed input (Usage) and an event GitHub or the review's own evidence forbids
+    (Refused). `broken` names the checks the PR broke or removed."""
     if event not in EVENTS:
         raise Usage(f"--event is one of {', '.join(EVENTS)}, got {event!r}")
-    if review.get("verdict") not in VERDICTS:
-        raise Usage(f"verdict is one of {', '.join(VERDICTS)}, got {review.get('verdict')!r}")
-    pr = review.get("pr") or {}
-    for key in ("head", "author"):
-        if not pr.get(key):
-            raise Usage(f"review.json lacks pr.{key}")
-    for f in review.get("findings", []):
+    if not isinstance(review, dict) or review.get("verdict") not in VERDICTS:
+        raise Usage(f"verdict is one of {', '.join(VERDICTS)}, got {review.get('verdict') if isinstance(review, dict) else review!r}")
+    pr = review.get("pr")
+    if not isinstance(pr, dict) or not all(pr.get(k) for k in ("head", "author")):
+        raise Usage("review.json lacks pr.head or pr.author")
+    findings = review.get("findings")
+    if not isinstance(findings, list) or not all(isinstance(f, dict) for f in findings):
+        raise Usage("review.json's findings is a list of objects")
+    for f in findings:
         if f.get("severity") not in SEVERITIES:
             raise Usage(f"a finding's severity is one of {', '.join(SEVERITIES)}, got {f.get('severity')!r}")
         if (f.get("side") or "RIGHT") not in ("RIGHT", "LEFT"):
             raise Usage(f"a finding's side is RIGHT or LEFT, got {f.get('side')!r}")
+        if not (_line(f.get("line")) and _line(f.get("end_line"))):
+            raise Usage(f"a finding's line and end_line are positive whole numbers, got {f.get('line')!r}, {f.get('end_line')!r}")
+        for key in ("path", "title", "body", "suggestion"):
+            if f.get(key) is not None and not isinstance(f[key], str):
+                raise Usage(f"a finding's {key} is text, got {f[key]!r}")
     if event != "COMMENT" and viewer.casefold() == str(pr["author"]).casefold():
         raise Refused("GitHub does not let the author approve or request changes on their own pull request; "
                       "post it as COMMENT")
     if event == "APPROVE":
-        blocking = [f for f in review.get("findings", []) if f["severity"] == "blocking"]
+        blocking = [f for f in findings if f["severity"] == "blocking"]
         if blocking:
             raise Refused(f"APPROVE with {len(blocking)} blocking finding(s); the verdict is not approve")
+        if broken:
+            raise Refused(f"APPROVE with {', '.join(broken)} broken or removed by the PR")
+        if str(pr.get("mergeable") or "").upper() == "CONFLICTING":
+            raise Refused("APPROVE on a branch that conflicts with its base; the conflict comes first")
         if review["verdict"] != "approve":
             raise Refused(f"APPROVE needs the verdict approve, and this review's is {review['verdict']!r}")
 
 
-def build(review: dict, diff: str, checks: str, event: str, viewer: str) -> "tuple[dict, str]":
-    review.setdefault("findings", [])
-    validate(review, event, viewer)
+def build(review: dict, diff: str, checks: str, event: str, viewer: str, broken: "list | None" = None) -> "tuple[dict, str]":
+    validate(review, event, viewer, broken or [])
     files = parse_diff(diff)
     comments, outside = [], []
     for f in review["findings"]:
@@ -247,12 +293,19 @@ def main(argv: "list | None" = None) -> int:
     args = parser.parse_args(argv)
     try:
         review = json.loads(args.review.read_text())
-        checks = args.checks.read_text() if args.checks and args.checks.is_file() else ""
-        payload, preview = build(review, args.diff.read_text(), checks, args.event, args.viewer)
+        checks, broken = "", []
+        if args.checks and args.checks.is_file():
+            checks = args.checks.read_text()
+            rows_file = args.checks.parent / "checks.json"      # run_checks.py writes both side by side
+            if rows_file.is_file():
+                broken = [r["name"] for r in json.loads(rows_file.read_text())
+                          if r.get("verdict") in ("broken by the PR", "removed by the PR")]
+        diff = args.diff.read_bytes().decode("utf-8", "replace")
+        payload, preview = build(review, diff, checks, args.event, args.viewer, broken)
     except Refused as err:
         print(f"review_payload.py: refused: {err}", file=sys.stderr)
         return 1
-    except (Usage, ValueError, OSError, KeyError) as err:
+    except (Usage, ValueError, OSError, KeyError, TypeError, AttributeError) as err:
         print(f"review_payload.py: {err}", file=sys.stderr)
         return 2
     args.out.write_text(json.dumps(payload, indent=2) + "\n")

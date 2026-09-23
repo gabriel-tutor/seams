@@ -8,8 +8,10 @@ Each DIR is one pull request's evidence directory: review.json (see review_paylo
 checks ran, checks/checks.json (see run_checks.py). A directory without review.json is a review that
 never finished; its error.txt, when there is one, says why. Each pull request gets one answer:
 
-  changes needed   a blocking finding, a check broken or removed by the PR, or the verdict "request changes"
-  not yet          open questions, checks that could not run, or a review that never finished
+  changes needed   a blocking finding, a check broken or removed by the PR, a merge conflict with the
+                   base branch, or the verdict "request changes"
+  not yet          open questions, checks that could not run, or a review that never finished (or
+                   whose review.json cannot be read; the other pull requests are reported all the same)
   ready to merge   the verdict "approve", nothing blocking, no check broken by the PR
 
 Prints a Markdown table, the ones needing attention first, then one note per author whose pull request
@@ -27,21 +29,31 @@ RANK = {"blocking": 0, "should fix": 1, "question": 2, "nit": 3, "praise": 4}
 BROKEN = {"broken by the PR", "removed by the PR"}
 
 
+def unfinished(folder: Path, reason: str) -> dict:
+    return {"folder": folder.name, "status": "not yet", "reason": f"could not review: {reason}",
+            "pr": None, "findings": [], "not_verified": [], "broken": [], "conflict": False}
+
+
 def load(folder: Path) -> dict:
     """One pull request's state, from its evidence directory."""
     review_file = folder / "review.json"
     if not review_file.is_file():
         error = folder / "error.txt"
-        reason = error.read_text().strip() if error.is_file() else "no review.json was written"
-        return {"folder": folder.name, "status": "not yet", "reason": f"could not review: {reason}",
-                "pr": None, "findings": [], "not_verified": [], "broken": []}
-    review = json.loads(review_file.read_text())
-    checks_file = folder / "checks" / "checks.json"
-    rows = json.loads(checks_file.read_text()) if checks_file.is_file() else []
-    broken = [r["name"] for r in rows if r.get("verdict") in BROKEN]
-    findings = sorted(review.get("findings") or [], key=lambda f: RANK.get(f.get("severity"), 9))
+        return unfinished(folder, error.read_text().strip() if error.is_file() else "no review.json was written")
+    try:
+        review = json.loads(review_file.read_text())
+        if not isinstance(review, dict):
+            raise ValueError("not an object")
+        checks_file = folder / "checks" / "checks.json"
+        rows = json.loads(checks_file.read_text()) if checks_file.is_file() else []
+    except (ValueError, OSError) as err:
+        return unfinished(folder, f"review.json could not be read ({err})")
+    broken = [(r["name"], r["verdict"]) for r in rows if isinstance(r, dict) and r.get("verdict") in BROKEN]
+    findings = sorted([f for f in review.get("findings") or [] if isinstance(f, dict)],
+                      key=lambda f: RANK.get(f.get("severity"), 9))
     blocking = [f for f in findings if f.get("severity") == "blocking"]
-    if review.get("verdict") == "request changes" or blocking or broken:
+    conflict = str((review.get("pr") or {}).get("mergeable") or "").upper() == "CONFLICTING"
+    if review.get("verdict") == "request changes" or blocking or broken or conflict:
         status, reason = "changes needed", ""
     elif review.get("verdict") == "approve":
         status, reason = "ready to merge", ""
@@ -52,25 +64,33 @@ def load(folder: Path) -> dict:
                 ([f"{unverified} thing{'s' if unverified != 1 else ''} not verified"] if unverified else [])
         status, reason = "not yet", ", ".join(parts) or "the review did not approve"
     return {"folder": folder.name, "status": status, "reason": reason, "pr": review.get("pr") or {},
-            "findings": findings, "not_verified": review.get("not_verified") or [], "broken": broken}
+            "findings": findings, "not_verified": review.get("not_verified") or [], "broken": broken,
+            "conflict": conflict}
 
 
-def link(state: dict) -> str:
+def link(state: dict, with_repo: bool = False) -> str:
     pr = state["pr"]
     if not pr:
         return f"`{state['folder']}`"
-    return f"[#{pr.get('number')} {pr.get('title', '')}]({pr.get('url', '')})".replace(" ]", "]")
+    ref = f"{pr.get('repo')}#{pr.get('number')}" if with_repo and pr.get("repo") else f"#{pr.get('number')}"
+    return f"[{ref} {pr.get('title', '')}]({pr.get('url', '')})".replace(" ]", "]")
 
 
 def spot(finding: dict) -> str:
-    path, line = finding.get("path"), finding.get("line")
+    """Where a finding is, as the review shows it: `path:line`, or `path:line-end` for a range."""
+    path, line, end = finding.get("path"), finding.get("line"), finding.get("end_line")
     if not path:
         return ""
-    return f" (`{path}:{line}`)" if line else f" (`{path}`)"
+    if not line:
+        return f" (`{path}`)"
+    return f" (`{path}:{line}-{end}`)" if end and end != line else f" (`{path}:{line}`)"
 
 
 def report(states: list) -> str:
-    states = sorted(states, key=lambda s: (ORDER[s["status"]], (s["pr"] or {}).get("number") or 0))
+    states = sorted(states, key=lambda s: (ORDER[s["status"]], (s["pr"] or {}).get("repo") or "",
+                                           (s["pr"] or {}).get("number") or 0))
+    repos = {(s["pr"] or {}).get("repo") for s in states if s["pr"]}
+    many = len(repos) > 1                                   # "#9" alone would be ambiguous
     counts = {k: sum(1 for s in states if s["status"] == k) for k in ORDER}
     lines = [f"{len(states)} pull request{'s' if len(states) != 1 else ''}: {counts['ready to merge']} ready to merge, "
              f"{counts['changes needed']} with changes needed, {counts['not yet']} not yet.", "",
@@ -82,8 +102,8 @@ def report(states: list) -> str:
         head = f"`{str(pr['head'])[:7]}`" if pr.get("head") else "—"
         shown = f"**{s['status']}**" if s["status"] == "changes needed" else s["status"]
         blocking = sum(1 for f in s["findings"] if f.get("severity") == "blocking") if pr else "—"
-        broken = ", ".join(f"`{b}`" for b in s["broken"]) or "—"
-        lines.append(f"| {link(s)} | {author} | {head} | {shown} | {blocking} | {broken} |")
+        broken = ", ".join(f"`{name}`" for name, _ in s["broken"]) or "—"
+        lines.append(f"| {link(s, many)} | {author} | {head} | {shown} | {blocking} | {broken} |")
     not_ready = [s for s in states if s["status"] != "ready to merge"]
     authors: dict = {}
     for s in not_ready:
@@ -93,13 +113,15 @@ def report(states: list) -> str:
         for s in mine:
             lines.append("")
             if s["status"] == "changes needed":
-                lines.append(f"{link(s)} needs changes before it can merge:")
-                items = [f"check `{b}` is broken by the PR" for b in s["broken"]]
+                lines.append(f"{link(s, many)} needs changes before it can merge:")
+                items = ["resolve the merge conflict with the base branch"] if s["conflict"] else []
+                items += [f"check `{name}` {'was removed' if verdict == 'removed by the PR' else 'is broken'} by the PR"
+                          for name, verdict in s["broken"]]
                 items += [f"**{f['severity']}**: {f.get('title', '')}{spot(f)}" for f in s["findings"]
                           if f.get("severity") in ("blocking", "should fix", "question")]
                 lines += [f"{i}. {item}" for i, item in enumerate(items, 1)]
             else:
-                lines.append(f"{link(s)} is not ready yet ({s['reason']}):")
+                lines.append(f"{link(s, many)} is not ready yet ({s['reason']}):")
                 lines += [f"- **{f['severity']}**: {f.get('title', '')}{spot(f)}" for f in s["findings"]
                           if f.get("severity") in ("blocking", "should fix", "question")]
                 lines += [f"- not verified: {item}" for item in s["not_verified"]]

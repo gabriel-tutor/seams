@@ -190,17 +190,23 @@ class Declarations(unittest.TestCase):
         self.assertEqual(gate.slash_declaration("/setup-matt-pocock-skills"), "setup-matt-pocock-skills")
         self.assertEqual(gate.slash_declaration("  /wayfinder  "), "wayfinder")
 
-    def test_a_seams_skill_typed_by_its_bare_name_declares_under_its_full_name(self):
+    def test_a_manual_only_seams_skill_typed_by_its_bare_name_declares_under_its_full_name(self):
         # Claude Code runs a plugin skill typed bare (`/pr-review 42`) when no other command has the
-        # name; a user-only skill is only ever typed, so its bare form must open the gate like the
-        # namespaced one. The routing policy itself is not a route, bare or not.
+        # name. A manual-only skill is only ever typed, so its bare form opens the gate like the
+        # namespaced one. Every other bare name stays what it was: the model-invocable Seams skills
+        # are declared through the Skill tool under their full names, and a bare name they share with
+        # a Superpowers original or a project's own command (`/verification-before-completion`,
+        # `/release`) may not be the Seams skill at all. The name must match exactly: a case-insensitive
+        # file system finding `PR-REVIEW` is not the skill.
         self.assertEqual(gate.slash_declaration("/pr-review 42"), "matt-pocock-workflow:pr-review")
         self.assertEqual(gate.slash_declaration("/matt-pocock-workflow:pr-review https://github.com/o/r/pull/7"),
                          "matt-pocock-workflow:pr-review")
-        self.assertEqual(gate.slash_declaration("/grill"), "matt-pocock-workflow:grill")
         self.assertEqual(gate.slash_declaration("/implement"), "implement")   # Matt Pocock's bare name wins, as it does in Claude Code
-        self.assertIsNone(gate.slash_declaration("/using-matt-pocock-skills"))
-        self.assertIsNone(gate.slash_declaration("/no-such-skill"))
+        for prompt in ["/grill", "/release", "/verification-before-completion", "/using-git-worktrees",
+                       "/finishing-a-development-branch", "/receiving-code-review", "/using-matt-pocock-skills",
+                       "/PR-REVIEW 42", "/Pr-Review", "/no-such-skill", "/..", "/.", "//etc/passwd"]:
+            with self.subTest(prompt=prompt):
+                self.assertIsNone(gate.slash_declaration(prompt))
 
     def test_other_slash_commands_and_plain_prompts_do_not(self):
         for prompt in ["/superpowers:brainstorming", "/compact", "/clear", "add a feature",

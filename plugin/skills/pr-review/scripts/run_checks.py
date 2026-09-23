@@ -6,15 +6,15 @@
 Each check runs with `bash -c COMMAND` in the baseline tree, then in the candidate tree, with stdin
 closed and CI=1 (unless already set), its output kept in <out>/<name>.<base|head>.log. When the two
 disagree, the side that failed runs once more, so a flaky check is called flaky rather than blamed on
-the pull request. The verdicts:
+the pull request. Whatever a check leaves running when it ends is ended with it. The verdicts:
 
   ok                 passes on both
   broken by the PR   passes on the baseline, fails on the candidate twice (a timeout is a failure)
   fixed by the PR    fails on the baseline twice, passes on the candidate
   already broken     fails on both: not the pull request's doing
   flaky              the second run disagreed with the first
-  new in the PR      absent from the baseline; its verdict on the candidate follows ("broken by the
-                     PR" when it fails there)
+  new in the PR      absent from the baseline, passing on the candidate (failing there twice is
+                     "broken by the PR")
   removed by the PR  present on the baseline, absent from the candidate
   could not run      absent from both, or timed out on both (raise --timeout, or run it by hand)
 
@@ -36,9 +36,11 @@ import time
 from pathlib import Path
 
 # How package managers and make say a script or target does not exist; the check is then absent
-# from that tree rather than failing in it.
+# from that tree rather than failing in it. make's own target missing is absent; a prerequisite
+# missing ("..., needed by 'x'") is a failure like any other.
 MISSING_SCRIPT = re.compile(r"Missing script:|ERR_PNPM_NO_SCRIPT|error Command \".*\" not found|"
-                            r"Couldn't find a script named|error: Script not found|No rule to make target")
+                            r"Couldn't find a script named|error: Script not found|"
+                            r"No rule to make target [`'][^'`]*'\.\s+Stop\.|don't know how to make \S+\. Stop")
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 BLOCKING = {"broken by the PR", "removed by the PR"}
 
@@ -55,8 +57,12 @@ def run_side(command: str, tree: Path, log: Path, timeout: float) -> dict:
                                 stdout=out, stderr=subprocess.STDOUT, env=env, start_new_session=True)
         try:
             code = proc.wait(timeout=timeout)
+            timed_out = False
         except subprocess.TimeoutExpired:
-            stop(proc)
+            timed_out = True
+        end_group(proc.pid)             # the check on a timeout, and whatever it left running either way
+        if timed_out:
+            proc.wait()
             return {"status": "timeout", "exit": None, "seconds": round(time.monotonic() - started),
                     "reason": f"timed out after {timeout:g} s", "log": log.name}
     seconds = round(time.monotonic() - started)
@@ -70,18 +76,19 @@ def run_side(command: str, tree: Path, log: Path, timeout: float) -> dict:
     return {"status": "fail", "exit": code, "seconds": seconds, "reason": f"exit {code}", "log": log.name}
 
 
-def stop(proc: subprocess.Popen) -> None:
-    """End a timed-out check and everything it started."""
-    for sig, wait in ((signal.SIGTERM, 5), (signal.SIGKILL, 5)):
-        try:
-            os.killpg(proc.pid, sig)
-        except OSError:
-            pass
-        try:
-            proc.wait(timeout=wait)
-            return
-        except subprocess.TimeoutExpired:
-            continue
+def end_group(pgid: int) -> None:
+    """End every process of a check's group: SIGTERM, a moment to exit cleanly, then SIGKILL for
+    whatever ignored it. Runs after every check, so a server or watcher a check left behind never
+    shares the machine with the next check; returns at once when nothing is left."""
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        return
+    time.sleep(0.3)
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 def verdict(base: str, head: str) -> "tuple[str, str | None]":
@@ -94,7 +101,7 @@ def verdict(base: str, head: str) -> "tuple[str, str | None]":
     if base == "timeout" and head == "timeout":
         return "could not run", None
     if base == "absent":
-        return ("new in the PR" if head == "pass" else "broken by the PR"), None
+        return ("new in the PR", None) if head == "pass" else ("broken by the PR", "head")
     if head == "absent":
         return "removed by the PR", None
     if base in passing and head in passing:
@@ -127,9 +134,7 @@ def cell(run: dict, rerun: "dict | None") -> str:
     """One side of one check, as the table shows it."""
     if run["status"] == "pass":
         text = f"pass ({run['seconds']} s)"
-    elif run["status"] == "absent":
-        text = run["reason"]
-    elif run["status"] == "timeout":
+    elif run["status"] in ("absent", "timeout"):
         text = run["reason"]
     else:
         text = f"fail, {run['reason']} ({run['seconds']} s)"
@@ -168,6 +173,9 @@ def main(argv: "list | None" = None) -> int:
         checks = [parse_check(c) for c in args.check]
         if not checks:
             raise ValueError("no --check given")
+        names = [name.casefold() for name, _ in checks]
+        if len(set(names)) != len(names):
+            raise ValueError("two checks share a name (case aside); each writes its own log files")
         for tree in (args.base, args.head):
             if not tree.is_dir():
                 raise ValueError(f"not a directory: {tree}")

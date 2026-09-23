@@ -91,8 +91,12 @@ The merge-base of a pull request with its base branch, checked the same way as t
 _Avoid_: main, master (a base branch moves; its merge-base with the candidate does not)
 
 **Finding**:
-A review's claim about a candidate, with a severity (blocking, should fix, nit) and the evidence behind it: a failing check, a failing probe test, a reproduced behavior, or a cited line with its reasoning. A suspicion without evidence is a question, not a finding.
+A review's point about a candidate: a claim with its severity (blocking, should fix, nit) and the evidence behind it (a failing check, a failing probe test, a reproduced behavior, or a cited line with its reasoning), or a question the review could not settle. A suspicion without evidence is only ever a question.
 _Avoid_: issue (the tracker's word), comment (where a finding gets posted)
+
+**Review handover**:
+The closing message of a pull request review: whether each pull request is ready to merge, a note for each author whose pull request is not, each review posted or drafted, what was not verified, and what comes next.
+_Avoid_: summary, report
 
 ## Evidence
 

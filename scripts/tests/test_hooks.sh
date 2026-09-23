@@ -76,6 +76,8 @@ OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a typed bare /pr-revi
 grep -q '"skill": *"matt-pocock-workflow:pr-review"' "$LEDGER" || fail "the bare /pr-review should be recorded under its full name"
 prompt "/using-matt-pocock-skills"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "typing the routing policy itself should not declare"
+prompt "/using-git-worktrees"
+OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a bare Superpowers-copy name should not declare (the original shares it)"
 
 # 7. A subagent's call is judged by the same session ledger.
 post_skill "matt-pocock-workflow:implement"
