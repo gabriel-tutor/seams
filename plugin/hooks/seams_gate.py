@@ -255,7 +255,7 @@ PROCESS_SKILLS = {
 # a courtesy, or a bare option. Anything with its own content is a new request.
 GO_PHRASES = {
     "y", "yes", "yep", "yeah", "yup", "ok", "okay", "k", "sure", "go", "go ahead", "go on",
-    "go for it", "continue", "proceed", "do it", "do that", "do so", "next", "approved",
+    "go for it", "proceed", "do it", "do that", "do so", "next", "approved",
     "approve", "confirmed", "confirm", "agreed", "lgtm", "fine", "correct", "right",
     "thats right", "that is right", "carry on", "keep going", "sounds good", "looks good",
     "ship it", "make it so", "as recommended", "recommended", "your recommendation",
