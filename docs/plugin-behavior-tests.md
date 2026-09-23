@@ -451,3 +451,97 @@ Two turns (135 and 134 seconds), 15:55:13 to 16:01:48 UTC, 41 shell commands (27
 
 Two runs are evidence about those two runs.
 
+## 3.2.1: the first real batch, 2026-09-23
+
+The user ran 3.2.0's `/pr-review` on 15 open pull requests of a private repository, in one interactive session (Claude Code 2.1.280), and passed on the session's own list of six gaps. The facts below come from that session's transcript and the gate's ledger, read by a read-only subagent and spot-checked here. They name no repository, pull request or code: the repository is someone else's.
+
+- **What worked.**
+  - The run pinned each head and ran the checks on both trees.
+  - It tried each change in the running app, and put probes behind its claims.
+  - Every inline comment anchored.
+  - It asked before posting: the user ticked all 15.
+- **The gate, which the session reported as "doesn't recognise pr-review".** It did recognise it. The user named `/matt-pocock-workflow:pr-review` mid-sentence, the model then started the skill itself (the platform allowed that once the user had named it), and that call declared the request. What closed the gate was new requests:
+  - There were 25 refusals: 3 in the main session and 22 in subagents. Every one was a shell write under `/private/tmp` or to `/dev/null`.
+  - 21 of them followed a subagent's hand-back ("Another Claude session sent a message: …"), which the prompt hook did not know as a notice. The other 4 followed the user's own messages.
+  - To get through, the session declared `trivial` 28 times, each time claiming the work was trivial. It also told every reviewer to do the same.
+  - The hand-back reset reproduced in the session that built the fix: the forensics subagent's own hand-back dropped that session's declarations at the second it arrived.
+- **Old bash.**
+  - CI runs its tests under `shell: bash` with `shopt -s globstar` and a `tests/**/*.test.js` glob.
+  - `run_checks.py` ran it with macOS's `/bin/bash` 3.2, which rejects globstar and carries on. So `**` walked one directory: 799 of 998 test files and 7,226 of 9,220 tests, with a pass or fail reported as if whole.
+  - The repository's CI jobs had not started, so nothing could compare. The session switched to `find`, with a floor of 900 files.
+- **A check only a git hook runs.**
+  - A package-script audit runs from the pre-commit hook, and no CI job runs it. 1 reviewer of 15 found it, by listing the package scripts.
+  - The main session later ran it on the other 14: every baseline passed and every candidate failed, and four verdicts flipped to request changes.
+  - It added those results with a script that edited the finished reviews.
+- **Probes in the checked trees.** Two reviewers left probe tests in `tests/`, and the audit counted them: 985 files against 983 committed, and 1,000 against 999.
+- **A missing test file.** A check aimed at a pull request's new test file failed on the baseline, where the file does not exist. It read "fixed by the PR" until the reviewer wrapped the command by hand.
+- **Concurrency.**
+  - Four reviewers ran at a time until the user asked for more; then 13 ran at once, with test workers halved.
+  - The load average reached 53.5 on 14 cores, and two Postgres verdicts were relabelled flaky by hand.
+- **Posting.**
+  - The reviews went out back to back: 10 posted in 34 seconds.
+  - GitHub then refused the next five with HTTP 403, "You have exceeded a secondary rate limit and have been temporarily blocked from content creation", with no retry-after.
+  - None of the refused posts created a review. Waiting 120 seconds and then posting 45 seconds apart got all five through.
+
+Each gap has its fix in 3.2.1 (see the CHANGELOG), tested through the scripts' command lines, the gate module and the hooks, and the skill text's static checks.
+
+### The 3.2.1 live batch, 2026-09-24
+
+**The setup.**
+- **The base:** a throwaway branch off `main` (`aea109b`) with two checks that the first batch had tripped on. One is a docs audit only a git hook runs (`.husky/pre-commit` → `scripts/docs-audit.sh`, comparing a documented skill count with `plugin/skills/`). The other is a CI step that needs globstar (`shopt -s globstar; files=(plugin/**/SKILL.md)`).
+- **Three pull requests against it:**
+  - #8 changes the documented count (only the hook's audit can catch it);
+  - #9 changes one README word;
+  - #10 drops "continue" from the gate's go-aheads, which breaks a unit test.
+- **The run:** `claude -p "/matt-pocock-workflow:pr-review 8 9 10, 1 check slot"`, headless, from a fresh clone.
+  - `--plugin-dir` at `cbefcee`, with the installed copy and Superpowers off.
+  - Claude Code 2.1.281, the runtime reporting `claude-opus-5-5[1m]`.
+  - `gh` and `git` shims refusing every write to GitHub.
+
+The pull requests were closed and their branches deleted afterwards.
+
+**What it did.**
+- **The first turn** (84 s) made the six worktrees one pull request at a time and found the checks once: `test` (CI), `skills` (the globstar step) and `docs-audit` (from the hook). It then asked, in text, whether to `brew install bash` first, since `skills` needs bash 4 and this Mac has only 3.2.57. The answer was "2" (don't install).
+- **The reviewers:** all three started together (22:46:29, :39 and :48 UTC), each given the same checks list. Their checks took turns through the one slot (`--slots 1`).
+- **The verdicts:**
+  - #8: request changes. `docs-audit` was broken by the PR, which nothing else would have shown, since CI does not run it.
+  - #9: approve, with one nit.
+  - #10: request changes. `test` was broken by the PR (the unit test still lists "continue"); there were also two should-fix findings and a question.
+- **`skills`:** it read "could not run: needs bash 4 or newer (globstar); ran with bash 3.2.57" on all three, never a pass or a fail.
+- **After the batch:** the two broken checks ran again alone (`--recheck`) and failed again, so neither was flaky.
+- **The handover:** it asked in text which reviews to post, with four options. Nothing was posted.
+
+**What it did not do.**
+- 41 shell commands (28 by the subagents), with 0 gate refusals and 0 `trivial` declarations. The first batch had 25 and 28.
+- 0 write attempts in the shim log.
+- The clone's status and worktree list were identical before and after, every evidence folder's record of files checks left was empty, and GitHub showed no review on #8, #9 or #10.
+- The done-check blocked once, on a `mkdir` in the model's checkout loop: that path was built from a loop variable, which the gate cannot place. The request was declared, so the write was allowed and only counted.
+- The run took 22:42:59 to 22:52:03 UTC, including the wait for the answer, in turns of 84, 38, 2, 4 and 82 seconds.
+
+**What the review of 3.2.1 found first.** Two parallel reviewers (Standards, Spec) and an adversarial hunt of the gate's new exemption ran on `f6623cf`.
+- The hunt confirmed a new bypass by running it: `find <temp> -exec … <project file>`, because the exemption had trusted find's roots.
+- The reviewers found:
+  - `${UNKNOWN:-/tmp/x}`, placed at its default;
+  - option-attached targets;
+  - `worktree add` without `--detach`;
+  - a newline right before a redirect;
+  - rebound loop variables;
+  - the config directory treated as scratch;
+  - two script defects.
+- The hand-back fix itself did not work live. It matched the transcript's form, and logging the prompt hook's own input showed the hook gets `<agent-message from="…">`. That session lost its declaration to every reviewer's hand-back until the fix; afterwards a test hand-back left it intact.
+- All of these were fixed with tests in `cbefcee`.
+- A second adversarial pass on `cbefcee` could not run: a safety classifier stopped the subagent. So the new code paths were reviewed by hand, and `bf2aa58` closed what that found, each with a test:
+  - a command inside `$(…)` or backquotes;
+  - an unquoted heredoc's `$(…)`;
+  - word splitting, `IFS`, brace expansion and `+=`;
+  - `eval`;
+  - `\rm`.
+
+**Not exercised live.**
+- A probe file: the reviewers probed with direct function calls, so the probe folder and cleanup's leftover report never ran.
+- A check that leaves files behind: `left.json` stayed empty.
+- Posting, whose pacing and retries are tested only against a fake `gh`. GitHub's limit cannot be tripped on purpose without risking a ban.
+- AskUserQuestion, a pull request from outside the team, and a static review.
+- The gate as of `bf2aa58`, which came after the run and is unit- and hook-tested.
+- Every model but the one above.
+

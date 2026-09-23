@@ -279,12 +279,13 @@ Any teammate can rerun it against their own machine and model with one command (
 
 ### `/pr-review` on real pull requests
 
-The review skill ran three times, headless, on two throwaway pull requests in this repository. Shims made every write to GitHub impossible until the user answered. One pull request broke the gate's tests and quietly changed a documented bound; the other added a README line.
+The review skill ran four times, headless, on throwaway pull requests in this repository, and once for real on a 15-pull-request batch of a private repository, whose gaps 3.2.1 closes. Shims made every write to GitHub impossible until the user answered. One pull request broke the gate's tests and quietly changed a documented bound; the other added a README line.
 
 - **Every run** blamed the broken check on the pull request (passing on the baseline, failing twice on the head), called the first pull request **changes needed**, and left the clone exactly as it found it.
 - **The first run** reviewed both pull requests and proved both planted defects, but its fan-out prompt had pointed at them, which the skill now forbids. After the user's answer it posted two reviews, whose inline comments landed on the lines it had anchored.
 - **The later two** found the defects with reviewers given only the pull request's facts. One reviewed the first pull request alone, typed as bare `/pr-review`. The other reviewed both and called the second **ready to merge**.
 - **The second run found a bug in Seams itself:** a finding with an empty suggestion became an empty GitHub suggestion block, which deletes the line it sits on. It is fixed and tested.
+- **The 3.2.1 run** reviewed three pull requests at once through one check slot. It found a check only a git hook runs and reported that check broken by the pull request. It read a CI step that needs a newer bash than this Mac has as "could not run", never as a pass. It re-ran the two broken checks alone before letting them block, and the gate refused nothing all run.
 
 The platform itself refuses to let the model start the skill. What those runs did and did not exercise is in [`docs/plugin-behavior-tests.md`](docs/plugin-behavior-tests.md).
 
