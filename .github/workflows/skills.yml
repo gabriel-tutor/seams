@@ -1,0 +1,14 @@
+name: skills
+on: [pull_request]
+jobs:
+  skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every skill has its SKILL.md
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          files=(plugin/**/SKILL.md)
+          echo "${#files[@]} SKILL.md files"
+          test "${#files[@]}" -ge 10
