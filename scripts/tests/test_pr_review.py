@@ -82,14 +82,16 @@ class RunChecksTest(unittest.TestCase):
     def test_checks_run_in_the_newest_bash_found_and_the_table_names_its_version(self):
         # macOS ships bash 3.2, where CI's `shopt -s globstar` fails and `**` walks one level: a
         # 1,000-file suite ran 799 files and still reported pass or fail as if it were whole.
-        old, new = self.fake_bash("old", "3.2.57"), self.fake_bash("new", "5.2.37")
+        # The script also finds this machine's own bashes (its PATH and the usual install places),
+        # so the newest fake reports a version no real bash has: a Homebrew 5.3 once outranked 5.2.37.
+        old, new = self.fake_bash("old", "3.2.57"), self.fake_bash("new", "99.0.0")
         env = dict(os.environ, PATH=f"{old.parent}:{new.parent}:{os.environ['PATH']}")
         code, checks, table = run_checks(self.base, self.head, self.out, "shell=bash --version", env=env)
         self.assertEqual(code, 0, table)
-        self.assertEqual(checks["shell"]["shell"]["version"], "5.2.37")
+        self.assertEqual(checks["shell"]["shell"]["version"], "99.0.0")
         self.assertEqual(checks["shell"]["shell"]["path"], str(new))
-        self.assertIn("version 5.2.37", (self.out / "shell.head.log").read_text())   # its directory leads PATH
-        self.assertIn("bash 5.2.37", table)
+        self.assertIn("version 99.0.0", (self.out / "shell.head.log").read_text())   # its directory leads PATH
+        self.assertIn("bash 99.0.0", table)
         self.assertNotIn(str(self.tmp), table)                                          # no local paths
 
     def test_a_run_the_local_bash_could_not_make_as_ci_does_could_not_run(self):
