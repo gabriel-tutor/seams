@@ -49,9 +49,21 @@ _Avoid_: summary, wrap-up
 The exact committed state that a review, a verification or a release refers to; a later change makes a new candidate.
 _Avoid_: the branch, the work, current changes
 
+**Quality bar**:
+What every candidate that ships must meet: a definition of done covering how the change fails, is attacked, performs, is observed, is documented and is rolled back, each item proven by evidence, with scope and architecture sized to the stated needs plus the next order of growth.
+_Avoid_: perfection, gold-plating, bare minimum, best effort
+
 **Stage**:
 The furthest point a piece of work has evidence for: designed, built, integrated, release-ready, deployed, operated. A handover names it.
 _Avoid_: gate (that is the hook), phase, status
+
+**Progress file**:
+A feature's durable record of work in progress, kept beside its spec: the grill's settled decisions and open questions, the ticket in progress, the candidate, the stage and the next step. Unlike the ledger, it outlives the session.
+_Avoid_: state file, work log, notes
+
+**Resume note**:
+The few factual lines the session-start hook injects from the progress files at startup, resume, `/clear`, compaction and fork, so a fresh context continues where the work stopped.
+_Avoid_: summary, handoff (that is `/handoff`)
 
 **Walking skeleton**:
 The first ticket of a new app: one trivial path through build, CI, deploy and a smoke check, before any feature ticket.
