@@ -334,13 +334,22 @@ class RunChecksTest(unittest.TestCase):
 
     def test_each_side_runs_in_its_own_tree_non_interactively_with_its_output_kept(self):
         self.both("marker")
+        no_ci = {name: value for name, value in os.environ.items() if name != "CI"}  # GitHub Actions sets CI=true
         code, checks, table = run_checks(self.base, self.head, self.out,
-                                         'env=pwd; echo "CI=$CI"; test -t 0 && exit 1; exit 0')
+                                         'env=pwd; echo "CI=$CI"; test -t 0 && exit 1; exit 0', env=no_ci)
         self.assertEqual(checks["env"]["verdict"], "ok", table)
         base_log = (self.out / "env.base.log").read_text()
         self.assertIn(str(self.base.resolve()), base_log)
         self.assertIn("CI=1", base_log)
         self.assertIn(str(self.head.resolve()), (self.out / "env.head.log").read_text())
+
+    def test_a_ci_value_already_set_is_kept(self):
+        # Run inside CI, the checks see CI's own value, as they would there.
+        self.both("marker")
+        code, checks, table = run_checks(self.base, self.head, self.out, 'env=echo "CI=$CI"',
+                                         env=dict(os.environ, CI="true"))
+        self.assertEqual(checks["env"]["verdict"], "ok", table)
+        self.assertIn("CI=true", (self.out / "env.base.log").read_text())
 
     def test_a_malformed_or_duplicate_check_is_a_usage_error(self):
         code, checks, table = run_checks(self.base, self.head, self.out, "no-equals-sign")
