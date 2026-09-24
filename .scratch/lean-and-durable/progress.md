@@ -2,13 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: Finish ticket 04 (the live evidence: the routing harness, the plugin eval and a headless /compact, and its record), then implement ticket 05 in a fresh session.
+Next: Implement ticket 05 (specs, tickets and builds keep the progress file) in a fresh session; tickets 02, 03 and 06 are also unblocked.
 Updated: 2026-09-25
-Ticket: 04
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`).
-- In progress: ticket 04 (the progress file and the resume note), built and reviewed on local `main`, not pushed; its live evidence is next. The user chose 04 first, so that every later `/clear` resumes by itself. Tickets 02, 03 and 06 are also unblocked.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`), and ticket 04 (the progress file and the resume note), integrated on local `main`, not pushed; its record is in the ticket's Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -88,7 +86,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 01 | Release 3.2.1 (done: `3a234bd`, deployed 2026-09-25) | none |
 | 02 | The gate sees every shell and stops tripping on quotes (sensitive) | 01 |
 | 03 | Typed skills, the lapse hint, a calmer done-check (sensitive) | 01 |
-| 04 | Progress file and resume note, end to end through the grill (in progress, on local `main`) | 01 |
+| 04 | Progress file and resume note, end to end through the grill (done, on local `main`) | 01 |
 | 05 | Specs, tickets and builds keep the progress file | 04 |
 | 06 | pr-review under the cap, scripts without prompts | 01 |
 | 07 | A pr-review batch resumes | 04, 06 |

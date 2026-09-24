@@ -545,3 +545,82 @@ The pull requests were closed and their branches deleted afterwards.
 - The gate as of `bf2aa58`, which came after the run and is unit- and hook-tested.
 - Every model but the one above.
 
+
+## 3.3, ticket 04: a grill resumed from its progress file, 2026-09-25
+
+Ticket 04 added three things:
+- **The progress file,** `.scratch/<feature>/progress.md`, in the format `plugin/skills/using-matt-pocock-skills/references/progress-file.md` fixes.
+- **The resume note** that the session-start hook builds from it at startup, resume, `/clear`, compaction and fork.
+- **The grill's side:** it keeps the file, resumes from it, and asks every independent question at once.
+
+`scripts/test.sh` is the deterministic proof: the hook suite's cases for each source, the size caps, the planted file. What follows is the live evidence. It ran on candidate `4f20cb6`, the plugin as reviewed. The commit after it, `78f928c`, changes only the harness and the case's `expect.json`, no skill or hook. Setup: Claude Code 2.1.282, macOS 15.8, and `claude -p` runs that report `claude-opus-5-5[1m]`.
+
+**The scenario, `resume-grill`.**
+- **The fixture:** OrderKit, set up for Seams (a local-markdown issue tracker), with an uncommitted `.scratch/gift-cards/progress.md` from a grill stopped halfway.
+- **The file records** three settled decisions and two open questions:
+  - does the gift card apply before or after the tier discount?
+  - what happens to an amount held for a checkout that fails out of stock?
+- **The prompt names no feature:** "Let's continue where we left off."
+- **The expectation:**
+  - the first skill is `matt-pocock-workflow:grill`;
+  - the run reads the progress file;
+  - its reply takes up both open questions;
+  - nothing is refused.
+
+**The routing harness:** `python3 scripts/behavior_test.py run --scenario resume-grill --arm plugin --assert`, three runs.
+- **The first judgement was 2 of 3.**
+  - Run 1 read the progress file with `cat` inside one shell command. The `reads` expectation counted only Read calls, with a pattern anchored at the end of a path.
+  - The run itself did what the case asks.
+  - `78f928c` makes the harness count a read-only shell command that names the file, with a test.
+- **The three saved streams were re-scanned** with it, and nothing was re-run. `report` on those records gives:
+
+Candidate: `4f20cb6`; model: `claude-opus-5-5[1m]`; 3 runs.
+
+| Scenario | Expected first skill | Runs | Matched | Refused | Failed calls | Errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `resume-grill` | `matt-pocock-workflow:grill` | 3 | 3 | 0 | 0 | 0 |
+
+What all three runs did:
+- They invoked the grill first, re-read the progress file, the code and the git state, and opened by saying the settled decisions stand.
+- They reported two mismatches found in the code as facts: the glossary's Reservation means stock, and `Inventory` has no `release`.
+- They asked both open questions in one round, and asked no settled decision again. Two of the three also asked a third, independent question (a glossary term), which is the grill's new pace.
+- They made 0 refusals and 0 failed calls, in 31 to 40 seconds each.
+
+**Compaction, headless.** One session in a fresh copy of the same fixture, run as four `claude -p` calls with the harness's settings and `--plugin-dir plugin`, streams kept under `tests/runs/ticket-04/compact/`:
+1. **`claude -p "Let's continue where we left off."`**
+   - The hook's note named gift-cards at stage designing.
+   - The grill resumed and asked both open questions.
+2. **`claude -p --resume <id> "The gift card applies after the tier discount. I haven't decided the out-of-stock question yet, so keep it open."`**
+   - The hook ran again with source `resume`, and the note came with it.
+   - A typed answer starts a new gate request, so the grill was invoked again before the update, and nothing was refused.
+   - The progress file gained decision 4 and a new `Next`, and `CONTEXT.md` gained a Gift card entry.
+   - The out-of-stock question stayed open, as asked.
+   - The next question, whether two checkouts can spend the same card at once, came alone, as a security question.
+3. **`claude -p --resume <id> "/compact"`**
+   - A manual compaction, from 57,970 to 10,745 tokens.
+   - The hook ran with source `compact` and re-injected the note with the file's updated `Next`.
+   - The notice reached the stream as "SessionStart:compact says: Seams: resuming gift-cards (designing): Ask the concurrent-redemption (double-spend) question alone; the out-of-stock hold stays open until the user decides."
+4. **`claude -p --resume <id> "Let's continue."`**
+   - The grill was invoked again and the git state re-checked.
+   - The reply said decisions 1 to 4 are settled, asked the pending double-spend question, and kept the out-of-stock question open. It did not start over.
+   - It did not re-read the progress file itself: what the compaction kept was enough, and the file had not changed since step 2.
+
+The four calls cost $0.35, $0.51, $0.59 and $0.96.
+
+**`claude plugin eval`:** `claude plugin eval plugin --case resume-grill --scaffold --runs 1 --trust-plugin`, one run with the plugin and one without. It took 53 s and cost $0.29, judge included. The result document does not name the model; no `--model` was given.
+
+| Case | With | Without | Δ | Expected skill fired | Runs per arm | Runs with an error |
+| --- | --- | --- | --- | --- | --- | --- |
+| `resume-grill` | 1.00 | 1.00 | +0.00 | 1 of 1 | 1 | 0 |
+
+- **Graders:** every scored grader passed in both arms: `asks-open-questions`, `continues-not-restarts` (the judge: PASS, PASS, PASS), `no-refusal` and `read-progress`.
+- **Why Δ is 0:** the baseline had no resume note. It looked around, found the only progress file under `.scratch/`, and continued from it as well ("Picking up the gift-cards design from `.scratch/gift-cards/progress.md`").
+- **What this case shows:** the resume works with the plugin. It does not show that the note was needed, since the workspace has one feature and nothing else in `.scratch/`.
+- **Not run:** a case with several features there (one done, one stale, the unfinished one not the most visible) would test that the note points at the right one.
+
+**Not exercised live.**
+- AskUserQuestion: headless runs have none, so every question came as text.
+- `/clear` itself: a fresh `claude -p` session stands for it.
+- A fork.
+- A note listing more than one feature.
+- Any model but the one above.
