@@ -125,6 +125,7 @@ class Scanner:
         self.workspace = workspace.resolve() if workspace else None
         self.record = {"model": None, "superpowers_skills": None, "first_tool": None, "label": None,
                        "skill": None, "skills": [], "skill_failed": None, "questions": None, "reads": [],
+                       "commands": [],
                        "before": [], "refusals": 0, "late_refusals": 0, "failed_calls": 0, "denials": 0,
                        "undeclared": 0, "text": "", "result": None, "result_subtype": None,
                        "result_error": None, "output_tokens": None, "text_questions": None,
@@ -221,6 +222,7 @@ class Scanner:
             info["change"] = bool(info["label"])
             if not info["change"]:
                 self.record["before"].append(name)
+                self.record["commands"].append(inputs.get("command") or "")
         elif name == "Skill":
             info["skill"] = inputs.get("skill")
             self.record["skills"].append(info["skill"])
@@ -407,8 +409,8 @@ def expectation(scenario: str) -> Optional[dict]:
     """plugin/evals/<scenario>/expect.json: the first skill the scenario expects (`skill`, one
     name or a list of acceptable ones), whether a gate refusal is allowed in it (`refusal`),
     whether runs continue past skill calls (`past_skill`), and how many runs its evidence
-    takes (`runs`); optionally a file the run must read (`reads`, a regex one Read path must
-    match) and what its reply must mention (`reply`, regexes each found in the run's text,
+    takes (`runs`); optionally a file the run must read (`reads`, a regex that a Read path or a
+    read-only shell command must match) and what its reply must mention (`reply`, regexes each found in the run's text,
     case-insensitive), which is how a resumed grill shows it read its progress file and asked
     the questions recorded there. None when there is none."""
     path = SCENARIOS / scenario / "expect.json"
@@ -467,7 +469,8 @@ def judge_run(record: dict, expect: dict) -> "tuple[str, str]":
     refusals = record.get("refusals") or 0
     if refusals and not expect["refusal"]:
         return "miss", f"{_plural(refusals, 'refusal')}: a change was attempted before the route"
-    if expect["reads"] and not any(re.search(expect["reads"], path) for path in record.get("reads") or []):
+    looked = (record.get("reads") or []) + (record.get("commands") or [])     # Read calls, or `cat` and the like
+    if expect["reads"] and not any(re.search(expect["reads"], seen) for seen in looked):
         return "miss", f"never read a file matching {expect['reads']}"
     said = "\n".join(filter(None, (record.get("text"), record.get("result"))))
     for pattern in expect["reply"]:

@@ -440,6 +440,10 @@ class JudgeTest(unittest.TestCase):
         self.assertIn("1 of 3", report)
         self.assertRegex(report, r"miss\s+run 2: never read a file matching .*progress")
         self.assertRegex(report, r"miss\s+run 3: the reply does not mention .*tier discount")
+        # A file read through the shell counts as read: the first live run did exactly that.
+        code, report = judge(record("resume-grill", 1, skill=grill, reads=["/runs/1/workspace/CONTEXT.md"],
+                                    commands=["cat .scratch/gift-cards/progress.md; git status --short"], result=asked))
+        self.assertEqual(code, 0, report)
 
     def test_a_scenario_without_an_expectation_file_fails_loudly(self):
         code, report = judge(record("no-such-scenario", 1, skill=self.TRIVIAL))
@@ -610,6 +614,15 @@ class PastSkillTest(unittest.TestCase):
                  result("Does the gift card apply before or after the tier discount?"),
                  past_skill=True)
         self.assertEqual(r["reads"], ["/ws/CONTEXT.md", "/ws/.scratch/gift-cards/progress.md"])
+
+    def test_read_only_shell_commands_are_recorded_and_changes_are_not(self):
+        r = scan(INIT,
+                 assistant(tool("Skill", skill="matt-pocock-workflow:grill")),
+                 assistant(tool("Bash", command="cat .scratch/gift-cards/progress.md; git status --short", id="t1")),
+                 tool_result("t1", "Status: active"),
+                 assistant(tool("Bash", command="echo x > notes.txt", id="t2")),
+                 past_skill=True)
+        self.assertEqual(r["commands"], ["cat .scratch/gift-cards/progress.md; git status --short"])
 
     def test_an_edit_still_stops_the_scan(self):
         r = scan(INIT,
