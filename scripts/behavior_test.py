@@ -55,6 +55,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -122,7 +123,7 @@ class Scanner:
         self.past_skill = past_skill
         self.workspace = workspace.resolve() if workspace else None
         self.record = {"model": None, "superpowers_skills": None, "first_tool": None, "label": None,
-                       "skill": None, "skills": [], "skill_failed": None, "questions": None,
+                       "skill": None, "skills": [], "skill_failed": None, "questions": None, "reads": [],
                        "before": [], "refusals": 0, "late_refusals": 0, "failed_calls": 0, "denials": 0,
                        "undeclared": 0, "text": "", "result": None, "result_subtype": None,
                        "result_error": None, "output_tokens": None, "text_questions": None,
@@ -229,6 +230,8 @@ class Scanner:
             self.record["questions"] = len(inputs.get("questions") or [])
         else:
             self.record["before"].append(name)
+            if name == "Read" and isinstance(inputs.get("file_path"), str):
+                self.record["reads"].append(inputs["file_path"])
         self.pending[call_id] = info
         if self._commits(info) and self.awaiting is None and self.record["first_tool"] is None:
             self._take(call_id, info, message_id)
@@ -403,14 +406,17 @@ def expectation(scenario: str) -> Optional[dict]:
     """plugin/evals/<scenario>/expect.json: the first skill the scenario expects (`skill`, one
     name or a list of acceptable ones), whether a gate refusal is allowed in it (`refusal`),
     whether runs continue past skill calls (`past_skill`), and how many runs its evidence
-    takes (`runs`). None when there is none."""
+    takes (`runs`); optionally a file the run must read (`reads`, a regex one Read path must
+    match) and what its reply must mention (`reply`, regexes each found in the run's text,
+    case-insensitive), which is how a resumed grill shows it read its progress file and asked
+    the questions recorded there. None when there is none."""
     path = SCENARIOS / scenario / "expect.json"
     if not path.is_file():
         return None
     data = json.loads(path.read_text())
     skill = data.get("skill")
     data["skill"] = [skill] if isinstance(skill, str) else list(skill or [])    # one, or any of several
-    return {"refusal": False, "past_skill": False, "runs": 5, **data}
+    return {"refusal": False, "past_skill": False, "runs": 5, "reads": None, "reply": [], **data}
 
 
 def _first_line(text: Optional[str]) -> str:
@@ -460,6 +466,12 @@ def judge_run(record: dict, expect: dict) -> "tuple[str, str]":
     refusals = record.get("refusals") or 0
     if refusals and not expect["refusal"]:
         return "miss", f"{_plural(refusals, 'refusal')}: a change was attempted before the route"
+    if expect["reads"] and not any(re.search(expect["reads"], path) for path in record.get("reads") or []):
+        return "miss", f"never read a file matching {expect['reads']}"
+    said = "\n".join(filter(None, (record.get("text"), record.get("result"))))
+    for pattern in expect["reply"]:
+        if not re.search(pattern, said, re.IGNORECASE):
+            return "miss", f"the reply does not mention {pattern}"
     return "match", ""
 
 

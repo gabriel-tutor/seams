@@ -89,9 +89,16 @@ post_skill "matt-pocock-workflow:implement"
 OUT=$(printf '{"session_id":"s1","cwd":"%s","hook_event_name":"PreToolUse","agent_id":"a1","agent_type":"general-purpose","tool_name":"Write","tool_input":{"file_path":"%s/src/b.ts","content":"x"}}' "$PROJ" "$PROJ" | hook pre-tool-use)
 [[ -z "$OUT" ]] || fail "subagent edit after the parent's declaration should pass: $OUT"
 
-# 8. Session start: clear and startup reset the ledger; compact keeps it.
+# 8. Session start: clear and startup reset the ledger; compact and resume keep it; a fork is a new
+# session, which starts with an empty ledger and leaves its parent's alone.
 start compact
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "compact should keep the ledger: $OUT"
+start resume
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "resume should keep the ledger: $OUT"
+printf '{"session_id":"s2","cwd":"%s","hook_event_name":"SessionStart","source":"fork"}' "$PROJ" | hook session-start >/dev/null
+OUT=$(printf '{"session_id":"s2","cwd":"%s","hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"%s/src/a.ts","old_string":"a","new_string":"b"}}' "$PROJ" "$PROJ" | hook pre-tool-use)
+denied "$OUT" || fail "a forked session should start with an empty ledger: $OUT"
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a fork should leave its parent's ledger alone: $OUT"
 start clear
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "clear should reset the ledger"
 post_skill "tdd"; start startup

@@ -1,8 +1,13 @@
 # Progress: lean and durable (Seams roadmap, phase 1 of 4)
 
-- Stage: designed. The grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is published at `.scratch/lean-and-durable/spec.md`, and the 14 tickets at `.scratch/lean-and-durable/issues/01–14` (all ready-for-agent).
-- Next: `implement` ticket 04 (progress file and resume note), in a fresh session. The user chose 04 first, so that every later `/clear` resumes by itself. Tickets 02, 03 and 06 are also unblocked. The design record is committed on local `main` (not pushed).
-- Base: `main` at `3a234bd`. 3.2.1 was released 2026-09-25 (ticket 01 is done), and `origin/main` is the same commit.
+Status: active
+Stage: integrated
+Next: Implement ticket 05 (specs, tickets and builds keep the progress file) in a fresh session; tickets 02, 03 and 06 are also unblocked.
+Updated: 2026-09-25
+Ticket: 04
+
+- Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
+- Built: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`), and ticket 04 (the progress file and the resume note), on local `main`, not pushed. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -54,6 +59,7 @@
 
     Paid eval runs are asked before each run.
 17. Release: 3.2.1 is released first, through `release` and the user's yes. Phase 1 ships as 3.3.0, and later phases as 3.4, 3.5 and 3.6.
+18. A bounded change's grill (the next step is `tdd`: no spec, no `implement`) closes its own progress file: its `Next` says to set `Status: done` in the commit that ships the change. Every grill keeps the file. (The user's choice while building ticket 04, 2026-09-25.)
 
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.
@@ -81,7 +87,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 01 | Release 3.2.1 (done: `3a234bd`, deployed 2026-09-25) | none |
 | 02 | The gate sees every shell and stops tripping on quotes (sensitive) | 01 |
 | 03 | Typed skills, the lapse hint, a calmer done-check (sensitive) | 01 |
-| 04 | Progress file and resume note, end to end through the grill | 01 |
+| 04 | Progress file and resume note, end to end through the grill (done, on local `main`) | 01 |
 | 05 | Specs, tickets and builds keep the progress file | 04 |
 | 06 | pr-review under the cap, scripts without prompts | 01 |
 | 07 | A pr-review batch resumes | 04, 06 |

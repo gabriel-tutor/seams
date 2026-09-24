@@ -427,6 +427,20 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertRegex(report, r"miss\s+run 1: first skill matt-pocock-workflow:grill, expected " + verify)
 
+    def test_a_resumed_grill_must_read_its_progress_file_and_ask_its_open_questions(self):
+        grill = "matt-pocock-workflow:grill"
+        progress = "/runs/1/workspace/.scratch/gift-cards/progress.md"
+        asked = ("Resuming gift cards: two decisions are settled.\n1. Does the gift card apply before or after "
+                 "the tier discount?\n2. When checkout fails out of stock after the hold, release at once?")
+        code, report = judge(record("resume-grill", 1, skill=grill, reads=[progress], result=asked),
+                             record("resume-grill", 2, skill=grill, reads=["/runs/2/workspace/CONTEXT.md"], result=asked),
+                             record("resume-grill", 3, skill=grill, reads=[progress],
+                                    result="What should a gift card be: a code, or a physical card?"))
+        self.assertEqual(code, 1)
+        self.assertIn("1 of 3", report)
+        self.assertRegex(report, r"miss\s+run 2: never read a file matching .*progress")
+        self.assertRegex(report, r"miss\s+run 3: the reply does not mention .*tier discount")
+
     def test_a_scenario_without_an_expectation_file_fails_loudly(self):
         code, report = judge(record("no-such-scenario", 1, skill=self.TRIVIAL))
         self.assertEqual(code, 1)
@@ -587,6 +601,15 @@ class PastSkillTest(unittest.TestCase):
         self.assertEqual(r["skill"], "matt-pocock-workflow:grill")
         self.assertEqual(r["skills"], ["matt-pocock-workflow:grill", "domain-modeling"])
         self.assertEqual(r["text_questions"], 1)
+
+    def test_the_files_read_are_recorded_in_order(self):
+        r = scan(INIT,
+                 assistant(tool("Read", file_path="/ws/CONTEXT.md", id="t1")),
+                 assistant(tool("Skill", skill="matt-pocock-workflow:grill")),
+                 assistant(tool("Read", file_path="/ws/.scratch/gift-cards/progress.md", id="t2")),
+                 result("Does the gift card apply before or after the tier discount?"),
+                 past_skill=True)
+        self.assertEqual(r["reads"], ["/ws/CONTEXT.md", "/ws/.scratch/gift-cards/progress.md"])
 
     def test_an_edit_still_stops_the_scan(self):
         r = scan(INIT,

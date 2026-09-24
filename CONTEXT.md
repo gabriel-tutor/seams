@@ -58,11 +58,11 @@ The furthest point a piece of work has evidence for: designed, built, integrated
 _Avoid_: gate (that is the hook), phase, status
 
 **Progress file**:
-A feature's durable record of work in progress, kept beside its spec: the grill's settled decisions and open questions, the ticket in progress, the candidate, the stage and the next step. Unlike the ledger, it outlives the session.
+A feature's durable record of work in progress, kept beside its spec: the grill's settled decisions and open questions, the ticket in progress, the candidate, the stage and the next step. Unlike the ledger, it outlives the session. It is committed with the work it describes, so it holds decisions and pointers only.
 _Avoid_: state file, work log, notes
 
 **Resume note**:
-The few factual lines the session-start hook injects from the progress files at startup, resume, `/clear`, compaction and fork, so a fresh context continues where the work stopped.
+The few factual lines the session-start hook injects from the active progress files (the newest three) at startup, resume, `/clear`, compaction and fork, so a fresh context continues where the work stopped; the user sees a one-line notice of it. It is data and a pointer: a skill re-reads the spec, the tickets and the git state before acting on it.
 _Avoid_: summary, handoff (that is `/handoff`)
 
 **Walking skeleton**:

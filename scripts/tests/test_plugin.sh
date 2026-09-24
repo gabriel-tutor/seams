@@ -157,6 +157,24 @@ section_says incident "$INC" "Incident handover" "Stage reached" "designed, buil
 # and the rule sits in the Presentation section, where the facts-then-one-question format is.
 section_says grill "$PLUGIN/skills/grill/SKILL.md" Presentation "already settles is not a question; the fact goes in the facts section"
 
+# The progress file (ticket 04, ADR 0003): one format, defined once beside routing.md, that the skills
+# write and the session-start hook reads. The grill keeps it from its first decision, resumes from it
+# instead of starting over, closes it itself when no later skill will, and asks every independent
+# question at once while a risky one still comes alone.
+PF="$PLUGIN/skills/using-matt-pocock-skills/references/progress-file.md"
+[[ -f "$PF" ]] || fail "progress-file.md missing"
+must_say progress-file.md "$PF" "\`.scratch/<feature>/progress.md\`" "Status: active" "Stage: designing" "Next: " "Updated: " \
+  "\`Ticket\`" "\`Candidate\`" "## Decisions" "## Open questions" "## Facts" "\`done\`" "is skipped" "200 characters" \
+  "Decisions and pointers only" "never a secret" "personal data" "committed" "a pointer, not the truth" "report the mismatch"
+GRILL="$PLUGIN/skills/grill/SKILL.md"
+section_says grill "$GRILL" Presentation "up to four in one AskUserQuestion call" "A gate, security or destructive question is asked alone"
+section_says grill "$GRILL" "Progress file" "\`.scratch/<feature>/progress.md\`" "references/progress-file.md" \
+  "at the first settled decision" "After each answered round" "never a secret"
+section_says grill "$GRILL" Resuming "resume note" "the spec, the tickets" "git state" "mismatch" \
+  "Settled decisions are not asked again" "recorded open questions"
+section_says grill "$GRILL" Done "\`Next\`" "set \`Status: done\` in the commit that ships the change"
+must_say routing.md "$PLUGIN/skills/using-matt-pocock-skills/references/routing.md" "\`.scratch/<feature>/progress.md\`" "progress-file.md"
+
 # The grill's design lens: present, and referenced from the grill.
 [[ -f "$PLUGIN/skills/grill/references/design-lens.md" ]] || fail "design-lens.md missing"
 grep -q "references/design-lens.md" "$PLUGIN/skills/grill/SKILL.md" || fail "grill does not reference the design lens"

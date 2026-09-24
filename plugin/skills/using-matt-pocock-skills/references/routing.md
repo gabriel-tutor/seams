@@ -41,7 +41,7 @@ The four Superpowers copies, named with their prefix because the Superpowers ori
 
 ## Durable state
 
-The durable state is the spec, the tickets, `CONTEXT.md` and the ADRs (`docs/agents/issue-tracker.md` says where the first two live). A ticket resumed in a fresh context reads them and never relies on chat memory; what a phase decided and did not write down there is lost by design, so write it down there.
+The durable state is the spec, the tickets, `CONTEXT.md`, the ADRs (`docs/agents/issue-tracker.md` says where the first two live) and the feature's progress file, `.scratch/<feature>/progress.md`: what the work has settled so far, its stage and its next step, in the format `progress-file.md` beside this file describes. At every session start the resume note lists the active ones. Work resumed in a fresh context reads them and never relies on chat memory; what a phase decided and did not write down there is lost by design, so write it down there.
 
 ## Phase boundaries
 
