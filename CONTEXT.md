@@ -9,7 +9,7 @@ The first skill a request is sent to, chosen from the bootstrap's table by the r
 _Avoid_: classification, triage (that word belongs to `/triage`)
 
 **Bootstrap**:
-The routing policy injected into every session at start, clear and compaction.
+The routing policy injected into every session at start, resume, clear, compaction and fork.
 _Avoid_: system prompt, preamble
 
 **Declaration**:
@@ -54,11 +54,11 @@ What every candidate that ships must meet: a definition of done covering how the
 _Avoid_: perfection, gold-plating, bare minimum, best effort
 
 **Stage**:
-The furthest point a piece of work has evidence for: designed, built, integrated, release-ready, deployed, operated. A handover names it.
+The furthest point a piece of work has evidence for: designed, built, integrated, release-ready, deployed, operated. A handover names it; until the design is agreed, a progress file says `designing`.
 _Avoid_: gate (that is the hook), phase, status
 
 **Progress file**:
-A feature's durable record of work in progress, kept beside its spec: the grill's settled decisions and open questions, the ticket in progress, the candidate, the stage and the next step. Unlike the ledger, it outlives the session. It is committed with the work it describes, so it holds decisions and pointers only.
+A feature's durable record of work in progress, kept beside its spec: the grill's settled decisions and open questions, the ticket in progress, the candidate, the stage and the next step. Unlike the ledger, it outlives the session. It is committed with the work it describes, so it holds decisions and pointers only. Its `Status` says whether work remains (`active`) or the feature is finished (`done`); that is not its Stage.
 _Avoid_: state file, work log, notes
 
 **Resume note**:

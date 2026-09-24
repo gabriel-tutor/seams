@@ -169,7 +169,8 @@ must_say progress-file.md "$PF" "\`.scratch/<feature>/progress.md\`" "Status: ac
 GRILL="$PLUGIN/skills/grill/SKILL.md"
 section_says grill "$GRILL" Presentation "up to four in one AskUserQuestion call" "A gate, security or destructive question is asked alone"
 section_says grill "$GRILL" "Progress file" "\`.scratch/<feature>/progress.md\`" "references/progress-file.md" \
-  "at the first settled decision" "After each answered round" "never a secret"
+  "at the first settled decision" "After each answered round" "never a secret" \
+  "typed as a message" "invoke \`matt-pocock-workflow:grill\` again before the update"
 section_says grill "$GRILL" Resuming "resume note" "the spec, the tickets" "git state" "mismatch" \
   "Settled decisions are not asked again" "recorded open questions"
 section_says grill "$GRILL" Done "\`Next\`" "set \`Status: done\` in the commit that ships the change"

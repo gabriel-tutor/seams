@@ -18,7 +18,7 @@ Restart Claude Code, open any repo, and say one of these:
 | --- | --- |
 | *"check what this repo has and what it's missing"* | a `foundations` survey: run and verify commands, lint, hooks, CI, glossary, boundaries, and the production basics (pipeline, environments, backups, monitoring, scanning); gaps reported, fixes offered, nothing written without a yes |
 | *"X is broken when Y"* | `diagnosing-bugs`: a reproducing loop first, then ranked hypotheses, then a regression test, then the fix |
-| *"add <feature>"* | a design grill, one clickable question at a time, until nothing is assumed; then implementation with tests first, a commit, a review of it, and a handover |
+| *"add <feature>"* | a design grill in clickable questions, every independent one at once, recorded in the feature's progress file as answers land, until nothing is assumed; then implementation with tests first, a commit, a review of it, and a handover |
 | *a typo fix* | the `trivial` declaration, the edit, and the narrowest check that proves it |
 | *"ship it"*, *"deploy to staging"* | `release`: a readiness table where anything unmet blocks, a deploy only after a yes that names the candidate, the environment and the target, verification that the exact candidate runs, an operations handover |
 | *"production is down"* | `incident`: who is affected and what changed last, the safest reversible containing action behind a yes, restore and confirm, and only then the diagnosis |
@@ -66,16 +66,17 @@ flowchart LR
     B -.repo not set up.-> FO["foundations<br/>(once per repo)"]
 ```
 
-### 2. Design: the grill, one question at a time
+### 2. Design: the grill, every independent question at once
 
 ```mermaid
 flowchart LR
-    G["Facts from the code<br/>+ one decision, clickable<br/>(what the code or an earlier answer<br/>settles is a fact, not a question)"] --> Q{frontier<br/>empty?}
+    G["Facts from the code<br/>+ up to four independent decisions, clickable<br/>(what the code or an earlier answer<br/>settles is a fact, not a question)"] --> Q{frontier<br/>empty?}
     Q -->|no| G
     Q -->|yes| L["Design lens, 10 axes<br/>data · seams · failure modes · scale · security<br/>observability · rollout · testing · operability · cost"]
     L -->|unsettled axis| G
     L -->|all settled| C{shared<br/>understanding?}
     G -.term resolved,<br/>hard-to-reverse decision.-> CX[(CONTEXT.md<br/>docs/adr)]
+    G -.each answered round.-> PF[(progress file<br/>.scratch/feature/progress.md)]
     C -->|bounded change| T["tdd"]
     C -->|fits one session| I["implement"]
     C -->|several sessions| SP{write the<br/>spec?}
@@ -225,7 +226,7 @@ That runs `foundations`: a survey of run and verify commands, lint, pre-commit h
 
 > *"Add gift card support: customers should be able to pay part of an order with a gift card balance."*
 
-Claude invokes the grill before touching anything, asks one question at a time, and offers the next step when the design converges. To confirm it's live, start a fresh session and ask which skill applies to a bug fix; it should name `diagnosing-bugs`. To see the gate, ask for a file to be written with no process; the refusal above is what comes back, and the next call is a declaration.
+Claude invokes the grill before touching anything, asks every independent question at once (a gate, security or destructive question alone), keeps the answers in the feature's progress file, and offers the next step when the design converges. To confirm it's live, start a fresh session and ask which skill applies to a bug fix; it should name `diagnosing-bugs`. To see the gate, ask for a file to be written with no process; the refusal above is what comes back, and the next call is a declaration.
 
 ### Turning it off
 

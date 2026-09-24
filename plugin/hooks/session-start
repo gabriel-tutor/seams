@@ -23,7 +23,7 @@ import os
 import re
 import sys
 import unicodedata
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
@@ -112,21 +112,24 @@ NOTE_CAP = 1500                                # characters the note adds to the
 FIELD_CAP = 200                                # characters per field, once it is plain text
 HEAD_BYTES = 8192                              # the header is at the top: a huge file costs no more
 HEADER_LINE = re.compile(r"^([A-Za-z]+)\s*:\s*(.*)$")
-DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?!\d)")    # a time may follow: 2026-09-25T10:00
+DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?(?!\d)")   # a time may follow
 TAG = re.compile(r"<[^<>]*>")
 ENTITY = re.compile(r"&#?[A-Za-z0-9]+;")
-MARKUP = set("`*#<>[]|")
+MARKUP_RUNS = re.compile(r"_{2,}|~{2,}|!(?=\[)")    # emphasis, strikethrough, an image's "!"
+MARKUP = set("`*#<>[]|")                       # a single _ or ~ stays: identifiers and ~/ paths use them
 
 
-def plain(text: str, cap: int = FIELD_CAP) -> str:
-    """`text` as one line of plain text of at most `cap` characters. A cloned repository controls
-    the progress files, so tags, entities, markup characters and invisible ones (controls, terminal
-    escapes, zero-width and direction marks) are removed and whitespace is flattened: nothing in a
-    field can open a section, close a wrapper, look like code or reach the terminal."""
-    text = ENTITY.sub(" ", TAG.sub(" ", " ".join(text.split())))
-    text = "".join(c for c in text if c not in MARKUP and not unicodedata.category(c).startswith("C"))
-    text = " ".join(text.split())
-    return text if len(text) <= cap else text[:cap - 1].rstrip() + "…"
+def plain(text: str) -> str:
+    """`text` as one line of plain text of at most FIELD_CAP characters. A cloned repository controls
+    the progress files, so invisible characters (controls, terminal escapes, zero-width and direction
+    marks) are removed, tags, entities and markup become spaces, and whitespace is flattened: nothing
+    in a field can open a section, close a wrapper, look like code or reach the terminal. Invisible
+    characters go first and markup turns into spaces, so no removal can join its neighbours into
+    new markup."""
+    text = "".join(c for c in " ".join(text.split()) if not unicodedata.category(c).startswith("C"))
+    text = MARKUP_RUNS.sub(" ", ENTITY.sub(" ", TAG.sub(" ", text)))
+    text = " ".join("".join(" " if c in MARKUP else c for c in text).split())
+    return text if len(text) <= FIELD_CAP else text[:FIELD_CAP - 1].rstrip() + "…"
 
 
 def progress_header(path: Path, root: Path) -> "dict | None":
@@ -135,11 +138,11 @@ def progress_header(path: Path, root: Path) -> "dict | None":
     (a symlink out of it)."""
     try:
         real = path.resolve()
-        if not real.is_relative_to(root.resolve()):
+        if not real.is_relative_to(root.resolve()) or not real.is_file():   # a FIFO would block the read
             return None
         with open(real, "rb") as f:
             text = f.read(HEAD_BYTES).decode("utf-8", errors="replace")
-    except (OSError, ValueError):
+    except (OSError, RuntimeError, ValueError):   # RuntimeError: a symlink loop, before Python 3.13
         return None
     fields: dict = {}
     for line in text.splitlines():
@@ -151,33 +154,42 @@ def progress_header(path: Path, root: Path) -> "dict | None":
     return fields
 
 
-def valid_date(text: str) -> "str | None":
-    """The YYYY-MM-DD date `text` starts with, when it is a real calendar date."""
+def updated_at(text: str) -> "datetime | None":
+    """When the file says it was updated: a real calendar date YYYY-MM-DD, with the time when one
+    follows it (2026-09-25T10:00); a date alone counts as the start of its day."""
     match = DATE.match(text)
     try:
-        return date(*map(int, match.groups())).isoformat() if match else None
+        return datetime(*(int(part or 0) for part in match.groups())) if match else None
     except ValueError:
         return None
 
 
+def modified(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def active_features(root: Path) -> list:
     """The active features recorded under <root>/.scratch/<feature>/progress.md, most recently
-    updated first, each field plain text. A file without a known Status, a Stage, a Next and a dated
-    Updated is skipped, and so is a folder whose name is not plain text: its path could not be shown
-    as it is."""
+    updated first (between two updated at the same moment, the file modified last), each field plain
+    text. A file without a known Status, a Stage, a Next and a dated Updated is skipped, and so is one
+    whose path is not plain text within a field's cap: it could not be shown as it is."""
     features = []
     for path in sorted(root.glob(".scratch/*/progress.md")):
+        shown = path.relative_to(root).as_posix()
         fields = progress_header(path, root)
-        feature = path.parent.name
-        if fields is None or plain(feature) != feature:
+        if fields is None or plain(shown) != shown:
             continue
         status = re.match(r"[a-z]*", fields.get("status", "").lower()).group()
-        updated = valid_date(fields.get("updated", ""))
+        when = updated_at(fields.get("updated", ""))
         stage, next_step = plain(fields.get("stage", "")), plain(fields.get("next", ""))
-        if status == "active" and updated and stage and next_step:
-            features.append({"feature": feature, "stage": stage, "next": next_step, "updated": updated,
-                             "path": path.relative_to(root).as_posix()})
-    return sorted(features, key=lambda f: f["updated"], reverse=True)
+        if status == "active" and when and stage and next_step:
+            features.append({"feature": path.parent.name, "stage": stage, "next": next_step,
+                             "updated": when.date().isoformat(), "path": shown,
+                             "order": (when, modified(path))})
+    return sorted(features, key=lambda f: f["order"], reverse=True)
 
 
 def resume_note(root: Path) -> "tuple[str, str] | None":
@@ -234,8 +246,9 @@ def handle(event: dict) -> dict:
         traceback.print_exc(file=sys.stderr)
         note = None
     if note:
-        output["hookSpecificOutput"]["additionalContext"] += note[0]
-        output["systemMessage"] = note[1]
+        text, notice = note
+        output["hookSpecificOutput"]["additionalContext"] += text
+        output["systemMessage"] = notice
     return output
 
 

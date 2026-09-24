@@ -147,7 +147,7 @@ Seams 3.3 keeps the workflow exactly as it is, and makes it lean and durable.
   - Then come sections for the grill's decisions, what is still open, and the facts gathered that are worth keeping.
   - It holds decisions and pointers only, never secrets, credentials or personal data.
 - **Who writes it:**
-  - The grill creates it at its first decision and appends each settled decision and the remaining open questions as answers land.
+  - The grill creates it at its first decision and appends each settled decision and the remaining open questions as answers land. For a bounded change (its next step is `tdd`: no spec, no `implement`), the grill's `Next` says to set `done` in the commit that ships the change (decision 18, settled while building ticket 04).
   - `to-spec` sets the stage to designed and points to the spec.
   - `to-tickets` records the ticket list and the next unblocked ticket.
   - `implement` records the ticket in progress, the candidate and the stage reached. After the last ticket it sets `done`, unless the spec has a Release section, in which case `release` sets `done` at its operations handover.

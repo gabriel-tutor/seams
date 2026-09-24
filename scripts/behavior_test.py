@@ -23,7 +23,8 @@ which starts with `Seams gate:`), or a change that failed, changed nothing, so i
       `claude plugin eval` runs as a case (prompt.md's frontmatter is the eval's; the harness
       sends the body).
       --assert judges every run against expect.json (the first skill expected; `refusal`,
-      whether a gate refusal is allowed) and exits 1 when any run is short, naming each miss
+      whether a gate refusal is allowed; `reads` and `reply`, when present, a file the run must
+      read and what its reply must mention) and exits 1 when any run is short, naming each miss
       and, apart from them, each run that was not a run at all: a timeout, a process that
       exited without a result, an error result, a reply with no tokens, a permission denial by
       the harness's own settings.

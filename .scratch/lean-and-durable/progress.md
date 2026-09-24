@@ -2,12 +2,13 @@
 
 Status: active
 Stage: integrated
-Next: Implement ticket 05 (specs, tickets and builds keep the progress file) in a fresh session; tickets 02, 03 and 06 are also unblocked.
+Next: Finish ticket 04 (the live evidence: the routing harness, the plugin eval and a headless /compact, and its record), then implement ticket 05 in a fresh session.
 Updated: 2026-09-25
 Ticket: 04
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Built: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`), and ticket 04 (the progress file and the resume note), on local `main`, not pushed. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`).
+- In progress: ticket 04 (the progress file and the resume note), built and reviewed on local `main`, not pushed; its live evidence is next. The user chose 04 first, so that every later `/clear` resumes by itself. Tickets 02, 03 and 06 are also unblocked.
 
 ## Decisions
 
@@ -87,7 +88,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 01 | Release 3.2.1 (done: `3a234bd`, deployed 2026-09-25) | none |
 | 02 | The gate sees every shell and stops tripping on quotes (sensitive) | 01 |
 | 03 | Typed skills, the lapse hint, a calmer done-check (sensitive) | 01 |
-| 04 | Progress file and resume note, end to end through the grill (done, on local `main`) | 01 |
+| 04 | Progress file and resume note, end to end through the grill (in progress, on local `main`) | 01 |
 | 05 | Specs, tickets and builds keep the progress file | 04 |
 | 06 | pr-review under the cap, scripts without prompts | 01 |
 | 07 | A pr-review batch resumes | 04, 06 |
@@ -99,7 +100,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 13 | Docs: resuming, surfaces, off switches, measuring, versions | 02, 03, 07, 10, 12 |
 | 14 | Release 3.3.0 | 01–13 |
 
-## Open for phase 1
+## Open questions
 
 - Nothing open in the design. The grill's frontier is empty and confirmed, and the spec and tickets are published.
 
@@ -138,7 +139,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
   - Core Web Vitals: LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1.
   - MCP spec revision 2026-07-28 (stateless).
 
-## Facts gathered
+## Facts
 
 All from the Claude Code docs mirror at `/Users/gabrieltutor/claude-docs/code.claude.com-docs-en`, fetched 2026-09-24:
 - After compaction, invoked skills keep their first 5,000 tokens each and 25,000 tokens in total, newest first. `SessionStart` hooks with the `compact` source re-inject. Hook-added context is summarized. (`context-window`, `skills` §Skill content lifecycle)
