@@ -2,8 +2,9 @@
 
 Status: active
 Stage: integrated
-Next: Implement ticket 06 (pr-review under the cap, scripts without prompts) in a fresh session: it is the only unblocked ticket, and it unblocks 07 and 08.
+Next: Review ticket 06's build commit on main against 5949492 (code-review, then fixes), then the live headless pr-review run on the final candidate, then the record commit and the definition of done.
 Updated: 2026-09-25
+Ticket: 06
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell) and ticket 03 (typed skills, the lapse hint, the done-check as feedback), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
@@ -63,6 +64,7 @@ Updated: 2026-09-25
 20. A ticket resumed in a fresh session continues without `implement`'s gate question when the progress file's ticket, branch and candidate match the git state: the yes given when the ticket started still covers it. A mismatch is reported and asked about instead. (The user's choice while building ticket 05, 2026-09-25.)
 21. The resume note names a ticket in progress, in at most 60 characters, and says that `implement` continues it, as it says the grill continues a grill in progress. A resumed ticket then routes as reliably as a resumed grill. (Made while building ticket 05, beyond its criteria, and not the user's choice; the review flagged it, and the user may revert it.)
 22. A message that types its own route gets no lapse hint: its request is already declared, so no change would be refused, and a hint would say otherwise. (Made while building ticket 03, beyond the letter of its criteria; the review flagged it, and the user left it to Claude on 2026-09-25, so it stands.)
+23. `pr-review` splits into six references, not four: `checkout.md` and `review.md` (Understand and Review) join `batch.md`, `checks.md`, `draft-and-post.md` and `cleanup.md`. 3.2.1's Gate, Checkout, Understand, Review and handover alone were 11,443 bytes, over the bound before any frontmatter. The core keeps the standing rules, the Gate, every step's heading and must-holds, severity, the verdict and the handover. (Made while building ticket 06, beyond the ticket's list; not the user's choice.)
 
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.
@@ -148,4 +150,6 @@ All from the Claude Code docs mirror at `/Users/gabrieltutor/claude-docs/code.cl
 - Hook `additionalContext` is capped at 10,000 characters and should be written as facts. `SessionStart` sources are `startup`, `resume`, `clear`, `compact` and `fork`. `PreCompact` can only block. `PostCompact` has no decision control. (`hooks`)
 - Skill frontmatter includes `model`, `effort`, `context: fork`, `agent`, `background`, `paths`, `hooks` and `when_to_use`. Descriptions are capped at 1,536 characters, and the skill listing gets 1% of the context window. `/skill-doctor` needs v2.1.252 or later. (`skills`)
 - A plugin output style with `force-for-plugin: true` overrides the user's style. A plugin-root CLAUDE.md is not loaded. `claude plugin details` shows each component's token cost. `claude plugin eval` needs v2.1.269 or later. (`output-styles`, `plugins-reference`, `plugin-evals`)
+- `${CLAUDE_SKILL_DIR}` is filled in only in SKILL.md and its `allowed-tools` Bash rules, never in a file the skill reads later. An `allowed-tools` grant lasts for the turn that invoked the skill and clears at the user's next message. An allow rule doesn't match past a leading assignment of a variable outside a known-safe set, and each part of a compound command must match on its own. (`skills` §Available string substitutions and §Pre-approve tools; `permissions` §Compound commands and §Wrappers; checked while building ticket 06)
+- Subagents nest up to three levels below the main conversation by default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`); at most 20 run at once (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, "Concurrent subagent limit reached"); AskUserQuestion is never among a subagent's tools. (`sub-agents`)
 - Ten parallel readers covered all 276 files, 276 of 276 read in full: parts 1–10 read 16, 23, 19, 50, 21, 37, 29, 40, 1 and 40 files. Their key facts are folded into the decisions above.
