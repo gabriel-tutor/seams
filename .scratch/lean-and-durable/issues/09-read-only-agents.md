@@ -26,3 +26,10 @@ The gate refuses any project change either agent attempts. The grill, `to-spec`,
 - `scripts/test.sh` runs the static checks and the gate's unit cases for these agent types.
 - `claude plugin validate --strict plugin`.
 - The eval case through `claude plugin eval`. The run is paid, so ask first.
+
+## Comments
+
+From ticket 08 (2026-09-25, decision 26): the agents' descriptions count toward always-on cost.
+- **The static test's limit:** it holds the listing, every skill's and agent's name and description, to 2,650 characters. The listing is at 2,496, so 154 are left. `matt-pocock-workflow:scout: ` and `matt-pocock-workflow:reviewer: ` take 59 of them, which leaves about 95 for the two descriptions.
+- **By `claude plugin details`:** the plugin is at about 825 tokens, and ticket 14 needs 873 or fewer (25% below 3.2.1's 1,165).
+- **So keep the descriptions short.** Each skill names the agent it delegates to, so a description doesn't need to route.

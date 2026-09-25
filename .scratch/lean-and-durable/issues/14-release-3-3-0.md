@@ -22,3 +22,11 @@
 - The `release` skill's readiness table, with each row's command output.
 - `git fetch`, then `git rev-parse origin/main`.
 - A new session's resume note, and `claude plugin details`, showing 3.3.0.
+
+## Comments
+
+From ticket 08 (2026-09-25, decision 26): quote both always-on figures.
+- **By `claude plugin details`:** 3.2.1 (`3a234bd`) was about 1,165 tokens; after ticket 08 it is about 825.
+- **What Claude sees:** the listing without `pr-review`, whose description Claude Code keeps out of context (`disable-model-invocation`). It was 2,852 characters in 3.2.1 and is 2,307 after ticket 08, 19% less.
+- **The part Seams owns** went from 2,058 to 1,513 characters, 26.5% less. The rest is the three byte-identical Superpowers copies.
+- **Measure the candidate the same way, after ticket 09's agents:** `claude --plugin-dir plugin plugin details matt-pocock-workflow`, and the listing the way `scripts/tests/test_plugin.sh` counts it.
