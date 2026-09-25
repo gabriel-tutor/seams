@@ -833,6 +833,13 @@ Neither run named a model, and the two reported different defaults. No step need
 - 2,000 with expansions crash nothing on Python 3.9.6;
 - 4,000 more, 2,000 on each interpreter, match a restatement of the rules at every step (the declarations and the gate's decision). The same check finds 279 mismatches in 1,000 sequences on `f32ec75`.
 
+**The unit suite's intermittent failure, found.** The definition of done on the first record, `c57768e`, saw `scripts/test.sh` fail once on Python 3.14.6, in `test_pr_review`'s `test_a_limit_that_resets_far_off_is_not_waited_for`. Ticket 04 had seen this suite fail once in nine runs without catching which test failed.
+- **Not reproduced by:** 60 runs of the test alone, 200 more eight at a time, and 8 full suite runs in parallel.
+- **Reproduced every time by** starting the test in a minute's last second. Started at second 59.1 it failed ("'20:33' not found in … lifts at 20:34 …"); started at second 30 it passed.
+- **The cause:** `delay()` waits a second past GitHub's primary-limit reset, and `post_reviews.py` printed the lift time as now plus that wait, so a reset at hh:mm:59 was reported as the next minute.
+- **The fix, `f3a83bb`:** `delay()` also returns when the limit lifts, and the message prints that. The test now puts the reset at a minute's 59th second, so it failed every time on the old code; it passes on both interpreters.
+- **Checked:** the unchanged test, started at second 59.1 against the fixed script, passes.
+
 **Not exercised live.**
 - A stacked command through Seams' hooks in an interactive session: the capture used only a logging hook.
 - A skill only the user can type, lapsing.
