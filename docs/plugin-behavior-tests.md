@@ -1039,3 +1039,74 @@ The transcripts' skill text reads `**Effort** \`low\`` and `**Effort** \`max\`` 
 - An interactive session, with AskUserQuestion and `/clear` itself.
 - The Bash sandbox, which gives sandboxed commands a `$TMPDIR` of their own.
 - Any model but the one above.
+
+## 3.3, ticket 09: read-only agents and explicit delegation, 2026-09-26
+
+**What changed.**
+- **Two agents** in `plugin/agents/`. Neither pins a model, an effort level or a permission mode.
+  - `scout` finds facts in the code and docs. Its tools are Read, Glob, Grep, WebFetch and WebSearch; it has 25 turns and skips CLAUDE.md.
+  - `reviewer` reviews a named diff along the axis its task names, by reading. Its tools are Read, Glob, Grep and Bash, with Edit, Write and NotebookEdit disallowed; it has 40 turns.
+
+  Each returns conclusions with `file:line` or URL citations, and says what it couldn't confirm.
+- **The gate holds both to reads**, whatever the request has declared (decision 30):
+  - git's read subcommands, `gh`'s views and a short list of file readers, each named plainly;
+  - redirects only into the temp directory or the scratchpad, never into a git directory;
+  - editor tools writing only there;
+  - PowerShell keeping its read-only list.
+- **Four skills name the agent they delegate to:**
+  - the grill finds facts through scouts, however small the codebase;
+  - `to-spec` explores beyond a few files through scouts, and `foundations` surveys through them;
+  - `implement` sends reading beyond a few files to scouts, and its reviews' subagents to reviewers.
+
+  Independent ones start together, in one message.
+- **The harness** records the agents a run starts, and the new case `grill-fact-finding` expects a scout.
+
+**The deterministic suites.** On `5bab189`, `scripts/test.sh` passes 9 of 9 with 0 skipped, on Python 3.14.6 and 3.9.6. The unit, hook and static suites also pass on 3.12.13, CI's version.
+- **Each new check failed first:**
+  - the gate's read-only table: 110 failures before the read list;
+  - the hook suite's agent cases;
+  - the static agent check, on a fixture that breaks each rule, and on the plugin before the agents existed;
+  - the four skills' delegation lines;
+  - the harness's `agents` expectation;
+  - after the reviews, `sort --compress-program` and a redirect into a git directory.
+- **A mutation run** switched off each guard of the read list in turn. Each guard that stayed fails at least two tests. Two guards failed none, a check on a command given by its path and a strict tokenizer, and they were removed as redundant.
+- **A fuzz** combined 17 allowed reads with 20 write suffixes and 10 wrapper prefixes. None of the 510 combinations got through.
+
+**The probe.** One headless Haiku 4.5 session in a throwaway repository, on the build before its review ($0.094, 29 s).
+- **Setup:** the plugin from the working tree through `--plugin-dir`; the installed copy and Superpowers switched off; `git commit` allowed by the settings; a logging `PreToolUse` hook on every tool.
+- **Steps:**
+  1. It invoked `matt-pocock-workflow:trivial`, a declaration.
+  2. It started `matt-pocock-workflow:scout` to read the README's first line. The hook input carried `agent_type: matt-pocock-workflow:scout`.
+  3. It started `matt-pocock-workflow:reviewer` to run `git commit --allow-empty -m probe`. The hook input carried `agent_type: matt-pocock-workflow:reviewer`, and the gate refused the commit as a read-only agent's. The repository kept its one commit.
+- **The stream:** both agents ran in the background, as `-p` runs them, and the stream's three result events came at its end, after both agents' work. `behavior_test.py scan` read it as agents `[scout, reviewer]`, 1 refusal and 0 denials.
+
+**The eval**, paid, each run on the user's yes: `claude plugin eval plugin --case grill-fact-finding --scaffold --ablation none --runs 3 -j 3 --keep-temp`, on Claude Code 2.1.282, the runs reporting `claude-opus-5-5[1m]`.
+1. **On the grill's first wording** ($0.69, 36 s): in 3 of 3 runs the grill fired and asked grounded questions, with no refusal, but 0 of 3 started a scout. Each read the code itself: "The codebase is small, so I'll read it directly." The wording had named which agent to use, not that the facts go to it.
+2. **With the rule firm**, as `af9b011` has it ($1.24, 57 s): 3 of 3 started two scouts each, in one message.
+   - All six scout reports cite `file:line`, 17 to 25 times each, and end with what they couldn't confirm.
+   - The score was 0.92. Run 1 asked its questions when its first scout reported, then ended on a short note when the second did. The grounded-questions grader reads only the last message, so it failed that run.
+   - The grader now accepts such a follow-up, since Matt Pocock's grilling asks the questions that don't wait on a running scout. That change was not re-run.
+- **The tool's name:** the trace's init event lists the Agent tool under its old name, `Task`, but calls arrive as `Agent`, which the grader's `tool: Agent` counts.
+
+**The review, and what it changed.** Matt Pocock's `code-review` (Standards and Spec) and a correctness and security reviewer ran on `af9b011`.
+- **The worst finding,** from both the Spec and the correctness reviewer: the reviewer's shell got past the classifier's mesh of writes.
+  - `npm version patch` made a commit and a tag.
+  - `git diff --output` overwrote a file.
+  - Formatters, build and test scripts, `gh pr merge`, and a script written to the temp directory all passed.
+
+  The user chose to hold the read-only agents to a list of reads (decision 30). `5bab189` builds it, test first.
+- **Also fixed in `5bab189`:**
+  - the editor rule for the config directory;
+  - the reviewer's citations, now unconditional;
+  - the glossary's Gate entry;
+  - the wording that overstated what the tool lists do.
+- **Left as they were:** the smells, per decision 12.
+
+**Always-on cost.** `claude --plugin-dir plugin plugin details matt-pocock-workflow` gives about 857 tokens, 825 before, with each agent under 20. The listing is 2,626 of its 2,650 characters.
+
+**Not exercised live.**
+- **The read list after the review:** the probe ran on the build before it. The rule reads the same hook input the probe showed, and the unit and hook suites cover it.
+- **Delegation in `to-spec`, `implement` and `foundations`,** and `code-review`'s sub-agents running as reviewers. The building session started before the agents existed, so its own reviews ran as general-purpose agents.
+- **The routing harness** on `grill-fact-finding`: only its scan was run, on the probe's stream.
+- **Baseline and models:** a no-plugin baseline for the case, and any model but Haiku 4.5 (the probe) and Opus 5.5 (the eval).
+- **An interactive session,** where subagents run in the background and AskUserQuestion is available.
