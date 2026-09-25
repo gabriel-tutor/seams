@@ -11,6 +11,7 @@ allowed-tools:
   - Bash(gh pr diff:*)
   - Bash(gh pr checks:*)
   - Bash(gh issue view:*)
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/evidence.py *)
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/run_checks.py *)
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/review_payload.py *)
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/post_reviews.py *)
@@ -44,7 +45,7 @@ References:
 - `${CLAUDE_SKILL_DIR}/references/draft-and-post.md`: read this when the review reaches Draft.
 - `${CLAUDE_SKILL_DIR}/references/cleanup.md`: read this when the review reaches Cleanup.
 
-Scripts: `python3 ${CLAUDE_SKILL_DIR}/scripts/run_checks.py`, `python3 ${CLAUDE_SKILL_DIR}/scripts/review_payload.py`, `python3 ${CLAUDE_SKILL_DIR}/scripts/post_reviews.py` and `python3 ${CLAUDE_SKILL_DIR}/scripts/batch_report.py`. `allowed-tools` pre-approves each, and its `gh` reads, in a call that is only that command, starting exactly so, every path written out (`$EVID` too), until this turn ends. The turn ends when the session waits on background work or on an answer typed as a message, so run the scripts and the review's subagents in the foreground. After that the user's own permission settings decide; a script they refuse leaves the review drafted in `$EVID`, and the handover says so.
+Scripts: `python3 ${CLAUDE_SKILL_DIR}/scripts/evidence.py`, `python3 ${CLAUDE_SKILL_DIR}/scripts/run_checks.py`, `python3 ${CLAUDE_SKILL_DIR}/scripts/review_payload.py`, `python3 ${CLAUDE_SKILL_DIR}/scripts/post_reviews.py` and `python3 ${CLAUDE_SKILL_DIR}/scripts/batch_report.py`. `allowed-tools` pre-approves each, and its `gh` reads, in a call that is only that command, starting exactly so, every path written out (`$EVID` too), until this turn ends. The turn ends when the session waits on background work or on an answer typed as a message, so run the scripts and the review's subagents in the foreground. After that the user's own permission settings decide; a script they refuse leaves the review drafted in `$EVID`, and the handover says so.
 
 ## Gate
 
@@ -56,7 +57,7 @@ Scripts: `python3 ${CLAUDE_SKILL_DIR}/scripts/run_checks.py`, `python3 ${CLAUDE_
 
 ## Checkout
 
-Always in this session, one PR at a time, even in a batch (`checkout.md`): record the user's state once, pin each head and its baseline, and make `$EVID` with its two marked worktrees and the diff. An evidence directory without the marker stops the review for a question.
+Always in this session, one PR at a time, even in a batch (`checkout.md`): pin each head and its baseline; `evidence.py pin` names each `$EVID` and says where its review starts, reusing only what finished at the same head and baseline. Record the user's state once, then make the worktrees and diff it asks for. An evidence directory without the marker stops the review for a question.
 
 ## Batch
 

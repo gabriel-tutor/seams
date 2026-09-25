@@ -1,12 +1,15 @@
-"""The pr-review skill's four scripts, through their command lines: run_checks.py (the same checks on
-a pull request's baseline and candidate, each result attributed), review_payload.py (the review GitHub
-receives: findings anchored inside the diff, the rest in the review's body, only an event GitHub and
-the verdict allow), batch_report.py (ready to merge, per pull request, and a note per author) and
-post_reviews.py (the chosen reviews posted one at a time, paced, never twice)."""
+"""The pr-review skill's five scripts, through their command lines: evidence.py (each pull request's
+evidence directory pinned, what an earlier run finished at the same head and baseline kept, and a batch's
+progress file), run_checks.py (the same checks on a pull request's baseline and candidate, each result
+attributed), review_payload.py (the review GitHub receives: findings anchored inside the diff, the rest in
+the review's body, only an event GitHub and the verdict allow), batch_report.py (ready to merge, per pull
+request, and a note per author) and post_reviews.py (the chosen reviews posted one at a time, paced, never
+twice)."""
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +23,7 @@ RUN_CHECKS = SCRIPTS / "run_checks.py"
 REVIEW_PAYLOAD = SCRIPTS / "review_payload.py"
 BATCH_REPORT = SCRIPTS / "batch_report.py"
 POST_REVIEWS = SCRIPTS / "post_reviews.py"
+EVIDENCE = SCRIPTS / "evidence.py"
 
 
 def run_checks(base: Path, head: Path, out: Path, *checks: str, timeout: float = 30, extra: tuple = (),
@@ -975,6 +979,388 @@ class PostReviewsTest(unittest.TestCase):
         code, out = self.post(good, stale)
         self.assertEqual(code, 2, out)
         self.assertFalse((self.tmp / "calls.log").exists() and self.calls())
+
+
+# Two pins of one pull request: its head and baseline, then the same head over a baseline its base branch moved to,
+# and a head the author pushed since.
+HEAD = "cd116980aa55e1c2f1f5b1e3d5a7c9e1f3a5b7c9"
+BASE = "aea109b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f2"
+MOVED_BASE = "3a234bd0e1f2a3b4c5d6e7f8091a2b3c4d5e6f70"
+PUSHED = "0f4e5e9a1b2c3d4e5f60718293a4b5c6d7e8f901"
+URL = "https://github.com/acme/shop/pull/12"
+
+
+class EvidenceTest(unittest.TestCase):
+    """evidence.py pin names each pull request's evidence directory and says where its review starts: what an
+    earlier run finished at the same head and baseline is kept, anything else it left is removed, and a batch keeps
+    a progress file listing its pull requests and each one's step (lean-and-durable ticket 07)."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp = Path(self.tmp_dir.name)
+        self.tmpdir = self.tmp / "T"                      # the session's $TMPDIR
+        self.tmpdir.mkdir()
+        self.root = self.tmpdir / "seams-pr-review"       # the evidence root the skill names
+        self.repo = self.tmp / "shop"                     # the session's repository
+        (self.repo / ".git").mkdir(parents=True)
+        self.env = dict(os.environ, TMPDIR=str(self.tmpdir))
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def pin(self, *prs: "tuple[str, str, str]", cwd: "Path | None" = None) -> "tuple[int, str]":
+        args = [sys.executable, str(EVIDENCE), "pin"]
+        for url, head, baseline in prs:
+            args += ["--pr", url, head, baseline]
+        done = subprocess.run(args, capture_output=True, text=True, env=self.env, cwd=cwd or self.repo)
+        return done.returncode, done.stdout + done.stderr
+
+    def test_a_pull_request_pinned_the_first_time_gets_its_evidence_directory_and_runs_every_step(self):
+        code, out = self.pin((URL, HEAD, BASE))
+        self.assertEqual(code, 0, out)
+        evid = self.root / "acme-shop-12-cd11698"
+        self.assertTrue(evid.is_dir(), out)
+        marker = json.loads((evid / ".seams-pr-review").read_text())
+        self.assertEqual((marker["url"], marker["candidate"], marker["baseline"]), (URL, HEAD, BASE))
+        self.assertIn("acme/shop#12 at cd11698: new", out)
+        self.assertIn(str(evid), out)
+
+    def outputs(self, evid: Path, head: str = HEAD, upto: str = "drafted") -> None:
+        """What a review leaves in its evidence directory, step by step, up to `upto`: the diff and the checks,
+        then review.json, then the draft (payload.json, review.md), then posted.json."""
+        (evid / "checks").mkdir(parents=True, exist_ok=True)
+        (evid / "pr.diff").write_text("diff --git a/a b/a\n")
+        (evid / "checks" / "checks.json").write_text(json.dumps([{"name": "test", "verdict": "ok"}]))
+        (evid / "checks" / "checks.md").write_text(CHECKS_MD)
+        if upto == "checked":
+            return
+        (evid / "review.json").write_text(json.dumps(dict(review(12), pr=dict(review(12)["pr"], head=head))))
+        if upto == "reviewed":
+            return
+        (evid / "payload.json").write_text(json.dumps({"commit_id": head, "event": "COMMENT", "body": "b", "comments": []}))
+        (evid / "review.md").write_text("# Review\n")
+        if upto == "posted":
+            (evid / "posted.json").write_text(json.dumps({"html_url": URL + "#pullrequestreview-1", "commit_id": head}))
+
+    def test_a_review_drafted_at_the_same_head_and_baseline_is_reused_whole(self):
+        self.pin((URL, HEAD, BASE))
+        evid = self.root / "acme-shop-12-cd11698"
+        self.outputs(evid)
+        before = sorted(p.relative_to(evid).as_posix() for p in evid.rglob("*") if p.name != ".seams-pr-review")
+        code, out = self.pin((URL, HEAD, BASE))
+        self.assertEqual(code, 0, out)
+        self.assertIn("acme/shop#12 at cd11698: reuse", out)
+        self.assertIn("Post", out)
+        after = sorted(p.relative_to(evid).as_posix() for p in evid.rglob("*") if p.name != ".seams-pr-review")
+        self.assertEqual(after, before)
+
+    def test_evidence_pinned_at_another_baseline_is_removed_and_the_review_starts_afresh(self):
+        # The base branch moved under an unchanged head: the checks ran on another baseline, so nothing the earlier
+        # run left may stand in for this review. The probes go too; the marker records the new pin.
+        self.pin((URL, HEAD, BASE))
+        evid = self.root / "acme-shop-12-cd11698"
+        self.outputs(evid, upto="posted")
+        (evid / "probes").mkdir()
+        (evid / "probes" / "probe.test.js").write_text("test")
+        (evid / "error.txt").write_text("timed out\n")
+        code, out = self.pin((URL, HEAD, MOVED_BASE))
+        self.assertEqual(code, 0, out)
+        self.assertIn("acme/shop#12 at cd11698: afresh", out)
+        self.assertIn("every step runs", out)
+        self.assertEqual(sorted(p.name for p in evid.iterdir()), [".seams-pr-review"])
+        self.assertEqual(json.loads((evid / ".seams-pr-review").read_text())["baseline"], MOVED_BASE)
+
+    def test_an_unfinished_review_continues_from_its_last_completed_step_and_keeps_only_that(self):
+        # A reviewer that died (error.txt), or was cut off by a /clear, left some steps done: the pin keeps what those
+        # steps wrote and removes what came after, so the review goes on from there instead of starting over.
+        cases = [
+            ("checked", "continue at Review", ["checks", "pr.diff", "probes"]),
+            ("reviewed", "continue at Draft", ["checks", "pr.diff", "probes", "review.json"]),
+            ("posted", "reuse: posted", ["checks", "payload.json", "posted.json", "pr.diff", "probes", "review.json",
+                                          "review.md"]),
+        ]
+        for upto, says, kept in cases:
+            with self.subTest(upto=upto):
+                shutil.rmtree(self.root, ignore_errors=True)
+                self.pin((URL, HEAD, BASE))
+                evid = self.root / "acme-shop-12-cd11698"
+                self.outputs(evid, upto=upto)
+                (evid / "probes").mkdir()
+                (evid / "error.txt").write_text("the subagent timed out\n")
+                if upto != "posted":                     # a later step's half-written file, which must go
+                    (evid / "payload.json").write_text('{"commit_id": "')
+                code, out = self.pin((URL, HEAD, BASE))
+                self.assertEqual(code, 0, out)
+                self.assertIn(f"acme/shop#12 at cd11698: {says}", out)
+                self.assertEqual(sorted(p.name for p in evid.iterdir() if p.name != ".seams-pr-review"),
+                                 kept)
+
+    def test_a_half_written_review_is_no_review(self):
+        self.pin((URL, HEAD, BASE))
+        evid = self.root / "acme-shop-12-cd11698"
+        self.outputs(evid, upto="checked")
+        (evid / "review.json").write_text('{"pr": {"repo": "acme/shop", "numb')
+        code, out = self.pin((URL, HEAD, BASE))
+        self.assertIn("continue at Review", out)
+        self.assertFalse((evid / "review.json").exists())
+
+    def test_a_directory_this_review_cannot_call_its_own_stops_the_review_and_nothing_is_touched(self):
+        # The skill's rule: an evidence directory without the marker stops the review for a question. So does one
+        # whose marker names another pull request, or whose path is a link. Nothing of any pull request is pinned.
+        other = ("https://github.com/acme/shop/pull/13", PUSHED, BASE)
+        unmarked = self.root / "acme-shop-12-cd11698"
+        unmarked.mkdir(parents=True)
+        (unmarked / "notes.txt").write_text("someone's files")
+        code, out = self.pin(other, (URL, HEAD, BASE))
+        self.assertEqual(code, 1, out)
+        self.assertIn("without the marker", out)
+        self.assertEqual(sorted(p.name for p in unmarked.iterdir()), ["notes.txt"])
+        self.assertFalse((self.root / "acme-shop-13-0f4e5e9").exists(), "a refusal pins nothing")
+
+        (unmarked / ".seams-pr-review").write_text(json.dumps({"url": "https://github.com/acme/api/pull/12",
+                                                               "candidate": HEAD, "baseline": BASE}))
+        code, out = self.pin((URL, HEAD, BASE))
+        self.assertEqual(code, 1, out)
+        self.assertIn("acme/api/pull/12", out)
+        self.assertTrue((unmarked / "notes.txt").exists())
+
+        shutil.rmtree(unmarked)
+        elsewhere = self.tmp / "elsewhere"
+        elsewhere.mkdir()
+        (elsewhere / ".seams-pr-review").write_text(json.dumps({"url": URL, "candidate": HEAD, "baseline": BASE}))
+        (elsewhere / "review.json").write_text("{}")
+        unmarked.symlink_to(elsewhere)
+        code, out = self.pin((URL, HEAD, BASE))
+        self.assertEqual(code, 1, out)
+        self.assertIn("link", out)
+        self.assertTrue((elsewhere / "review.json").exists())
+
+    def test_a_pull_request_whose_head_moved_never_reuses_the_old_evidence(self):
+        # The author pushed: the new head gets a directory of its own and every step, and the drafted review of the
+        # old head stays where it was for the user, untouched. A head that shares the old one's first seven
+        # characters but not the rest is another commit too.
+        self.pin((URL, HEAD, BASE))
+        old = self.root / "acme-shop-12-cd11698"
+        self.outputs(old, upto="posted")
+        code, out = self.pin((URL, PUSHED, BASE))
+        self.assertEqual(code, 0, out)
+        self.assertIn("acme/shop#12 at 0f4e5e9: new: every step runs", out)
+        self.assertEqual(sorted(p.name for p in (self.root / "acme-shop-12-0f4e5e9").iterdir()), [".seams-pr-review"])
+        self.assertTrue((old / "posted.json").is_file() and (old / "payload.json").is_file())
+        lookalike = HEAD[:7] + "f" * 33
+        code, out = self.pin((URL, lookalike, BASE))
+        self.assertIn("acme/shop#12 at cd11698: afresh", out)
+        self.assertEqual(sorted(p.name for p in old.iterdir()), [".seams-pr-review"])
+
+    def git(self, *args: str, cwd: "Path | None" = None) -> str:
+        done = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+                              cwd=cwd or self.repo, capture_output=True, text=True, check=True)
+        return done.stdout.strip()
+
+    def real_pr(self) -> "tuple[str, str, str]":
+        """A repository with a baseline commit and a head commit on top of it, as a pull request's URL, head and
+        baseline; the session's repository is that one."""
+        shutil.rmtree(self.repo)
+        self.repo.mkdir()
+        self.git("init", "-q")
+        (self.repo / "a.txt").write_text("one\n")
+        self.git("add", "a.txt")
+        self.git("commit", "-qm", "baseline")
+        baseline = self.git("rev-parse", "HEAD")
+        (self.repo / "a.txt").write_text("two\n")
+        self.git("commit", "-qam", "head")
+        return URL, self.git("rev-parse", "HEAD"), baseline
+
+    def trees(self, evid: Path, head: str, baseline: str) -> None:
+        for side, sha in (("head", head), ("base", baseline)):
+            self.git("worktree", "add", "-q", "--detach", str(evid / side), sha)
+
+    def test_worktrees_are_kept_only_where_the_step_it_continues_at_can_use_them(self):
+        # A review that continues at Review keeps both trees as its checks left them (their installs, the files a
+        # check leaves); a review that runs every step gets fresh ones; a drafted review needs none, and keeps those it
+        # has until Cleanup. A tree off its commit, or holding a file neither its commit nor a check left (a probe), is
+        # remade. Worktrees are git's, so the pin says what to do and leaves each one as it is.
+        url, head, baseline = self.real_pr()
+        self.pin((url, head, baseline))
+        evid = self.root / f"acme-shop-12-{head[:7]}"
+        code, out = self.pin((url, head, baseline))
+        self.assertIn("worktrees: make head and base, then pr.diff", out)
+
+        self.trees(evid, head, baseline)
+        self.outputs(evid, head=head, upto="checked")
+        (evid / "checks" / "left.json").write_text(json.dumps({"base": [], "head": ["coverage.txt"]}))
+        (evid / "head" / "coverage.txt").write_text("what a check left\n")
+        code, out = self.pin((url, head, baseline))
+        self.assertIn("continue at Review", out)
+        self.assertIn("worktrees: keep head and base; pr.diff kept", out)
+
+        (evid / "head" / "probe.test.js").write_text("a probe left behind\n")
+        code, out = self.pin((url, head, baseline))
+        self.assertIn("worktrees: keep base; remove head as cleanup.md says, then make it again", out)
+
+        (evid / "head" / "probe.test.js").unlink()
+        self.outputs(evid, head=head, upto="drafted")
+        code, out = self.pin((url, head, baseline))
+        self.assertIn("reuse", out)
+        self.assertIn("worktrees: keep head and base until Cleanup", out)
+
+        code, out = self.pin((url, head, self.git("rev-parse", "HEAD~0")))   # the baseline moved to the head itself
+        self.assertIn("afresh", out)
+        self.assertIn("worktrees: remove head and base as cleanup.md says, then make them again, then pr.diff", out)
+        self.assertTrue((evid / "head" / "a.txt").is_file() and (evid / "base" / "a.txt").is_file(),
+                        "the pin never removes a worktree itself")
+
+    def batch_file(self) -> "tuple[Path, dict, str]":
+        """The one progress file at the evidence root: its path, its header (the key-value lines before the first
+        section) and its text."""
+        files = sorted(self.root.glob("progress-*.md"))
+        self.assertEqual(len(files), 1, [f.name for f in files])
+        text = files[0].read_text()
+        header = {}
+        for line in text.split("\n## ")[0].splitlines():
+            key, sep, value = line.partition(": ")
+            if sep and key[:1].isalpha() and " " not in key:
+                header[key] = value
+        return files[0], header, text
+
+    def test_a_batch_keeps_a_progress_file_at_the_evidence_root_and_a_single_review_keeps_none(self):
+        # The progress-file shape (Status, Stage, Next, Updated, then sections), with the session's repository, so
+        # that the next session there lists it, and each pull request with its step. The session may sit in a
+        # subdirectory: the repository is its root.
+        self.pin((URL, HEAD, BASE))
+        self.assertEqual(list(self.root.glob("progress-*.md")), [], "one pull request is not a batch")
+        self.outputs(self.root / "acme-shop-12-cd11698", upto="drafted")
+        (self.repo / "src").mkdir()
+        code, out = self.pin((URL, HEAD, BASE), ("https://github.com/acme/shop/pull/13", PUSHED, BASE),
+                             cwd=self.repo / "src")
+        self.assertEqual(code, 0, out)
+        path, header, text = self.batch_file()
+        self.assertIn(str(path), out)
+        self.assertEqual(header["Status"], "active")
+        self.assertEqual(header["Stage"], "2 pull requests (1 drafted, 1 pinned)")
+        self.assertEqual(header["Next"], "The user types /pr-review https://github.com/acme/shop/pull/12 "
+                                         "https://github.com/acme/shop/pull/13 again to continue it: 1 of 2 unfinished.")
+        self.assertRegex(header["Updated"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d$")
+        self.assertEqual(header["Repository"], str(self.repo.resolve()))
+        self.assertIn("\n## Pull requests\n", text)
+        self.assertIn("- acme/shop#12 at cd11698, baseline aea109b: drafted", text)
+        self.assertIn("- acme/shop#13 at 0f4e5e9, baseline aea109b: pinned", text)
+
+    def test_the_scripts_bring_the_batch_file_up_to_date_as_each_step_ends_and_the_handover_closes_it(self):
+        # Checked when run_checks.py writes checks.json; reviewed when review_payload.py reads a review.json it may
+        # still refuse; drafted when it writes the draft; posted when post_reviews.py posts; and done when
+        # batch_report.py gives the handover for every pull request the batch pinned. No extra call is needed.
+        second = ("https://github.com/acme/shop/pull/13", PUSHED, BASE)
+        self.pin((URL, HEAD, BASE), second)
+        evid = self.root / "acme-shop-12-cd11698"
+        other = self.root / "acme-shop-13-0f4e5e9"
+        self.assertEqual(self.batch_file()[1]["Stage"], "2 pull requests (2 pinned)")
+        for side in ("base", "head"):
+            (evid / side).mkdir()
+        done = subprocess.run([sys.executable, str(RUN_CHECKS), "--base", str(evid / "base"), "--head", str(evid / "head"),
+                               "--out", str(evid / "checks"), "--slot-dir", str(self.tmp / "slots"),
+                               "--check", "test=true"], capture_output=True, text=True, env=self.env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.batch_file()[1]["Stage"], "2 pull requests (1 checked, 1 pinned)")
+
+        (evid / "pr.diff").write_text(DIFF)
+        data = dict(review(12, verdict="request changes", findings=[finding("blocking", "a bug", "src/pricing.ts", 6)]))
+        data["pr"] = dict(data["pr"], repo="acme/shop", head=HEAD)
+        (evid / "review.json").write_text(json.dumps(data))
+        payload_args = [sys.executable, str(REVIEW_PAYLOAD), "--diff", str(evid / "pr.diff"), "--review",
+                        str(evid / "review.json"), "--viewer", "me", "--out", str(evid / "payload.json"),
+                        "--preview", str(evid / "review.md"), "--checks", str(evid / "checks" / "checks.md")]
+        refused = subprocess.run(payload_args + ["--event", "APPROVE"], capture_output=True, text=True, env=self.env)
+        self.assertEqual(refused.returncode, 1, refused.stderr)
+        self.assertEqual(self.batch_file()[1]["Stage"], "2 pull requests (1 reviewed, 1 pinned)")
+        built = subprocess.run(payload_args + ["--event", "REQUEST_CHANGES"], capture_output=True, text=True, env=self.env)
+        self.assertEqual(built.returncode, 0, built.stderr)
+        self.assertEqual(self.batch_file()[1]["Stage"], "2 pull requests (1 drafted, 1 pinned)")
+
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "gh").write_text(FAKE_GH)
+        (bin_dir / "gh").chmod(0o755)
+        (self.tmp / "state.json").write_text(json.dumps({"viewer": "me", "heads": {"acme/shop#12": HEAD},
+                                                         "reviews": {}, "posts": {}}))
+        env = dict(self.env, PATH=f"{bin_dir}:{os.environ['PATH']}", FAKE_GH_STATE=str(self.tmp / "state.json"),
+                   FAKE_GH_LOG=str(self.tmp / "calls.log"))
+        posted = subprocess.run([sys.executable, str(POST_REVIEWS), "--minute", "0.5", str(evid)],
+                                capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(posted.returncode, 0, posted.stdout + posted.stderr)
+        self.assertEqual(self.batch_file()[1]["Stage"], "2 pull requests (1 posted, 1 pinned)")
+
+        report = subprocess.run([sys.executable, str(BATCH_REPORT), str(evid)], capture_output=True, text=True, env=self.env)
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertEqual(self.batch_file()[1]["Status"], "active", "a handover for part of the batch closes nothing")
+        report = subprocess.run([sys.executable, str(BATCH_REPORT), str(evid), str(other)], capture_output=True,
+                                text=True, env=self.env)
+        self.assertEqual(report.returncode, 0, report.stderr)
+        header = self.batch_file()[1]
+        self.assertEqual((header["Status"], header["Next"]), ("done", "Nothing left: the review handover was given."))
+
+    def test_one_pull_request_of_a_batch_pinned_again_alone_brings_the_batch_file_up_to_date(self):
+        # The base branch moved and the user re-runs one pull request: its drafted review goes, and the batch's file
+        # says so rather than still calling it drafted.
+        self.pin((URL, HEAD, BASE), ("https://github.com/acme/shop/pull/13", PUSHED, BASE))
+        self.outputs(self.root / "acme-shop-12-cd11698", upto="drafted")
+        code, out = self.pin((URL, HEAD, BASE))
+        self.assertEqual(self.batch_file()[1]["Stage"], "2 pull requests (1 drafted, 1 pinned)", out)
+        self.pin((URL, HEAD, MOVED_BASE))
+        self.assertEqual(self.batch_file()[1]["Stage"], "2 pull requests (2 pinned)")
+
+    def test_a_pull_request_named_twice_is_a_usage_error_before_anything_is_written(self):
+        code, out = self.pin((URL, HEAD, BASE), (URL + "/", HEAD, BASE))
+        self.assertEqual(code, 2, out)
+        self.assertFalse(self.root.exists())
+
+    def test_the_handover_closes_the_batch_whatever_form_its_evidence_paths_take(self):
+        self.pin((URL, HEAD, BASE), ("https://github.com/acme/shop/pull/13", PUSHED, BASE))
+        report = subprocess.run([sys.executable, str(BATCH_REPORT), "acme-shop-12-cd11698", "./acme-shop-13-0f4e5e9/"],
+                                capture_output=True, text=True, env=self.env, cwd=self.root)
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertEqual(self.batch_file()[1]["Status"], "done")
+
+    def test_a_progress_file_that_cannot_be_written_never_stops_a_script(self):
+        # The file is a pointer: the scripts do their own work first and say nothing of it when it fails.
+        self.pin((URL, HEAD, BASE), ("https://github.com/acme/shop/pull/13", PUSHED, BASE))
+        path = self.batch_file()[0]
+        path.unlink()
+        path.mkdir()                                       # in the way of the rewrite
+        evid = self.root / "acme-shop-12-cd11698"
+        for side in ("base", "head"):
+            (evid / side).mkdir()
+        done = subprocess.run([sys.executable, str(RUN_CHECKS), "--base", str(evid / "base"), "--head", str(evid / "head"),
+                               "--out", str(evid / "checks"), "--slot-dir", str(self.tmp / "slots"),
+                               "--check", "test=true"], capture_output=True, text=True, env=self.env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue((evid / "checks" / "checks.json").is_file())
+        report = subprocess.run([sys.executable, str(BATCH_REPORT), str(evid)], capture_output=True, text=True, env=self.env)
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertIn("| PR |", report.stdout)
+
+    def test_an_evidence_root_other_users_may_write_in_is_refused_and_a_group_one_is_not(self):
+        # On a shared machine without $TMPDIR the root sits in /tmp. Other users writing in it could plant a finished
+        # review to be reused; a private group's write bit (mkdir under umask 002) lets in nobody else.
+        self.root.mkdir()
+        self.root.chmod(0o777)
+        code, out = self.pin((URL, HEAD, BASE))
+        self.assertEqual(code, 1, out)
+        self.assertIn("other users", out)
+        self.root.chmod(0o775)
+        code, out = self.pin((URL, HEAD, BASE))
+        self.assertEqual(code, 0, out)
+
+    def test_a_marker_an_older_version_wrote_starts_the_review_afresh(self):
+        # 3.2's marker was free text; nothing says what its review was pinned at, so nothing in it is kept.
+        evid = self.root / "acme-shop-12-cd11698"
+        evid.mkdir(parents=True)
+        (evid / ".seams-pr-review").write_text(f"{URL}\ncandidate {HEAD}\nbaseline {BASE}\n2026-09-24T10:00\n")
+        self.outputs(evid)
+        code, out = self.pin((URL, HEAD, BASE))
+        self.assertEqual(code, 0, out)
+        self.assertIn("afresh", out)
+        self.assertEqual(sorted(p.name for p in evid.iterdir()), [".seams-pr-review"])
 
 
 if __name__ == "__main__":

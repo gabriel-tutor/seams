@@ -49,6 +49,12 @@ import sys
 import time
 from pathlib import Path
 
+sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
+try:
+    import evidence                            # the batch's progress file, kept current as each step ends
+except Exception:                              # noqa: BLE001  never a reason for a script to stop
+    evidence = None
+
 # How package managers, make and test runners say a script, target or test file does not exist;
 # the check is then absent from that tree rather than failing in it, so a check aimed at a test
 # file the pull request adds reads "new in the PR". make's own target missing is absent; a
@@ -427,6 +433,8 @@ def main(argv: "list | None" = None) -> int:
             results = merged(earlier, results)
     write_results(args.out, results)
     remember_left(args.out, {"base": args.base, "head": args.head}, known)
+    if evidence is not None:
+        evidence.refresh(args.out.parent)
     if slot is not None:
         slot.close()
     return 0

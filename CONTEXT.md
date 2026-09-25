@@ -70,7 +70,7 @@ A feature's durable record of work in progress, kept beside its spec: the grill'
 _Avoid_: state file, work log, notes
 
 **Resume note**:
-The few factual lines the session-start hook injects from the active progress files (the newest three) at startup, resume, `/clear`, compaction and fork, so a fresh context continues where the work stopped; the user sees a one-line notice of it. It is data and a pointer: a skill re-reads the spec, the tickets and the git state before acting on it.
+The few factual lines the session-start hook injects from the active progress files and the repository's unfinished `pr-review` batch (the newest three) at startup, resume, `/clear`, compaction and fork, so a fresh context continues where the work stopped; the user sees a one-line notice of it. It is data and a pointer: a skill re-reads the spec, the tickets and the git state before acting on it.
 _Avoid_: summary, handoff (that is `/handoff`)
 
 **Walking skeleton**:

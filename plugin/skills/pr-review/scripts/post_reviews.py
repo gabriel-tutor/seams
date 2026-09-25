@@ -33,6 +33,12 @@ import sys
 import time
 from pathlib import Path
 
+sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
+try:
+    import evidence                            # the batch's progress file, kept current as each step ends
+except Exception:                              # noqa: BLE001  never a reason for a script to stop
+    evidence = None
+
 
 class GhError(Exception):
     pass
@@ -162,6 +168,8 @@ def record(review: dict, posted: dict) -> str:
     (review["folder"] / "posted.json").write_text(json.dumps(
         {"html_url": posted.get("html_url"), "id": posted.get("id"), "event": review["payload"].get("event"),
          "commit_id": review["head"]}, indent=2) + "\n")
+    if evidence is not None:
+        evidence.refresh(review["folder"])
     return posted.get("html_url") or ""
 
 

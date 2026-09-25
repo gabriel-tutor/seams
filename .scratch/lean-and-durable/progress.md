@@ -2,8 +2,9 @@
 
 Status: active
 Stage: integrated
-Next: Implement ticket 07 (a pr-review batch resumes), /clear first. pr-review's core has 268 bytes left under the bound, and ticket 09's agents about 50 tokens under 875.
-Updated: 2026-09-25
+Next: On main, ticket 07's build is the commit after 683b619: review it against 683b619 (code-review and a correctness review), then fix, run the live batch, and record.
+Updated: 2026-09-26
+Ticket: 07
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts) and ticket 08 (every skill under the bound, lighter always-on cost), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
@@ -67,6 +68,10 @@ Updated: 2026-09-25
 24. The effort line is in the ten Seams skills. The bootstrap has none: the session-start hook injects it without Claude Code's substitution, and it runs no steps. Nor do the three Superpowers copies, which stay byte-identical (decision 19). (Made while building ticket 08, not the user's choice.)
 25. The static checks run on CI, which has no `claude` CLI; only manifest validation needs it. The always-on guard is the listing's length, at most 2,650 characters, calibrated from `claude plugin details`. That tool's own figure moves with the active model, so it is recorded as evidence, not tested. (Made while building ticket 08, from its review; not the user's choice.)
 26. The always-on target stays as the spec measures it, by `claude plugin details`: about 825 tokens after ticket 08, 29% below 3.2.1's 1,165. What Claude sees (the listing without `pr-review`, which only the user can type) is 19% shorter (2,852 → 2,307 characters), and the part Seams owns is 26.5% shorter (2,058 → 1,513). The rest of the gap is the three byte-identical Superpowers copies (decision 19). There are no further trims: they would drop routing triggers the ticket 08 review restored, or undo decision 19, for 50 to 110 tokens a session. Ticket 09's agents must fit the budget that is left, and the release quotes both figures. (The user left it to Claude, 2026-09-25.)
+
+27. A review finished at the same head and baseline is reused for a single review too, not only in a batch. `evidence.py pin` pins every pull request the same way, so `/pr-review` typed again after a `/clear` continues one pull request as it continues a batch. (Made while building ticket 07, beyond the ticket's batch wording; not the user's choice.)
+28. A batch's progress file is one per session repository, at the evidence root under the temp directory (`progress-<repository>-<hash>.md`), not in the repository. Each pull request's step is read from its evidence; the scripts that end a step bring the file up to date, and `batch_report.py` closes it when the handover covers every pull request it lists, which in a headless run comes before the post question. `evidence.py` names every evidence directory and writes its marker, so that each run names them alike. (Made while building ticket 07; not the user's choice.)
+29. The command that continues a batch names each pull request by its URL: the resume note turns `#` into a space, so `owner/repo#number` would not survive it. (Made while building ticket 07.)
 
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.

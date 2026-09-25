@@ -407,13 +407,25 @@ step_says Batch batch "The fan-out ends this turn"
 # path in the skill as <skill-dir>/..., which the core defines, and nothing names the directory the old way.
 PRR_FRONT=$(awk 'NR > 1 && /^---$/ {exit} NR > 1' "$PRR")
 PRR_BODY=$(awk 'body; NR > 1 && /^---$/ {body = 1}' "$PRR")
-for s in run_checks review_payload batch_report post_reviews; do
+for s in evidence run_checks review_payload batch_report post_reviews; do
   [[ -x "$PLUGIN/skills/pr-review/scripts/$s.py" ]] || fail "pr-review/scripts/$s.py missing or not executable"
   grep -qxF -- "  - Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py *)" <<< "$PRR_FRONT" \
     || fail "pr-review's allowed-tools does not pre-approve: Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py *)"
   [[ $PRR_BODY == *"\`python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py\`"* ]] \
     || fail "pr-review's core does not name its script as: python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py"
 done
+# A review resumes (lean-and-durable ticket 07): evidence.py names each evidence directory and says where its review
+# starts. The core keeps the must-hold, that only what finished at the same head and baseline is reused; checkout.md
+# says what each answer keeps, that a moved head starts new, and that a directory not the review's own stops it. A
+# batch keeps a progress file the scripts bring up to date and the handover closes, which the next session's resume
+# note lists; a review already posted is not asked about again.
+section_says pr-review "$PRR" Checkout "\`evidence.py pin\`" "reusing only what finished at the same head and baseline"
+step_says Checkout checkout "evidence.py pin --pr" "continue at Review" "continue at Draft" "**reuse**" "**afresh**" \
+  "A head that moved" "old evidence never stands in" "exits 1" "worktrees \`evidence.py\` says to remove" \
+  "leaving out the lines of this review's own worktrees"
+step_says Batch batch "The batch's progress file" "brings it up to date" "closes it" "resume note" "typed again" \
+  "a reused one" "has no run of it alone"
+step_says Post draft-and-post "posted at this head is not asked about again"
 [[ $PRR_OPENING == *"\`<skill-dir>\`"* ]] || fail "pr-review's opening does not say what <skill-dir> in its references stands for"
 grep -F -- "\${CLAUDE_SKILL_DIR}/" "$PRR_REFS"/*.md && fail "a pr-review reference names a path through \${CLAUDE_SKILL_DIR}, which is not filled in there"
 grep -rF -- "this skill's base directory" "$PRR" "$PRR_REFS" && fail "pr-review still names its directory as \"this skill's base directory\""

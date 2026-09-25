@@ -35,6 +35,12 @@ import re
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
+try:
+    import evidence                            # the batch's progress file, kept current as each step ends
+except Exception:                              # noqa: BLE001  never a reason for a script to stop
+    evidence = None
+
 SEVERITIES = ("blocking", "should fix", "nit", "question", "praise")
 VERDICTS = {"approve": "Approve", "request changes": "Request changes", "comment": "Comment"}
 EVENTS = ("COMMENT", "REQUEST_CHANGES", "APPROVE")
@@ -299,6 +305,8 @@ def main(argv: "list | None" = None) -> int:
     parser.add_argument("--checks", type=Path, help="run_checks.py's checks.md, carried in the review's body")
     parser.add_argument("--preview", type=Path, help="where the Markdown preview goes")
     args = parser.parse_args(argv)
+    if evidence is not None:
+        evidence.refresh(args.out.parent)
     try:
         review = json.loads(args.review.read_text())
         checks, broken = "", []
@@ -319,6 +327,8 @@ def main(argv: "list | None" = None) -> int:
     args.out.write_text(json.dumps(payload, indent=2) + "\n")
     if args.preview:
         args.preview.write_text(preview + "\n")
+    if evidence is not None:
+        evidence.refresh(args.out.parent)
     print(f"{len(payload['comments'])} inline comment(s); body {len(payload['body'])} characters; event {args.event}")
     return 0
 

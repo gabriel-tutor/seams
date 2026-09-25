@@ -24,6 +24,12 @@ import json
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
+try:
+    import evidence                            # the batch's progress file, kept current as each step ends
+except Exception:                              # noqa: BLE001  never a reason for a script to stop
+    evidence = None
+
 ORDER = {"changes needed": 0, "not yet": 1, "ready to merge": 2}
 RANK = {"blocking": 0, "should fix": 1, "question": 2, "nit": 3, "praise": 4}
 BROKEN = {"broken by the PR", "removed by the PR"}
@@ -134,6 +140,8 @@ def main(argv: "list | None" = None) -> int:
         print(__doc__, file=sys.stderr)
         return 2
     print(report([load(f) for f in folders]), end="")
+    if evidence is not None:
+        evidence.finish(folders)
     return 0
 
 
