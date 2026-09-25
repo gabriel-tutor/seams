@@ -24,6 +24,10 @@ _Avoid_: guard, blocker, permission
 The per-session record of declarations and changes that the gate and the done-check read.
 _Avoid_: state file, cache, log
 
+**Lapse hint**:
+The facts the prompt hook gives Claude when a typed message starts a new request after a declared one: which declarations lapsed, that invoking one again continues that work, and that new work takes its own route. It restores no declaration itself.
+_Avoid_: warning, reminder
+
 **Trivial change**:
 A change with no effect on behavior, data shape or security-relevant configuration, reversible in one commit.
 _Avoid_: quick fix, small change (a small change can still change behavior)

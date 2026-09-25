@@ -906,7 +906,8 @@ def is_continuation(prompt: str) -> bool:
 
 # --- The ledger ---------------------------------------------------------------------------
 # One JSON file per session: the current request's declarations, changes and last
-# verification. Skill names, tool names and paths only; never command or prompt text.
+# verification, and the skills a typed prompt expanded to, under its prompt id until it is
+# submitted. Skill names, tool names, paths and ids only; never command or prompt text.
 
 LEDGER_VERSION = 2                            # 2: events ordered by seq, not by the clock
 
@@ -928,7 +929,7 @@ def ledger_path(session_id: str, root: Optional[str] = None) -> str:
 
 def empty_ledger(session_id: str) -> dict:
     return {"version": LEDGER_VERSION, "session": session_id, "started": time.time(), "seq": 0,
-            "declarations": [], "changes": [], "verified_at": None, "verified_seq": 0}
+            "declarations": [], "changes": [], "verified_at": None, "verified_seq": 0, "expanded": []}
 
 
 def load_ledger(session_id: str, root: Optional[str] = None) -> dict:
@@ -1009,6 +1010,72 @@ def cleanup_ledgers(root: Optional[str] = None, days: int = 7) -> None:
                 os.remove(path)
         except OSError:
             pass
+
+
+# --- Prompts ------------------------------------------------------------------------------
+# Claude Code runs the UserPromptExpansion hook once for each skill a typed prompt expands, and only
+# then the UserPromptSubmit hook for the prompt itself (captured on 2.1.282). A typed skill therefore
+# waits in the ledger until its prompt starts the request it declares.
+
+
+def record_expansion(event: dict, ledger: dict) -> bool:
+    """Keep the process skill a UserPromptExpansion event expanded until its prompt is submitted,
+    under the prompt's id; an earlier prompt's leftovers go (its prompt hook never ran). True when the
+    ledger changed. An MCP server's prompt (`mcp_prompt`) never declares, whatever its name: only a
+    skill or command (`slash_command`) can. Without a prompt id nothing ties the skill to a request."""
+    skill, prompt_id = event.get("command_name") or "", event.get("prompt_id")
+    if not prompt_id or event.get("expansion_type") != "slash_command" or not is_declaration(skill):
+        return False
+    kept = [e for e in ledger.get("expanded") or [] if isinstance(e, dict) and e.get("prompt") == prompt_id]
+    ledger["expanded"] = kept + [{"skill": skill, "prompt": prompt_id}]
+    return True
+
+
+def submit_prompt(event: dict, ledger: dict) -> dict:
+    """A submitted prompt: a go-ahead or a machine notice keeps the request; anything else starts a new
+    one, declared by the process skills typed in it (the expansions recorded for this prompt, or its
+    leading slash command). Returns {"changed": whether the ledger changed, "context": the lapse hint
+    or None}. A damaged entry is skipped rather than raised on: a hook that fails here would leave the
+    old request, and its declarations, in place."""
+    prompt, prompt_id = event.get("prompt") or "", event.get("prompt_id")
+    expanded = ledger.get("expanded") or []
+    typed = [e.get("skill") for e in expanded
+             if isinstance(e, dict) and prompt_id and e.get("prompt") == prompt_id]
+    typed = [s for s in typed if isinstance(s, str) and is_declaration(s)]
+    parsed = slash_declaration(prompt)
+    if parsed:
+        typed.append(parsed)
+    ledger["expanded"] = []
+    if not typed and is_continuation(prompt):
+        return {"changed": bool(expanded), "context": None}
+    lapsed = [] if typed else [d.get("skill") for d in ledger.get("declarations") or []
+                               if isinstance(d, dict)]
+    new_request(ledger)
+    for skill in dict.fromkeys(typed):
+        add_declaration(ledger, skill)
+    return {"changed": True, "context": _lapse_hint(lapsed)}
+
+
+# A skill's name as Claude Code writes it; anything else in a ledger is damage, and stays out of the hint.
+SKILL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$")
+LAPSE_NAMES = 5
+
+
+def _lapse_hint(skills: list) -> Optional[str]:
+    """The facts a new request after a declared one gives Claude: which declarations lapsed, that
+    invoking one again continues that work, that new work routes afresh. None when nothing lapsed."""
+    names = list(dict.fromkeys(s for s in skills if isinstance(s, str) and SKILL_NAME.match(s)))[:LAPSE_NAMES]
+    if not names:
+        return None
+    listed = ", ".join(f"`{name}`" for name in names)
+    if len(names) == 1:
+        lapsed, again = f"declaration lapsed: {listed}", f"invoking {listed} again"
+    else:
+        lapsed, again = f"declarations lapsed: {listed}", "invoking the one it used again"
+    return (f"Seams: this message started a new request, so the previous request's {lapsed}. The gate "
+            f"refuses the next change to the project until a process skill is invoked for this request. "
+            f"If this message continues that work, {again} with the Skill tool restores the declaration; "
+            f"new work needs its own route.")
 
 
 # --- Project changes and the decision ------------------------------------------------------

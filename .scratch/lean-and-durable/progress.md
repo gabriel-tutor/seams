@@ -2,8 +2,9 @@
 
 Status: active
 Stage: integrated
-Next: Implement ticket 03 (typed skills, the lapse hint, a calmer done-check; sensitive) in a fresh session; ticket 06 is also unblocked, and 06 unblocks 07 and 08.
+Next: Ticket 03's build is committed on main after starting commit b40f571; run the two-step headless check on it, then review it with code-review and a correctness review against b40f571.
 Updated: 2026-09-25
+Ticket: 03
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file) and ticket 02 (the gate sees every shell), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.

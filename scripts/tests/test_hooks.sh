@@ -16,14 +16,16 @@ ev()   { printf '{"session_id":"s1","cwd":"%s","hook_event_name":"%s",%s}' "$PRO
 pre_edit()   { ev PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$1\",\"old_string\":\"a\",\"new_string\":\"b\"}" | hook pre-tool-use; }
 pre_bash()   { ev PreToolUse "\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"}" | hook pre-tool-use; }
 post_skill() { ev PostToolUse "\"tool_name\":\"Skill\",\"tool_input\":{\"skill\":\"$1\"},\"tool_response\":{}" | hook post-tool-use; }
-prompt()     { ev UserPromptSubmit "\"prompt\":\"$1\"" | hook user-prompt-submit; }
+prompt()     { ev UserPromptSubmit "\"prompt\":\"$1\"" | hook user-prompt-submit >/dev/null; }   # its hint: say(), in 6b
 start()      { ev SessionStart "\"source\":\"$1\"" | hook session-start >/dev/null; }
 stop()       { ev Stop "\"stop_hook_active\":$1,\"last_assistant_message\":\"done\"" | hook stop; }
 denied()  { grep -q '"permissionDecision": *"deny"' <<< "$1"; }
-blocked() { grep -q '"decision": *"block"' <<< "$1"; }
+# The done-check asks as hook feedback, never as a block: Claude Code shows a block as a hook error.
+asks()    { grep -q '"hookEventName": *"Stop"' <<< "$1" && grep -q '"additionalContext"' <<< "$1" \
+              && ! grep -q '"decision"' <<< "$1"; }
 LEDGER="$TMPDIR/seams-$(id -u)/s1.json"
 
-for h in pre-tool-use post-tool-use user-prompt-submit session-start stop; do
+for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit session-start stop; do
   [[ -x "$HOOKS/$h" ]] || fail "hook missing or not executable: $h"
 done
 
@@ -84,6 +86,34 @@ OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "typing the routing poli
 prompt "/using-git-worktrees"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a bare Superpowers-copy name should not declare (the original shares it)"
 
+# 6b. A typed skill is recorded from the expansion that Claude Code runs, once per skill, before the
+# prompt hook; both carry the prompt's id. A typed message that starts a new request after a declared
+# one is told which declaration lapsed, and the hint restores nothing by itself.
+expand() { ev UserPromptExpansion "\"prompt_id\":\"$1\",\"expansion_type\":\"${4:-slash_command}\",\"command_name\":\"$2\",\"command_source\":\"$3\",\"command_args\":\"\",\"prompt\":\"/$2\"" | hook user-prompt-expansion; }
+say()    { ev UserPromptSubmit "\"prompt_id\":\"$1\",\"prompt\":\"$2\"" | hook user-prompt-submit; }
+OUT=$(expand x1 matt-pocock-workflow:grill plugin); [[ -z "$OUT" ]] || fail "the expansion hook should print nothing: $OUT"
+expand x1 tdd userSettings >/dev/null
+OUT=$(say x1 "/grill /tdd fix the coupon"); [[ -z "$OUT" ]] || fail "a message that types its own route gets no hint: $OUT"
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a stacked /grill /tdd should declare from its expansions: $OUT"
+grep -q '"skill": *"matt-pocock-workflow:grill"' "$LEDGER" && grep -q '"skill": *"tdd"' "$LEDGER" \
+  || fail "both stacked skills should be recorded under the names they expanded to"
+grep -q 'fix the coupon' "$LEDGER" && fail "ledger must not record prompt text"
+OUT=$(say x2 "now make the field required")
+grep -q '"hookEventName": *"UserPromptSubmit"' <<< "$OUT" && grep -q '"additionalContext"' <<< "$OUT" \
+  || fail "a new request after a declared one should get the lapse hint as context: $OUT"
+grep -q '`matt-pocock-workflow:grill`' <<< "$OUT" && grep -q '`tdd`' <<< "$OUT" || fail "the hint should name what lapsed: $OUT"
+OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "the hint must not restore a declaration by itself: $OUT"
+post_skill "matt-pocock-workflow:grill"
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "invoking the skill again should restore it: $OUT"
+OUT=$(say x3 "yes"); [[ -z "$OUT" ]] || fail "a go-ahead gets no hint: $OUT"
+OUT=$(say x4 "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished"); [[ -z "$OUT" ]] || fail "a machine notice gets no hint: $OUT"
+expand x5 tdd mcp mcp_prompt >/dev/null; expand x5 pdf userSettings >/dev/null; say x5 "/mcp__docs__tdd" >/dev/null
+OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "an MCP prompt or a non-process skill should not declare: $OUT"
+OUT=$(say x6 "and the title"); [[ -z "$OUT" ]] || fail "a request that had no declarations lapses nothing: $OUT"
+expand x7 tdd userSettings >/dev/null
+say x8 "delete the old tables" >/dev/null
+OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "an expansion must declare only its own prompt's request: $OUT"
+
 # 7. A subagent's call is judged by the same session ledger.
 post_skill "matt-pocock-workflow:implement"
 OUT=$(printf '{"session_id":"s1","cwd":"%s","hook_event_name":"PreToolUse","agent_id":"a1","agent_type":"general-purpose","tool_name":"Write","tool_input":{"file_path":"%s/src/b.ts","content":"x"}}' "$PROJ" "$PROJ" | hook pre-tool-use)
@@ -111,22 +141,23 @@ start compact
 [[ ! -e "$OLD" ]] || fail "an eight-day-old ledger should be removed"
 [[ -e "$LEDGER" ]] || fail "the live ledger should be kept"
 
-# 10. The done-check: a turn that changed code cannot end until verification ran; once per turn.
+# 10. The done-check: a turn that changed code cannot end until verification ran; once per turn. It asks as
+# Stop hook feedback, which keeps the turn going as a block does, without Claude Code's hook-error label.
 prompt "change the label"; post_skill "tdd"
 OUT=$(stop false); [[ -z "$OUT" ]] || fail "stop with no changes should pass: $OUT"
 pre_edit "$PROJ/src/a.ts" >/dev/null
-OUT=$(stop false); blocked "$OUT" || fail "stop after an unverified code change should block: $OUT"
-grep -q 'Seams done-check' <<< "$OUT" || fail "block reason should say Seams done-check"
-grep -q "$PROJ/src/a.ts" <<< "$OUT" || fail "block reason should name the file"
-grep -q 'verification-before-completion' <<< "$OUT" || fail "block reason should name the verification skill"
+OUT=$(stop false); asks "$OUT" || fail "stop after an unverified code change should ask as hook feedback, not block: $OUT"
+grep -q 'Seams done-check' <<< "$OUT" || fail "the request should say Seams done-check"
+grep -q "$PROJ/src/a.ts" <<< "$OUT" || fail "the request should name the file"
+grep -q 'verification-before-completion' <<< "$OUT" || fail "the request should name the verification skill"
 OUT=$(stop true); [[ -z "$OUT" ]] || fail "the second stop of the turn should pass: $OUT"
 post_skill "matt-pocock-workflow:verification-before-completion"
 OUT=$(stop false); [[ -z "$OUT" ]] || fail "stop after verification should pass: $OUT"
 pre_edit "$PROJ/README.md" >/dev/null
 OUT=$(stop false); [[ -z "$OUT" ]] || fail "a documentation-only change should not block: $OUT"
 pre_bash "sed -i s/a/b/ src/a.ts" >/dev/null
-OUT=$(stop false); blocked "$OUT" || fail "an unverified shell mutation should block: $OUT"
-grep -q 'sed -i' <<< "$OUT" || fail "block reason should name the shell label"
+OUT=$(stop false); asks "$OUT" || fail "an unverified shell mutation should ask for verification: $OUT"
+grep -q 'sed -i' <<< "$OUT" || fail "the request should name the shell label"
 post_skill "superpowers:verification-before-completion"
 OUT=$(stop false); [[ -z "$OUT" ]] || fail "Superpowers' verification copy should count: $OUT"
 pre_bash "git commit -m x" >/dev/null
@@ -166,7 +197,7 @@ grep -q '"tool": *"PowerShell"' "$LEDGER" || fail "the ledger should record the 
 grep -q 'Remove-Item\|server.log' "$LEDGER" && fail "the ledger must not record a command's text"
 
 # 12. Garbage in: every hook exits 0 with no stdout.
-for h in pre-tool-use post-tool-use user-prompt-submit session-start stop; do
+for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit session-start stop; do
   OUT=$(echo '{not json' | hook "$h" 2>/dev/null) || fail "$h should exit 0 on garbage"
   [[ -z "$OUT" ]] || fail "$h should print nothing on garbage: $OUT"
 done
@@ -192,7 +223,9 @@ missing = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "PowerShell", "
 assert not missing, f"PreToolUse does not match {sorted(missing)}"
 # One session through every event, in this order: each hook's answer is known.
 steps = {"SessionStart": ({"source": "startup"}, '"additionalContext"'),
-         "UserPromptSubmit": ({"prompt": "add a feature"}, ""),
+         "UserPromptExpansion": ({"prompt_id": "e1", "expansion_type": "slash_command", "command_name": "pdf",
+                                  "command_source": "userSettings", "command_args": "", "prompt": "/pdf"}, ""),
+         "UserPromptSubmit": ({"prompt_id": "e1", "prompt": "/pdf add a feature"}, ""),
          "PreToolUse": ({"tool_name": "Edit", "tool_input": {"file_path": f"{proj}/src/a.ts", "old_string": "a",
                                                              "new_string": "b"}}, '"permissionDecision": "deny"'),
          "PostToolUse": ({"tool_name": "Skill", "tool_input": {"skill": "tdd"}, "tool_response": {}}, ""),

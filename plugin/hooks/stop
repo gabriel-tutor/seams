@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Stop hook, the done-check: a turn that changed code ends only after verification ran.
 
-Blocks once, with a reason, when the request has a non-documentation project change after
-its last verification and Claude Code says this is the first stop of the turn
-(stop_hook_active false). Prints nothing otherwise. Fails open (see seams_gate.run_hook).
+Asks once, when the request has a non-documentation project change after its last
+verification and Claude Code says this is the first stop of the turn (stop_hook_active false).
+It asks as Stop hook feedback (hookSpecificOutput.additionalContext), which keeps the turn going
+through the same loop protections as a block, without Claude Code labeling it a hook error.
+Prints nothing otherwise. Fails open (see seams_gate.run_hook).
 """
 import os
 import sys
@@ -17,7 +19,7 @@ def handle(event: dict):
     ledger = gate.load_ledger(event.get("session_id") or "")
     reason = gate.decide_stop(ledger, bool(event.get("stop_hook_active")))
     if reason:
-        return {"decision": "block", "reason": reason}
+        return {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": reason}}
     return None
 
 

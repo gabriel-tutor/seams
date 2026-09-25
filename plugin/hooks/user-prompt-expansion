@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""UserPromptExpansion hook: a process skill the user typed declares the request its prompt starts.
+
+Claude Code runs this once for each skill a typed prompt expands (stacked ones included), under the
+name the skill resolved to, and only then the UserPromptSubmit hook for the prompt. This records the
+skill against the prompt's id; the prompt hook adopts it when it starts the request. Prints nothing.
+Fails open (see seams_gate.run_hook).
+"""
+import os
+import sys
+
+sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import seams_gate as gate  # noqa: E402
+
+
+def handle(event: dict):
+    session = event.get("session_id") or ""
+    ledger = gate.load_ledger(session)
+    if gate.record_expansion(event, ledger):
+        gate.save_ledger(session, ledger)
+    return None
+
+if __name__ == "__main__":
+    sys.exit(gate.run_hook(handle))

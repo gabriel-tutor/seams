@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """UserPromptSubmit hook: a new prompt starts a new request.
 
-A short go-ahead ("yes", "ok, do that") keeps the current request. A typed slash command for
-a process skill starts a new request already declared. The prompt text itself is never
-stored. Prints nothing. Fails open (see seams_gate.run_hook).
+A short go-ahead ("yes", "ok, do that") or a notice Claude Code generated keeps the current
+request. A prompt that typed a process skill starts a new request already declared: the skills
+the UserPromptExpansion hook recorded for it, or the prompt's own leading slash command. Any
+other prompt after a declared request gets the lapse hint as context, naming the declarations
+that lapsed; it restores none of them. The prompt text itself is never stored. Fails open (see
+seams_gate.run_hook).
 """
 import os
 import sys
@@ -14,16 +17,14 @@ import seams_gate as gate  # noqa: E402
 
 
 def handle(event: dict):
-    prompt = event.get("prompt") or ""
     session = event.get("session_id") or ""
-    declared = gate.slash_declaration(prompt)
-    if declared is None and gate.is_continuation(prompt):
-        return None
     ledger = gate.load_ledger(session)
-    gate.new_request(ledger)
-    if declared:
-        gate.add_declaration(ledger, declared)
-    gate.save_ledger(session, ledger)
+    outcome = gate.submit_prompt(event, ledger)
+    if outcome["changed"]:
+        gate.save_ledger(session, ledger)
+    if outcome["context"]:
+        return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+                                       "additionalContext": outcome["context"]}}
     return None
 
 if __name__ == "__main__":
