@@ -7,6 +7,8 @@ description: Use when a spec exists and needs splitting into tickets
 
 Break a spec, a plan or the current conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it, published to the configured issue tracker.
 
+**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
+
 ## Gate
 
 Confirm the source (the spec that was just published, a spec path, an issue, or the conversation) and ask "Split it into tickets now?" with AskUserQuestion, recommended answer first, and wait for a yes. Skip this only when the user's last message asks for tickets or says yes to an offer to write them, or when a yes earlier in this request covered the tickets ("spec it and split it"); a yes to `matt-pocock-workflow:to-spec`'s offer is that yes.

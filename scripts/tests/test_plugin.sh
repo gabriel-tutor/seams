@@ -30,6 +30,22 @@ section_says() {   # $1 = skill name, $2 = file, $3 = heading text, $4... = phra
   body=$(section "$heading" "$file"); [[ -n "$body" ]] || fail "$name lacks the section: ## $heading"
   for needle in "$@"; do [[ $body == *"$needle"* ]] || fail "$name, under '## $heading', should say: $needle"; done
 }
+plugin_guards() {   # $1 = a plugin directory: prints a line for each SKILL.md over 11,000 bytes and each pin of a
+  python3 - "$1" <<'PY'   # model or an effort level in a skill's or an agent's frontmatter; prints nothing when all hold
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+skills = sorted(root.glob("skills/*/SKILL.md"))
+for path in skills:
+    if path.stat().st_size > 11000:
+        print(f"{path.relative_to(root)} is {path.stat().st_size} bytes, over the 11,000-byte bound")
+for path in skills + sorted(root.glob("agents/**/*.md")):
+    front = re.match(r"---\n(.*?)\n---\n", path.read_text(), re.S)
+    keys = {line.split(":", 1)[0].strip() for line in (front.group(1) if front else "").splitlines() if ":" in line and line[:1].isalpha()}
+    for key in ("model", "effort"):
+        if key in keys:
+            print(f"{path.relative_to(root)} sets {key}")
+PY
+}
 
 claude plugin validate --strict "$PLUGIN" >/dev/null || fail "plugin manifest does not validate"
 claude plugin validate --strict "$REPO" >/dev/null || fail "marketplace manifest does not validate"
@@ -39,7 +55,8 @@ claude plugin validate --strict "$REPO" >/dev/null || fail "marketplace manifest
 STALE=$(find "$PLUGIN" \( -name __pycache__ -o -name '*.pyc' \) -print)
 [[ -z "$STALE" ]] || fail "bytecode in the plugin, which a local-directory marketplace loads in place: $STALE"
 
-# One version everywhere (ticket 10): the two manifests, the README's version badge and the
+# One version, kept in plugin.json only (lean-and-durable ticket 08): when the marketplace entry sets one too, Claude
+# Code uses plugin.json's without a warning, so a second copy could only go stale. The README's version badge and the
 # CHANGELOG's first entry name the same release, so a bump cannot land in one place only.
 json_field() {   # $1 = a JSON file, $2 = a dotted path into it (a number selects a list item)
   python3 - "$1" "$2" <<'PY'
@@ -51,11 +68,13 @@ print(value)
 PY
 }
 V_PLUGIN=$(json_field "$PLUGIN/.claude-plugin/plugin.json" version)
-V_MARKET=$(json_field "$REPO/.claude-plugin/marketplace.json" plugins.0.version)
+V_MARKET=$(python3 -c 'import json, sys; print(" ".join(e["version"] for e in json.load(open(sys.argv[1]))["plugins"] if "version" in e))' \
+  "$REPO/.claude-plugin/marketplace.json")
+[[ -z $V_MARKET ]] || fail "the marketplace entry carries a version ($V_MARKET); the version lives in plugin.json only"
 V_README=$(grep -oE 'badge/plugin-[0-9]+\.[0-9]+\.[0-9]+' "$REPO/README.md" | head -1 | cut -d- -f2)
 V_CHANGELOG=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+' "$REPO/CHANGELOG.md" | cut -d' ' -f2)
-[[ -n $V_PLUGIN && $V_PLUGIN == "$V_MARKET" && $V_PLUGIN == "$V_README" && $V_PLUGIN == "$V_CHANGELOG" ]] \
-  || fail "versions disagree: plugin.json $V_PLUGIN, marketplace.json $V_MARKET, README badge $V_README, CHANGELOG $V_CHANGELOG"
+[[ -n $V_PLUGIN && $V_PLUGIN == "$V_README" && $V_PLUGIN == "$V_CHANGELOG" ]] \
+  || fail "versions disagree: plugin.json $V_PLUGIN, README badge $V_README, CHANGELOG $V_CHANGELOG"
 
 # Every skill: frontmatter naming its own directory and a description. Model invocation stays on for
 # every skill but the ones typed by hand only: pr-review, which runs a PR's code, spends minutes of
@@ -234,12 +253,45 @@ done
 for f in "$PF" "$PLUGIN"/skills/{grill,to-spec,to-tickets,implement,finishing-a-development-branch,release}/SKILL.md; do
   must_say "$(basename "$(dirname "$f")")" "$f" "never a secret, a credential, a token or personal data"
 done
-# Each skill that keeps the progress file, and pr-review since its split (lean-and-durable ticket 06), stays whole
-# in what compaction keeps of an invoked skill: at most 11,000 bytes, about 4,000 tokens (the spec's bound,
-# calibrated from `claude plugin details`). Ticket 08 extends the bound to every skill.
-for s in grill to-spec to-tickets implement finishing-a-development-branch release pr-review; do
-  size=$(wc -c < "$PLUGIN/skills/$s/SKILL.md" | tr -d ' ')
-  (( size <= 11000 )) || fail "$s/SKILL.md is $size bytes, over the 11,000-byte bound"
+# Every skill stays whole in what compaction keeps of an invoked skill (lean-and-durable ticket 08): at most 11,000
+# bytes, about 4,000 tokens (the spec's bound, calibrated from `claude plugin details`). No skill or agent pins a model
+# or an effort level: a pin overrides the level the user chose, both ways, and a model that differs from the session's
+# costs a prompt-cache miss. A fixture that breaks each rule shows the guard catching what it is for.
+GUARD_FIX=$(mktemp -d); mkdir -p "$GUARD_FIX"/skills/{big,at-bound,pinned} "$GUARD_FIX/agents"
+for s in big at-bound; do
+  printf -- '---\nname: %s\ndescription: x\n---\n' "$s" > "$GUARD_FIX/skills/$s/SKILL.md"
+  n=$(( $([[ $s == big ]] && echo 11001 || echo 11000) - $(wc -c < "$GUARD_FIX/skills/$s/SKILL.md") ))
+  printf '%*s' "$n" '' >> "$GUARD_FIX/skills/$s/SKILL.md"
+done
+printf -- '---\nname: pinned\ndescription: x\nmodel: claude-opus-5\neffort: high\n---\n' > "$GUARD_FIX/skills/pinned/SKILL.md"
+printf -- '---\nname: scout\ndescription: x\neffort: low\n---\n' > "$GUARD_FIX/agents/scout.md"
+printf -- '---\nname: fine\ndescription: x\n---\n\nmodel: effort: lines in the body are not frontmatter\n' > "$GUARD_FIX/agents/fine.md"
+GUARD_OUT=$(plugin_guards "$GUARD_FIX"); rm -rf "$GUARD_FIX"
+for want in "skills/big/SKILL.md is 11001 bytes, over the 11,000-byte bound" "skills/pinned/SKILL.md sets model" \
+  "skills/pinned/SKILL.md sets effort" "agents/scout.md sets effort"; do
+  [[ $GUARD_OUT == *"$want"* ]] || fail "the guard missed: $want (it said: $GUARD_OUT)"
+done
+[[ $GUARD_OUT != *at-bound* && $GUARD_OUT != *fine* ]] || fail "the guard flagged a file within its rules: $GUARD_OUT"
+GUARD_OUT=$(plugin_guards "$PLUGIN")
+[[ -z $GUARD_OUT ]] || fail "$GUARD_OUT"
+# What every session pays for the plugin before any skill fires (lean-and-durable ticket 08): its listing, the skills'
+# and agents' names and descriptions, at most 875 tokens as `claude plugin details` measures this tree (3.2.1 paid about
+# 1,165). Measured from disk (`--plugin-dir`, source "@inline"), never from an installed copy.
+DETAILS=$(claude --plugin-dir "$PLUGIN" plugin details matt-pocock-workflow 2>&1) || fail "claude plugin details failed: $DETAILS"
+[[ $DETAILS == *"matt-pocock-workflow@inline"* ]] || fail "claude plugin details did not measure this tree: $DETAILS"
+ALWAYS_ON=$(sed -n 's/^ *Always-on: *~\([0-9,]*\) tok.*/\1/p' <<< "$DETAILS" | tr -d ,)
+[[ -n $ALWAYS_ON ]] || fail "no always-on figure in claude plugin details: $DETAILS"
+(( ALWAYS_ON <= 875 )) || fail "always-on cost is ~$ALWAYS_ON tokens by claude plugin details, over 875"
+# Effort (lean-and-durable ticket 08): with no pin, each Seams skill reads the session's level from ${CLAUDE_EFFORT},
+# which Claude Code fills in when the skill loads, and says in one line which of its extras it skips at `low`, never a
+# gate or a check. A skill added later carries the line too. Not the bootstrap, which the session-start hook injects
+# without that substitution and which runs no steps, nor the three Superpowers copies, which stay byte-identical.
+for f in "$PLUGIN"/skills/*/SKILL.md; do
+  s=$(basename "$(dirname "$f")")
+  [[ " using-matt-pocock-skills using-git-worktrees verification-before-completion receiving-code-review " == *" $s "* ]] && continue
+  line=$(grep -F -- "\`\${CLAUDE_EFFORT}\`" "$f") || fail "$s does not read the session's effort level from \${CLAUDE_EFFORT}"
+  [[ $(wc -l <<< "$line") -eq 1 && $line == *"**Effort**"* && $line == *"at every level"* ]] \
+    || fail "$s's effort line should say that its gates and checks run at every level: $line"
 done
 
 # The grill's design lens: present, and referenced from the grill.
@@ -364,6 +416,26 @@ must_say bootstrap "$BOOT" "| Trivial" "\`trivial\`*" "| Sensitive" "any size" "
   "\`code-review\` required" "\`incident\`*" "\`release\`*" "walking skeleton" "A hook refuses" "\`verification-before-completion\`*" \
   "a yes covering later steps is not asked again" "deploy and publish always ask" "\"it's a quick fix\"" "\"the requirements are clear\""
 grep -qF "config, rename" "$BOOT" && fail "the trivial row still lists config and rename without a qualifier"
+# The bootstrap states the routing as the project's facts (lean-and-durable ticket 08): every row of the table as it
+# was, every rule, and the quality bar, with nothing addressed to the reader ("you", "your") and no pseudo-tags.
+BOOT_ROWS=(
+  "| Trivial: copy, typo, comment, unobservable rename | \`trivial\`* |"
+  "| Broken, failing, throwing, slow | \`diagnosing-bugs\`, even when the fix looks obvious |"
+  "| Bounded change to existing code | \`grill\`*, \`tdd\` |"
+  "| New behavior in one session | \`grill\`* + \`domain-modeling\`, then \`implement\`* |"
+  "| Several sessions, or a new app | \`grill\`*, \`to-spec\`*, \`to-tickets\`*, \`implement\`* per ticket; a new app's ticket 01 is the walking skeleton |"
+  "| Sensitive, any size: auth, permissions, secrets, billing, migrations, infra, CI or deploy config, public API, anything destructive | its size row's move, \`grill\`* on the security and failure axes first, \`code-review\` required |"
+  "| Down or degraded for users now | \`incident\`* |"
+  "| Ship, deploy, release, publish | \`release\`* |")
+for row in "${BOOT_ROWS[@]}"; do grep -qxF -- "$row" "$BOOT" || fail "the bootstrap lost a routing row: $row"; done
+must_say bootstrap "$BOOT" "Development work in this project" "a 1% chance" "the lower" "moves down, never up" \
+  "AskUserQuestion, recommended answer first" "Seams are settled in the grill" "\`tdd\` and \`to-spec\` do not ask again" \
+  "\`code-review\` runs on features and builds" "offered on bounded changes and bugs" "one context" "references/routing.md" \
+  "\`finishing-a-development-branch\`*" "**Quality bar.**" "fails, is attacked, performs, is observed, is documented and is rolled back" \
+  "each item proven" "nothing is added that nobody asked for"
+BOOT_BODY=$(awk 'body; NR > 1 && /^---$/ {body = 1}' "$BOOT")
+grep -qiwE "you|your" <<< "$BOOT_BODY" && fail "the bootstrap addresses the reader; it states the project's facts: $(grep -iwE "you|your" <<< "$BOOT_BODY")"
+grep -qE "<[A-Z_-]+>" <<< "$BOOT_BODY" && fail "a pseudo-tag in the bootstrap: $(grep -oE "<[A-Z_-]+>" <<< "$BOOT_BODY" | head -1)"
 # routing.md carries what moved out of the bootstrap and the rules the spec added: the worktree and
 # review-feedback owners, the judgment rule at a phase boundary (no token figure), the named durable
 # state, evidence reuse for an unchanged candidate, the greenfield path.

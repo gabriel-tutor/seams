@@ -7,6 +7,8 @@ description: Use when an agreed design, spec or ticket is ready to build
 
 Build the work a spec, a ticket or an agreed design describes: tests first at the agreed seams, a commit, a review of that commit, the definition of done with evidence, and a handover. The steps run in this order; the review sees only what is committed, which is why the commit comes before it.
 
+**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the offer to add a run command to the README.
+
 ## Gate
 
 Before reading anything, confirm which spec, ticket or agreed design you're building, and where. Offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch. Wait for a yes. Skip this only when the user's last message already names both, when a yes earlier in this request covered this ticket and where it goes ("build all three on main"), or when you resume a ticket in progress whose state matches its progress file (Resuming, below).

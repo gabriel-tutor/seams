@@ -65,10 +65,12 @@ assert h["hookEventName"] == "SessionStart", h
 print(h["additionalContext"])' <<< "$out" || fail "malformed hook output: $out"
 }
 
-# The injection wraps the bootstrap body, without its frontmatter.
+# The injection is the bootstrap body, without its frontmatter, and opens with it (lean-and-durable ticket 08): no
+# <EXTREMELY_IMPORTANT> wrapper and no preamble around it. Claude Code's hooks docs: injected text framed as out-of-band
+# system commands can trip Claude's prompt-injection defenses; written as the project's facts, it reads as context.
 C=$(context "$FIX" "$MP_HOME" "$PLAIN")
-[[ "$C" == "<EXTREMELY_IMPORTANT>"* && "$C" == *"</EXTREMELY_IMPORTANT>" ]] || fail "wrapper missing: $C"
-[[ "$C" == *"Fixture routing policy line."* ]] || fail "bootstrap body missing: $C"
+[[ "$C" == "Fixture routing policy line."* ]] || fail "the injection should open with the bootstrap body: $C"
+[[ "$C" != *"EXTREMELY_IMPORTANT"* && "$C" != *"routing policy:"* ]] || fail "a wrapper or preamble around the bootstrap: $C"
 [[ "$C" != *"fixture description"* && "$C" != *"name: using-matt-pocock-skills"* ]] || fail "frontmatter leaked: $C"
 
 # ${CLAUDE_PLUGIN_ROOT} in the body becomes the plugin's absolute path, so the injected
@@ -173,6 +175,17 @@ budget() {   # budget <home> [config-dir]
 }
 for H in "$MP_HOME" "$PARTIAL_HOME" "$BARE_HOME" "$LINK_HOME" "$DIRLINK_HOME"; do budget "$H"; done
 budget "$BARE_HOME" "$CUSTOM_CONFIG"
+
+# The real injection, every variant of its dynamic lines included, is the project's facts from its first word: it
+# opens by saying how development work in this project runs, and no part of it is a wrapper, a preamble addressed to
+# Claude, or a line telling Claude what to do.
+for H in "$MP_HOME" "$PARTIAL_HOME" "$BARE_HOME"; do
+  C=$(context "$REPO/plugin" "$H" "$REPO_UNSET")
+  [[ "$C" == "Development work in this project "* ]] || fail "the injection should open with the project's facts (HOME=$H): $C"
+  for marker in "<EXTREMELY_IMPORTANT>" "<SUBAGENT-STOP>" "routing policy:" "ask the user" "offer \`"; do
+    [[ "$C" != *"$marker"* ]] || fail "out-of-band framing in the injection ($marker, HOME=$H): $C"
+  done
+done
 
 # Guard: with a resume note of the longest kind (four active files whose fields run past their caps, in a
 # repository with a long path), what follows the bootstrap stays under 1,500 characters, so the injection

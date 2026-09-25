@@ -1,11 +1,13 @@
 ---
 name: release
-description: Use when the user says ship, deploy, release, publish or go live, or when an integrated candidate is to reach a host, a store, a registry or a marketplace; takes the candidate through readiness, a deploy behind an explicit yes, verification that the exact candidate runs, and an operations handover
+description: Use when the user says ship, deploy, release, publish or go live, or when an integrated candidate is to reach a host, a store, a registry or a marketplace
 ---
 
 # Release
 
 Take an integrated candidate to its target and prove that exact candidate is what runs. Readiness first; a deploy only after a yes that names what is being deployed where; then verification, then the operations handover. Nothing here deploys, publishes or uploads before the Deploy step's yes.
+
+**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
 
 ## Gate
 

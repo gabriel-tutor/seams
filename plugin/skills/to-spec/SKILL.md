@@ -7,6 +7,8 @@ description: Use when a grilled design is agreed and the build will span more th
 
 Turn the current conversation into a spec and publish it to the project's issue tracker. No interview: the grill already settled the design, so this is synthesis of what is already known. Do not interview the user; the only questions here are the gate question, the seams when none were agreed, and the publish confirmation.
 
+**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
+
 ## Gate
 
 Before reading anything, ask "Write the spec now?" with AskUserQuestion, recommended answer first, and wait for a yes. Skip this only when the user's last message asks for a spec or says yes to an offer to write one, or when a yes earlier in this request covered the spec ("grill it, then write the spec"). A general go-ahead such as "let's get going" or "next" is not a request for a spec.

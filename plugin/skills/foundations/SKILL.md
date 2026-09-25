@@ -1,11 +1,13 @@
 ---
 name: foundations
-description: Use when starting work in a repo for the first time, when the session bootstrap says the repo is not set up, or when a repo lacks run instructions, a test or typecheck command, lint, pre-commit hooks, CI, a glossary, boundary enforcement, or the production basics (a deploy pipeline, environments, backups, monitoring, scanning)
+description: Use when starting in a repo for the first time, or when it lacks run or test commands, lint, pre-commit hooks, CI, a glossary, or the production basics (deploys, environments, backups, monitoring)
 ---
 
 # Foundations
 
 A senior engineer's first hour in a repo: find out what's there, name what's missing, and offer to set it up. This skill reports first and writes nothing without a yes.
+
+**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the report's line on why each gap matters.
 
 ## 1. Survey
 

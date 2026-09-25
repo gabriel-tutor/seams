@@ -9,7 +9,9 @@ body, with ${CLAUDE_PLUGIN_ROOT} replaced by the plugin's path so it can point a
 reference files, then a "This session" section. That section says where Matt Pocock's skills
 are installed (CLAUDE_CONFIG_DIR, else ~/.claude), or which required ones are missing and how
 to install them, and nudges toward the foundations skill when the working repo has no
-docs/agents/issue-tracker.md. After the bootstrap comes the resume note (ADR 0003): the
+docs/agents/issue-tracker.md. All of it is written as the project's facts, with no wrapper or
+preamble: Claude Code's hooks docs say text framed as out-of-band system commands can trip
+Claude's prompt-injection defenses. After the bootstrap comes the resume note (ADR 0003): the
 repository's unfinished work from its progress files, as data, with a one-line systemMessage
 telling the user what is being resumed.
 Also keeps the gate's ledger: a new session or /clear starts with an empty one.
@@ -41,7 +43,6 @@ HERE = Path(__file__).resolve().parent.parent
 PLUGIN = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or HERE)
 BOOTSTRAP = HERE / "skills" / "using-matt-pocock-skills" / "SKILL.md"
 
-PREAMBLE = "Your `matt-pocock-workflow:using-matt-pocock-skills` skill, this session's routing policy:"
 # The Matt Pocock skills the bootstrap and the Seams skills invoke with the Skill tool. The
 # rest of his set (the standalone skills routing.md lists, his user-only commands) is only ever
 # suggested to the user by name, so it is not checked. scripts/install.sh checks the same list and
@@ -50,7 +51,7 @@ PREAMBLE = "Your `matt-pocock-workflow:using-matt-pocock-skills` skill, this ses
 REQUIRED_SKILLS = ("grilling", "domain-modeling", "tdd", "diagnosing-bugs", "code-review",
                    "codebase-design", "setup-matt-pocock-skills", "setup-pre-commit",
                    "setup-ts-deep-modules")
-ASK_TO_INSTALL = "ask the user to run `npx skills add mattpocock/skills -g -a claude-code` and restart."
+INSTALL = "the user runs `npx skills add mattpocock/skills -g -a claude-code` and restarts."
 
 
 def without_frontmatter(text: str) -> str:
@@ -81,8 +82,8 @@ def mp_line(config: Path, repo: "Path | None" = None) -> str:
     if not missing:
         return f"- Matt Pocock's skill files: `{skills}/<name>/SKILL.md`."
     if len(missing) == len(REQUIRED_SKILLS):
-        return f"- Matt Pocock's skills are not installed at `{skills}`: {ASK_TO_INSTALL}"
-    return f"- Matt Pocock's skills at `{skills}` are missing {', '.join(missing)}: {ASK_TO_INSTALL}"
+        return f"- Matt Pocock's skills are not installed at `{skills}`: {INSTALL}"
+    return f"- Matt Pocock's skills at `{skills}` are missing {', '.join(missing)}: {INSTALL}"
 
 
 def repo_root(start: Path) -> Path | None:
@@ -98,7 +99,7 @@ def setup_line(cwd: Path) -> str | None:
     root = repo_root(cwd)
     if root is None or (root / "docs" / "agents" / "issue-tracker.md").is_file():
         return None
-    return "- No `docs/agents/issue-tracker.md` here: offer `matt-pocock-workflow:foundations` first."
+    return "- No `docs/agents/issue-tracker.md` here: `matt-pocock-workflow:foundations` comes first."
 
 
 # --- The resume note (ADR 0003) ------------------------------------------------------------
@@ -241,8 +242,7 @@ def handle(event: dict) -> dict:
     body = without_frontmatter(BOOTSTRAP.read_text()).replace("${CLAUDE_PLUGIN_ROOT}", str(PLUGIN))
     lines = (mp_line(config_dir(), repo_root(cwd)), setup_line(cwd))
     session = "## This session\n" + "\n".join(line for line in lines if line)
-    context = ("<EXTREMELY_IMPORTANT>\n" + PREAMBLE + "\n\n" + body + "\n\n" + session
-               + "\n</EXTREMELY_IMPORTANT>")
+    context = body + "\n\n" + session
     output: dict = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": context}}
     try:
         note = resume_note(repo_root(cwd) or cwd)

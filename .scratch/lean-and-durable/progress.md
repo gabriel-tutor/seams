@@ -2,8 +2,9 @@
 
 Status: active
 Stage: integrated
-Next: Implement ticket 08 in a fresh session, then 07: both are unblocked now. 08 first, since 09 to 14 wait on it and its shorter descriptions give 07 room in pr-review's core.
+Next: Ticket 08's build is committed on main (from e5f1875): review it against e5f1875 with code-review, then the fixes, the paid eval on the user's yes, and the definition of done.
 Updated: 2026-09-25
+Ticket: 08
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback) and ticket 06 (pr-review under the cap, scripts without prompts), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.

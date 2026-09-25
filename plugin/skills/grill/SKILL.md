@@ -7,6 +7,8 @@ description: Use before building a feature or changing behavior, when a plan or 
 
 This is Matt Pocock's grilling, presented as clickable questions, every independent one at once, with its record kept in the feature's progress file so that `/clear` or compaction loses nothing.
 
+**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the count of decisions left.
+
 ## Method
 
 1. Invoke Matt Pocock's `grilling` skill with the Skill tool, and follow its method exactly:

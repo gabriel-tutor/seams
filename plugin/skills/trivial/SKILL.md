@@ -1,11 +1,13 @@
 ---
 name: trivial
-description: Use before a change with no effect on behavior, data shape or security (copy, a typo, a comment, a rename that changes nothing observable); the gate opens on this declaration and its checklist says when a change is not trivial
+description: Use before a change with no effect on behavior, data shape or security (copy, a typo, a comment, a rename that changes nothing observable)
 ---
 
 # Trivial
 
 A trivial change is declared, not assumed. Invoking this skill opens the gate for the current request and commits you to the test below.
+
+**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
 
 ## The test
 

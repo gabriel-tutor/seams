@@ -1,13 +1,9 @@
 ---
 name: using-matt-pocock-skills
-description: Use when starting any conversation - establishes how development work is routed through Matt Pocock's engineering skills
+description: Use when starting any conversation - how development work here is routed to Matt Pocock's skills
 ---
 
-<SUBAGENT-STOP>
-Dispatched as a subagent for a specific task? Ignore this skill.
-</SUBAGENT-STOP>
-
-Matt Pocock's skills lead every development task here. Before your first action on one (a read, a command, an edit), route it below and invoke its skill with the Skill tool; a 1% chance is enough. Between two rows take the lower; mid-task complexity moves down, never up. * marks this plugin's skills (`matt-pocock-workflow:<name>`); bare names are Matt Pocock's.
+Development work in this project starts with the skill its row below names, invoked with the Skill tool before the first read, command or edit; a 1% chance is enough. Between two rows the lower applies; complexity found mid-task moves down, never up. * marks this plugin's skills (`matt-pocock-workflow:<name>`); bare names are Matt Pocock's. Subagents skip this routing.
 
 | Request | First move |
 | --- | --- |
@@ -20,13 +16,15 @@ Matt Pocock's skills lead every development task here. Before your first action 
 | Down or degraded for users now | `incident`* |
 | Ship, deploy, release, publish | `release`* |
 
-**Red flags**, meaning invoke now: "it's a quick fix", "the requirements are clear", "let me read the code first".
+**Red flags** that a skill is due now: "it's a quick fix", "the requirements are clear", "let me read the code first".
 
-**Enforced.** A hook refuses project changes until one of these skills is invoked for the request, and refuses to end a turn that changed the project without `verification-before-completion`*; run it before any claim of done, fixed or passing. Finish a branch with `finishing-a-development-branch`*; on the base branch, commit and stop.
+**Enforced.** A hook refuses project changes until one of these skills is invoked for the request, and refuses to end a turn that changed the project without `verification-before-completion`*, due before any claim of done, fixed or passing. A branch ends with `finishing-a-development-branch`*; on the base branch, work ends at the commit.
+
+**Quality bar.** What ships meets a definition of done covering how it fails, is attacked, performs, is observed, is documented and is rolled back, each item proven; nothing is added that nobody asked for.
 
 **Rules.**
-1. Ask through AskUserQuestion, recommended answer first.
+1. Questions use AskUserQuestion, recommended answer first.
 2. Seams are settled in the grill; `tdd` and `to-spec` do not ask again.
 3. `code-review` runs on features and builds, is offered on bounded changes and bugs.
 4. Flow: spec → `to-tickets`*, tickets → `implement`*; each step asks before it starts; a yes covering later steps is not asked again; deploy and publish always ask.
-5. Keep grill → spec → tickets in one context. Phase boundaries, durable state, on-ramps, Superpowers overlaps: `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/routing.md`
+5. Grill → spec → tickets stay in one context. Phase boundaries, durable state, on-ramps, Superpowers overlaps: `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/routing.md`

@@ -1,11 +1,13 @@
 ---
 name: incident
-description: Use when users are affected now, production down, degraded, erroring or slow; contains and restores before any diagnosis and asks before any outward action, then the cause through diagnosing-bugs, the fix through the normal route with a regression test first, a post-mortem note and an incident handover
+description: Use when users are affected now, production down, degraded, erroring or slow
 ---
 
 # Incident
 
 An outage or degradation that users feel now. Contain and restore come before diagnosis: users stop being affected first, the cause is found second, and the fix takes the normal route with a regression test. The steps run in this order; a session that ends before the fix still ends with the post-mortem note (what is known, the rest pending), the fix ticket and the incident handover. Nothing outward (a rollback, a redeploy, a config or flag change on the host, a restart, a message to users) happens before the user's yes to that action.
+
+**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
 
 ## Impact
 
