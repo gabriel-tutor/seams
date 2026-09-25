@@ -624,3 +624,88 @@ The four calls cost $0.35, $0.51, $0.59 and $0.96.
 - A fork.
 - A note listing more than one feature.
 - Any model but the one above.
+
+## 3.3, ticket 05: a ticket resumed from its progress file, 2026-09-25
+
+Ticket 05 made the flow skills keep the progress file:
+- **`to-spec` and `to-tickets`** record the spec and the ticket list, and commit them by name after their yes.
+- **`implement`** records the ticket in progress, the candidate under review and the review's findings. It closes each ticket with a record commit that the definition of done then runs on, and it resumes a ticket without its gate question when the file and git agree.
+- **`finishing-a-development-branch`**, now adapted from its Superpowers copy, records integration. **`release`** sets done.
+- **The resume note** names a ticket in progress and says that `implement` continues it.
+
+`scripts/test.sh` is the deterministic proof: each skill's wording and size, the adapted copy's checksum, the note's ticket field, and the fixture's state and its note. What follows is the live evidence. The harness and the headless run used candidate `9e14539`, and the eval used `c56a84f`. Their `plugin/skills` and `plugin/hooks` are identical: `c56a84f` changes only the case's expectation, its grader and a harness test. `efebcf4`, after them, rewords `implement` from what the headless run showed (below); the static test covers those changes, and no live run has. Setup: Claude Code 2.1.282, macOS 15.8, and `claude -p` runs that report `claude-opus-5-5[1m]`.
+
+**The scenario, `resume-ticket`.**
+- **The fixture:** OrderKit with the coupons spec and two tickets on `main`. Ticket 01 is done and recorded. Ticket 02 (FLAT5 and case-insensitive codes) is committed and reviewed.
+- **The finding:** the review found that FLAT5's minimum is checked against the tier-discounted total, not the subtotal. Only the uncommitted progress file records it, with its example: 20 units at 102 cents should give 1438.
+- **A second feature:** an older gift-cards grill is unfinished too, so the note lists two features.
+- **The prompt names nothing:** "Let's continue where we left off."
+- **The expectation:**
+  - the first skill is `matt-pocock-workflow:implement`;
+  - the run re-reads the progress file, the ticket, the spec and the git state;
+  - its reply names the finding and the subtotal;
+  - it goes on to a change instead of stopping to ask;
+  - nothing is refused.
+
+**The routing harness:** `python3 scripts/behavior_test.py run --scenario resume-ticket --arm plugin --assert`, three runs.
+- **The first judgement was 0 of 3, and the runs were right.** The reply pattern asked for "ticket 02" or "FLAT5" and for the finding's own words. The runs named the finding in the code's terms, "post-tier" and "subtotal", which the ticket and the spec use too.
+- **Only "finding" separates them.** A run that continues is the only kind that can say there is a finding before its first edit. `c56a84f` asks for "finding" and "subtotal", and a unit test keeps a restart in the ticket's own words a miss.
+- **The three saved streams were re-judged, and nothing was re-run.** `report` on those records gives:
+
+Candidate: `9e14539`; model: `claude-opus-5-5[1m]`; 3 runs.
+
+| Scenario | Expected first skill | Runs | Matched | Refused | Failed calls | Errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `resume-ticket` | `matt-pocock-workflow:implement` | 3 | 3 | 0 | 0 | 0 |
+
+What all three runs did, in 20 to 21 seconds each:
+- They invoked `implement`, then read the progress file, the ticket, the spec and the code. For the git state they ran `git status`, `git log`, `git branch --show-current` and `git diff`.
+- They said the state matched: "State matches the progress file (main, HEAD = candidate 7847345, review finding recorded). Continuing from the fix."
+- They asked no gate question. They checked the finding against the code ("The finding holds: `applyCoupon` compares `total` (post-tier) to 2000, while spec criterion 2 says the subtotal") and invoked `tdd`.
+- Each run's first edit was the failing test the finding calls for: `applyCoupon(cart(20, 102), "FLAT5")` expecting 1438.
+
+**Headless: a fresh session, compaction, and a planted mismatch.** One session in a fresh copy of the fixture, run as four `claude -p` calls with the harness's settings (plus `git rev-parse`, `show`, `branch` and `merge-base`) and `--plugin-dir plugin`. The streams are under `tests/runs/ticket-05/headless/`.
+1. **`claude -p "Let's continue where we left off. Stop once the fix is committed: I want to compact before the rest of the ticket."`**, a fresh session, as `/clear` leaves it.
+   - The note named coupons with ticket 02 in progress.
+   - The session invoked `implement` and re-read the state, then fixed the finding test first through `tdd`, ran the suite and the typecheck, and invoked `verification-before-completion`.
+   - It committed the fix and the progress file by name (`6cda6a7`) and stopped.
+   - It kept the reviewed commit as `Candidate` and said in `Next` that the fix sits on it: "a commit can't contain its own ID".
+   - Then, outside the session, a commit the progress file does not mention: one README line (`cd287ed`).
+2. **`claude -p --resume <id> "/compact"`**
+   - A manual compaction, from 58,794 to 9,247 tokens.
+   - The hook ran with source `compact` and re-injected the note, with the ticket.
+   - The notice read "SessionStart:compact says: Seams: resuming coupons (integrated): On main: the review fix (FLAT5 minimum on the subtotal) is committed directly on 7847345; commit the ticket's record and run the definition of done."
+3. **`claude -p --resume <id> "Let's continue."`**
+   - `implement` was invoked again and the git state read.
+   - The reply reported the mismatch and acted on nothing: "I haven't committed the ticket record or started the final checks, because the repo doesn't match the progress file." It named `cd287ed` as the commit the file doesn't mention, and asked how to go on, with three options.
+4. **`claude -p --resume <id> "That README commit is mine and has nothing to do with the ticket. Carry on."`**
+   - The typed answer started a new gate request. The model tried the progress file and its commit before invoking `implement` again, and the gate refused both; after the invocation both went through.
+   - The record commit `53e8e68` set `Status: done` (ticket 02 was the last, and the spec has no Release section) and `Next` to "None".
+   - The definition of done found 17 of 18 rows met. The unmet one: the fixture's own commit `7847345` gives no reason in its message. The run said so and asked before rewriting history, but it left the feature done.
+   - The handover had its four sections.
+
+The four calls cost $0.59, $0.66, $1.03 and $1.37. `efebcf4` acts on what this run showed:
+- **The candidate** is now the commit under review, and a resume checks that the history after it holds only commits the file accounts for. That is what step 1 did; the old rule would have called its own fix a mismatch.
+- **A typed answer** that continues the ticket now invokes `implement` again first, as the grill already does. Ticket 03's lapse hint generalizes this.
+- **The rule to put the ticket back on an unmet row** now sits at the definition of done's table, where step 4 needed it.
+
+**`claude plugin eval`.**
+- **Twice it refused to start.** With `--allow-tools Bash`, and again with only `git log`, `status`, `diff` and `branch` granted, it stopped before any session and cost nothing: "the Docker … credential store on this machine holds a symbolic link inside it, so the Bash sandbox cannot reliably exclude it — a Bash-granting evaluation cannot run here".
+- **The run was made without a shell:** `claude plugin eval plugin --case resume-ticket --scaffold --runs 1 --trust-plugin --no-publish`, one run with the plugin and one without, on `c56a84f`. It took 190 s and cost $0.88, judge included. The result document does not name the model.
+
+| Case | With | Without | Δ | Expected skill fired | Runs per arm | Runs with an error |
+| --- | --- | --- | --- | --- | --- | --- |
+| `resume-ticket` | 0.86 | 0.86 | +0.00 | 1 of 1 | 1 | 0 |
+
+- **Graders:** in both arms, `continues-the-ticket` (the judge: PASS, PASS, PASS), `takes-up-the-finding`, `read-progress`, `read-ticket`, `read-spec` and `no-refusal` passed.
+- **`read-git-state` failed in both arms by construction:** it needs a Bash call, and none was granted. The eval printed a warning saying so. The case now lists Bash in its allowed tools, as the eval advised.
+- **With the plugin,** the run checked the state without a shell ("it matches `.scratch/coupons/progress.md`. We're on `main` at `7465ab1` (the Candidate), and one review finding is open"). It confirmed the finding in the code and said it could not edit in this session.
+- **Why Δ is 0:** without the plugin, the run found `coupons/progress.md` beside the older gift-cards file and laid out the same fix from it. Two features in `.scratch/` did not make the note necessary, as one had not in ticket 04.
+
+**Not exercised live.**
+- AskUserQuestion: headless runs have none, so every question came as text.
+- `/clear` itself: a fresh `claude -p` session stands for it.
+- `to-spec`, `to-tickets`, `finishing-a-development-branch` and `release` writing the file. The static test holds their wording.
+- The wording `efebcf4` changed in `implement`.
+- The eval with a shell, on a machine whose Bash sandbox starts.
+- Any model but the one above.
