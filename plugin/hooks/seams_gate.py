@@ -1285,11 +1285,26 @@ def deny_reason(change: dict) -> str:
             f"invoked for it. {ROUTES} {rule}")
 
 
+# Seams' read-only agents (plugin/agents/), as the hook input's `agent_type` names a plugin's agent: by its
+# plugin-scoped name. They never change the project, whatever the request has declared.
+READ_ONLY_AGENTS = {PLUGIN_PREFIX + "scout", PLUGIN_PREFIX + "reviewer"}
+
+
+def read_only_reason(agent: str, change: dict) -> str:
+    what = (f"editing {describe(change)}" if change.get("path") else describe(change)) + " changes the project"
+    return (f"{REFUSAL_PREFIX}`{agent}` is a read-only agent, and {what}: a read-only agent never changes the "
+            "project, whatever the request has declared. Report the change instead, and the main conversation "
+            f"makes it. {SCRATCH}")
+
+
 def decide_pre_tool_use(event: dict, ledger: dict, config_dir: Optional[str] = None) -> dict:
     """Allow, or deny with a reason. The change to record travels with an allow."""
     change = change_for_event(event, config_dir)
     if change is None:
         return {"decision": "allow", "reason": None, "change": None}
+    agent = event.get("agent_type")
+    if isinstance(agent, str) and agent in READ_ONLY_AGENTS:
+        return {"decision": "deny", "reason": read_only_reason(agent, change), "change": None}
     if not ledger.get("declarations"):
         return {"decision": "deny", "reason": deny_reason(change), "change": None}
     return {"decision": "allow", "reason": None, "change": change}

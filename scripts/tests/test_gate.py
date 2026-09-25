@@ -709,11 +709,14 @@ class Ledger(unittest.TestCase):
                          os.path.join(tempfile.gettempdir(), f"seams-{os.getuid()}"))
 
 
-def event(tool: str, cwd: str = "/proj", agent_id: str = None, **tool_input: object) -> dict:
+def event(tool: str, cwd: str = "/proj", agent_id: str = None, agent_type: object = None,
+          **tool_input: object) -> dict:
     data = {"session_id": "s1", "cwd": cwd, "hook_event_name": "PreToolUse",
             "tool_name": tool, "tool_input": tool_input}
     if agent_id:
         data["agent_id"] = agent_id
+    if agent_type is not None:
+        data["agent_type"] = agent_type
     return data
 
 
@@ -967,6 +970,85 @@ class PreToolUseDecision(unittest.TestCase):
         self.assertEqual(self.decide(event("Edit", agent_id="a1", file_path="/proj/src/a.ts"))["decision"], "deny")
         gate.add_declaration(self.ledger, "matt-pocock-workflow:implement")
         self.assertEqual(self.decide(event("Edit", agent_id="a1", file_path="/proj/src/a.ts"))["decision"], "allow")
+
+
+class ReadOnlyAgents(unittest.TestCase):
+    """Seams' two read-only agents, `scout` and `reviewer`, never change the project: the gate refuses a
+    change from either, whatever the ledger says (lean-and-durable ticket 09). The hook input names a
+    plugin's agent by its plugin-scoped name in `agent_type` (the hooks reference, SubagentStart)."""
+
+    SCOUT, REVIEWER = "matt-pocock-workflow:scout", "matt-pocock-workflow:reviewer"
+
+    def setUp(self):
+        self.config = tempfile.mkdtemp()
+        self.ledger = gate.empty_ledger("s1")
+        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement")      # the request is declared
+
+    def decide(self, ev):
+        return gate.decide_pre_tool_use(ev, self.ledger, config_dir=self.config)
+
+    def test_a_reviewer_committing_is_refused_even_with_a_declaration(self):
+        decision = self.decide(event("Bash", agent_id="a1", agent_type=self.REVIEWER, command="git commit -m fix"))
+        self.assertEqual(decision["decision"], "deny")
+        self.assertIsNone(decision["change"])
+
+    def test_the_refusal_names_the_agent_and_sends_the_change_back_rather_than_to_a_route(self):
+        # A subagent has no Skill tool to route with (its tools are its own), so the routes would mislead.
+        reason = self.decide(event("Bash", agent_id="a1", agent_type=self.REVIEWER, command="git commit -m fix"))["reason"]
+        self.assertTrue(reason.startswith("Seams gate: "), reason)      # the harness counts refusals by it
+        for needle in ("`matt-pocock-workflow:reviewer` is a read-only agent", "`git commit`",
+                       "whatever the request has declared", "Report the change instead"):
+            self.assertIn(needle, reason)
+        self.assertNotIn("Route it first", reason)
+        self.assertIn("/proj/src/a.ts", self.decide(event("Edit", agent_type=self.SCOUT, file_path="/proj/src/a.ts"))["reason"])
+
+    def test_either_agent_is_refused_whichever_tool_it_writes_through(self):
+        # Their tool lists leave out every tool that writes; the gate holds even if a list is not applied.
+        writes = [("Edit", {"file_path": "/proj/src/a.ts", "old_string": "a", "new_string": "b"}),
+                  ("Write", {"file_path": "/proj/src/new.ts", "content": "x"}),
+                  ("MultiEdit", {"file_path": "/proj/src/a.ts", "edits": []}),
+                  ("NotebookEdit", {"notebook_path": "/proj/n.ipynb", "new_source": "x"}),
+                  ("Bash", {"command": "rm -rf src"}), ("Bash", {"command": "echo x > src/a.ts"}),
+                  ("Bash", {"command": "npm install left-pad"}),
+                  ("Monitor", {"command": "tail -f server.log | tee src/copy.txt", "description": "copy"}),
+                  ("PowerShell", {"command": "Remove-Item src -Recurse"})]
+        for agent in (self.SCOUT, self.REVIEWER):
+            for tool, tool_input in writes:
+                with self.subTest(agent=agent, tool=tool, tool_input=tool_input):
+                    decision = self.decide(event(tool, agent_id="a1", agent_type=agent, **tool_input))
+                    self.assertEqual(decision["decision"], "deny")
+                    self.assertIsNone(decision["change"])        # nothing reaches the ledger
+
+    def test_reading_checking_and_scratch_work_go_through(self):
+        t = tempfile.gettempdir()
+        for tool, tool_input in [("Read", {"file_path": "/proj/src/a.ts"}), ("Grep", {"pattern": "reserve"}),
+                                 ("Bash", {"command": "git diff e38023a...HEAD"}), ("Bash", {"command": "npm test"}),
+                                 ("Bash", {"command": f"mkdir -p {t}/probes && echo x > {t}/probes/p.test.ts"}),
+                                 ("Write", {"file_path": f"{t}/notes.md", "content": "x"})]:
+            with self.subTest(tool=tool, tool_input=tool_input):
+                self.assertEqual(self.decide(event(tool, agent_id="a1", agent_type=self.REVIEWER, **tool_input))["decision"],
+                                 "allow")
+
+    def test_other_agents_keep_the_ledgers_rule(self):
+        # A built-in agent, and an agent of the user's own that happens to share a bare name, are not Seams'.
+        for agent in ("general-purpose", "Explore", "reviewer", "scout", "other-plugin:reviewer"):
+            with self.subTest(agent=agent):
+                decision = self.decide(event("Edit", agent_id="a1", agent_type=agent, file_path="/proj/src/a.ts"))
+                self.assertEqual(decision["decision"], "allow")
+                self.assertEqual(decision["change"]["path"], "/proj/src/a.ts")
+        undeclared = gate.decide_pre_tool_use(event("Edit", agent_id="a1", agent_type="general-purpose",
+                                                    file_path="/proj/src/a.ts"),
+                                              gate.empty_ledger("s1"), config_dir=self.config)
+        self.assertEqual(undeclared["decision"], "deny")
+        self.assertIn("Route it first", undeclared["reason"])
+
+    def test_an_agent_type_that_is_not_a_name_changes_nothing(self):
+        # A list or a mapping must not raise (a hook that raises fails open) nor pass for a read-only agent.
+        for agent in ([self.REVIEWER], {"name": self.REVIEWER}, 7, ""):
+            with self.subTest(agent=agent):
+                ev = event("Edit", agent_id="a1", file_path="/proj/src/a.ts")
+                ev["agent_type"] = agent
+                self.assertEqual(self.decide(ev)["decision"], "allow")
 
 
 class MonitorCommands(unittest.TestCase):

@@ -17,7 +17,7 @@ The issue tracker and the triage labels should already be in context (`docs/agen
 
 ## Process
 
-1. **Explore the repo** to understand the current state of the codebase, if you haven't already. Use the project's domain glossary (`CONTEXT.md`) throughout the spec, and respect any ADRs in the area you're touching.
+1. **Explore the repo** to understand the current state of the codebase, if you haven't already. Beyond a few files, send `matt-pocock-workflow:scout` agents, one per area or question, all started in one message, and keep their conclusions rather than the files. Use the project's domain glossary (`CONTEXT.md`) throughout the spec, and respect any ADRs in the area you're touching.
 2. **Seams.** Sketch the seams at which the feature will be tested. Prefer existing seams to new ones, and use the highest seam possible; if new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better: the ideal number is one. When the grill already agreed the seams, write those into the spec instead of asking again. Only when no seams were agreed, check with the user that yours match their expectations, with AskUserQuestion.
 3. **Write the spec** from the template below. Under **Further Notes**, add four short subsections, each from what the grill settled (write "none" where nothing applies, and never invent), and a fifth when the work has a deployment target:
    - **Alternatives considered:** the designs rejected and the one-line reason for each. A decision that is hard to reverse also gets an ADR through `domain-modeling`; the spec links it rather than repeating it.

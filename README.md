@@ -37,6 +37,8 @@ Two hooks turn the routing policy from a promise into a rule ([ADR-0001](docs/ad
 
 A declaration is a Skill invocation of a Seams skill or one of Matt Pocock's process skills (his `implement`, `to-spec`, `to-tickets`, `grilling`, `tdd`, `diagnosing-bugs`, `code-review` and the rest), by Claude or typed by you as a slash command. A typed skill counts under the name Claude Code expanded it to, which its `UserPromptExpansion` event reports, so a bare name (`/grill`, `/pr-review 42`) and each skill of a stacked command (`/grill /tdd …`) count; where that event is missing, the prompt's leading command still does. A Superpowers skill or another plugin's is not one, and neither is the routing policy skill itself or an MCP server's prompt. A short go-ahead (*yes*, *continue*, *option 2*) keeps the current declaration, and so does a notice Claude Code generates (a background task finishing, a subagent's hand-back, a system reminder); any other prompt starts a new request that needs its own. When the request before it had one and the message types no route of its own, Claude is told which declaration lapsed: invoking that skill again continues the same work (a skill only you can type, such as `/pr-review`, you type again), and new work takes its own route. The hint restores nothing itself. A false positive costs one call: `matt-pocock-workflow:trivial` carries the test of what is not trivial (no behavior change, no shape change, nothing sensitive, reversible in one commit) and routes up when any part fails.
 
+**The read-only agents never change the project.** Seams ships two agents that the skills name when they delegate: `scout` finds facts in the code and docs (the grill's fact-finding, `to-spec`'s exploring, `foundations`' survey, `implement`'s reading beyond a few files), and `reviewer` reviews a named diff (the subagents of `implement`'s reviews). Each returns conclusions with `file:line` or URL citations and says what it couldn't confirm. Their tool lists leave out every tool that writes, and the gate refuses a change to the project from either, whatever the request has declared; their scratch work under the temp directory still passes.
+
 **A change needs verification.** When a turn changed non-documentation files and `matt-pocock-workflow:verification-before-completion` did not run afterwards, the turn cannot end: the Stop hook asks once, as hook feedback rather than a hook error, naming how many unverified changes it counted and one of them, and Claude runs the verification with its real output before finishing. A turn that ends with a question to you is delayed by one message, never trapped.
 
 The ledger behind both is one JSON file per session in a per-user directory under the temp directory (`$TMPDIR/seams-$(id -u)/<session>.json`) holding skill names, tool names, paths and prompt ids only, never command or prompt text; `/clear` and a new session reset it, compaction and resume keep it. Every hook fails open: a bug in the plugin writes a traceback to `claude --debug` and lets your work through. There is no environment variable that turns the gate off; disabling the plugin is the off switch.
@@ -70,7 +72,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    G["Facts from the code<br/>+ up to four independent decisions, clickable<br/>(what the code or an earlier answer<br/>settles is a fact, not a question)"] --> Q{frontier<br/>empty?}
+    G["Facts from the code, found by scout agents<br/>+ up to four independent decisions, clickable<br/>(what the code or an earlier answer<br/>settles is a fact, not a question)"] --> Q{frontier<br/>empty?}
     Q -->|no| G
     Q -->|yes| L["Design lens, 10 axes<br/>data · seams · failure modes · scale · security<br/>observability · rollout · testing · operability · cost"]
     L -->|unsettled axis| G
@@ -94,7 +96,7 @@ flowchart LR
     WT --> RG["tdd: red → green,<br/>one slice at a time"]
     RG --> CHK["typecheck<br/>full suite"]
     CHK --> CM["commit the ticket's files by name<br/>(unrelated dirty files: listed as excluded)"]
-    CM --> CR["code-review of the candidate<br/>merge-base…HEAD · Standards ‖ Spec<br/>(an empty diff is reported, not reviewed)"]
+    CM --> CR["code-review of the candidate<br/>merge-base…HEAD · Standards ‖ Spec,<br/>each a read-only reviewer agent<br/>(an empty diff is reported, not reviewed)"]
     CR -->|findings| FX["verify each finding against the code<br/>fix → commit → re-run the affected checks"] --> CR
     CR -->|clean| REC["record commit<br/>the progress file: stage reached,<br/>next ticket"] --> DOD["Definition of done, with evidence<br/>candidate SHA · seam + suite · typecheck · lint<br/>every criterion · no debug leftovers · docs · commit message"]
     CM -.ticket · next step.-> PF[(progress file<br/>.scratch/feature/progress.md)]
@@ -253,7 +255,7 @@ Three kinds of evidence, in decreasing strength, all reproducible from this repo
 
 ### The hooks and the installer, proven deterministically
 
-`scripts/test.sh` runs every suite this machine can: the gate module's unit tests (the shell classifier against a table of commands, the decision for each event against a ledger, the continuation rule, the done-check rule), the hook executables fed JSON on stdin (refuse and allow with and without a declaration, a subagent under the same ledger, a typed skill recorded from its expansion or from the prompt, the lapse hint, the done-check asking once as hook feedback and not twice, garbage input exiting 0 with no output), the session-start hook against fixture homes (a custom config directory, one with spaces, symlinked skills, a partial install, none), the installer against a stub `claude` in fixture homes (settings byte-identical, a failing step stops it, a second run changes nothing), the static plugin checks (`claude plugin validate --strict`, the skills' required sections and wording, the Superpowers copies' checksums, the upstream drift warning, the version in `plugin.json` only, every skill within 11,000 bytes with no model or effort pin, the always-on cost `claude plugin details` measures), the harness's own tests, and the sandbox workspaces the routing tests run in. The hook suites run under the default `python3` and, when it differs, the system 3.9. CI runs the same script on Ubuntu and macOS on every push to `main` and on pull requests ([`.github/workflows/test.yml`](.github/workflows/test.yml)). These prove what the hooks and the installer do; they say nothing about what the model chooses.
+`scripts/test.sh` runs every suite this machine can: the gate module's unit tests (the shell classifier against a table of commands, the decision for each event against a ledger, the continuation rule, the done-check rule), the hook executables fed JSON on stdin (refuse and allow with and without a declaration, a subagent under the same ledger, a read-only agent's change refused whatever the ledger says, a typed skill recorded from its expansion or from the prompt, the lapse hint, the done-check asking once as hook feedback and not twice, garbage input exiting 0 with no output), the session-start hook against fixture homes (a custom config directory, one with spaces, symlinked skills, a partial install, none), the installer against a stub `claude` in fixture homes (settings byte-identical, a failing step stops it, a second run changes nothing), the static plugin checks (`claude plugin validate --strict`, the skills' required sections and wording, the Superpowers copies' checksums, the upstream drift warning, the version in `plugin.json` only, every skill within 11,000 bytes with no model or effort pin, the read-only agents' tool lists and turn caps, the always-on cost `claude plugin details` measures), the harness's own tests, and the sandbox workspaces the routing tests run in. The hook suites run under the default `python3` and, when it differs, the system 3.9. CI runs the same script on Ubuntu and macOS on every push to `main` and on pull requests ([`.github/workflows/test.yml`](.github/workflows/test.yml)). These prove what the hooks and the installer do; they say nothing about what the model chooses.
 
 ### The right skill fires first, and the gate holds
 
@@ -311,17 +313,17 @@ The platform itself refuses to let the model start the skill. What those runs di
 
 ## Layout
 
-- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_gate.py`, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptExpansion, UserPromptSubmit and Stop hooks), `skills/` (the bootstrap with `references/routing.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, `pr-review` (typed by hand only: a core under the size bound, six references it reads step by step, and five scripts), the four skills from Superpowers: three copies and one adaptation), `evals/` (below), `THIRD_PARTY_NOTICES.md`
+- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_gate.py`, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptExpansion, UserPromptSubmit and Stop hooks), `agents/` (the read-only `scout` and `reviewer`), `skills/` (the bootstrap with `references/routing.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, `pr-review` (typed by hand only: a core under the size bound, six references it reads step by step, and five scripts), the four skills from Superpowers: three copies and one adaptation), `evals/` (below), `THIRD_PARTY_NOTICES.md`
 - `.claude-plugin/marketplace.json` — makes this repo a single-plugin marketplace
 - `scripts/install.sh` — the one-command installer; `scripts/behavior_test.py` — the routing-test harness; `scripts/test.sh` and `scripts/tests/` — the test suites
 - `docs/plugin-behavior-tests.md` — the routing evidence and its method; `docs/compatibility.md` — what it was tested with; `docs/adr/` — the decisions; `docs/case-study-web-downloader.md` — one feature end to end on a real repo; `docs/carousel/` — the workflow as five slides for sharing
-- `plugin/evals/` — the ten scenarios, one directory each, shared by the routing harness and `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
+- `plugin/evals/` — the thirteen scenarios, one directory each, shared by the routing harness and `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
 
 ## Tests
 
 ```bash
 scripts/test.sh                       # every suite below that this machine can run (--fast skips the sandbox one)
-scripts/tests/test_plugin.sh          # manifests validate, the version in plugin.json only, skills well-formed and within the size bound, always-on cost, copies and upstream hashes checked
+scripts/tests/test_plugin.sh          # manifests validate, the version in plugin.json only, skills well-formed and within the size bound, the read-only agents' tool lists, always-on cost, copies and upstream hashes checked
 scripts/tests/test_plugin_hook.sh     # the bootstrap hook against fixture homes and repos
 scripts/tests/test_hooks.sh           # the gate hooks fed JSON on stdin (PYTHON=/usr/bin/python3 for the system 3.9)
 scripts/tests/test_install.sh         # the installer in fixture homes, against a stub claude CLI
@@ -333,11 +335,12 @@ python3 scripts/behavior_test.py report tests/runs/mine/*/results.jsonl         
 claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write   # the same scenarios through claude plugin eval, from the clone
 ```
 
-The eval suite is the same ten scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
+The eval suite is the same thirteen scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
 
 ```bash
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag routing --tag gate --scaffold --allow-tools Edit Write
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag shell --scaffold --allow-tools Edit Write Bash   # the two cases that need a shell
+claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag delegation --scaffold   # the grill's fact-finding through the scout agent
 ```
 
 `--scaffold` runs each case's scaffold as you: it copies the fixture into the run's workspace, installs its dependencies, and hands the run the nine Matt Pocock skills from your own config directory (a run loads nothing else of yours). The eight `routing` and `gate` cases need only `Edit` and `Write`; `gate-shell-write` and `gate-commit` need `Bash`, which the eval runs under an OS sandbox that refuses to start on a Mac whose `~/.docker` holds symlinks (Docker Desktop's `cli-plugins/` does), so those two run where the sandbox can. Add `--model claude-sonnet-5` to pin the model, `--ablation none` to skip the baseline, `--publish-report` for a shareable report. Every run is billed to your account.

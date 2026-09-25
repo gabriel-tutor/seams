@@ -308,6 +308,79 @@ print(total)
 PY
 )
 (( LISTING <= 2650 )) || fail "the plugin's listing is $LISTING characters, over 2,650 (about 875 tokens by claude plugin details)"
+# Seams' read-only agents (lean-and-durable ticket 09): `scout` finds facts, `reviewer` reviews a named diff, and neither
+# can change the project. Their tool lists are exactly the ticket's: scout has Read, Glob, Grep, WebFetch and WebSearch
+# and skips CLAUDE.md; reviewer has Read, Glob, Grep and Bash, with Edit, Write and NotebookEdit disallowed. Each has a
+# turn cap, pins no permission mode (plugin_guards holds model and effort; Claude Code ignores permissionMode in a
+# plugin's agent, so a pin could only mislead), and returns conclusions with file:line or URL citations and what it
+# couldn't confirm. The gate refuses a change from exactly the agents that ship. A fixture breaking each rule shows the
+# check catching it.
+agent_problems() {   # $1 = a plugin directory: a line for each way its agents differ from the ticket's two
+  python3 - "$1" <<'PY'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+want = {"scout": {"tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"], "omitClaudeMd": "true",
+                  "cites": ["file:line", "URL", "couldn't confirm"]},
+        "reviewer": {"tools": ["Read", "Glob", "Grep", "Bash"], "disallowedTools": ["Edit", "Write", "NotebookEdit"],
+                     "cites": ["file:line", "couldn't confirm"]}}
+files = {p.stem: p for p in sorted(root.glob("agents/**/*.md"))}
+if sorted(files) != sorted(want):
+    print(f"the agents are {sorted(files)}, expected {sorted(want)}")
+items = lambda value: [v.strip() for v in value.strip("[] ").split(",") if v.strip()]
+for name, spec in want.items():
+    if name not in files:
+        continue
+    text = files[name].read_text()
+    front = re.match(r"---\n(.*?)\n---\n", text, re.S)
+    fields = dict((k.strip(), v.strip()) for k, v in (line.split(":", 1) for line in (front.group(1) if front else "").splitlines()
+                                                      if ":" in line and line[:1].isalpha()))
+    body = text[front.end():] if front else text
+    if fields.get("name") != name:
+        print(f"agents/{name}.md is named {fields.get('name')!r}")
+    for key in ("tools", "disallowedTools"):
+        if sorted(items(fields.get(key, ""))) != sorted(spec.get(key, [])):
+            print(f"{name}'s {key} are {items(fields.get(key, ''))}, expected {spec.get(key, [])}")
+    if not re.fullmatch(r"[1-9][0-9]*", fields.get("maxTurns", "")):
+        print(f"{name} has no turn cap (maxTurns)")
+    if "permissionMode" in fields:
+        print(f"{name} sets permissionMode")
+    if fields.get("omitClaudeMd", "false") != spec.get("omitClaudeMd", "false"):
+        print(f"{name}'s omitClaudeMd is {fields.get('omitClaudeMd', 'unset')}, expected {spec.get('omitClaudeMd', 'unset')}")
+    for needle in spec["cites"]:
+        if needle not in body:
+            print(f"{name}'s prompt does not say: {needle}")
+PY
+}
+AGENT_FIX=$(mktemp -d); mkdir -p "$AGENT_FIX/agents"
+printf -- '---\nname: scout\ndescription: x\ntools: Read, Glob, Grep, WebFetch, WebSearch, Bash\npermissionMode: plan\n---\n\nReport facts.\n' \
+  > "$AGENT_FIX/agents/scout.md"
+printf -- '---\nname: reviewer\ndescription: x\ntools: Read, Glob, Grep, Bash, Edit\nmaxTurns: 0\n---\n\nCite file:line; say what you couldn'"'"'t confirm.\n' \
+  > "$AGENT_FIX/agents/reviewer.md"
+AGENT_OUT=$(agent_problems "$AGENT_FIX"); rm -rf "$AGENT_FIX"
+for want in "scout's tools are" "scout has no turn cap" "scout sets permissionMode" "scout's omitClaudeMd is unset" \
+  "scout's prompt does not say: file:line" "reviewer's tools are" "reviewer's disallowedTools are [], expected" \
+  "reviewer has no turn cap"; do
+  [[ $AGENT_OUT == *"$want"* ]] || fail "the agent check missed: $want (it said: $AGENT_OUT)"
+done
+AGENT_OUT=$(agent_problems "$PLUGIN")
+[[ -z $AGENT_OUT ]] || fail "$AGENT_OUT"
+GATE_AGENTS=$(PYTHONDONTWRITEBYTECODE=1 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import seams_gate; print(" ".join(sorted(seams_gate.READ_ONLY_AGENTS)))' \
+  "$PLUGIN/hooks")
+[[ $GATE_AGENTS == "matt-pocock-workflow:reviewer matt-pocock-workflow:scout" ]] \
+  || fail "the gate's read-only agents ($GATE_AGENTS) are not the agents the plugin ships"
+# Delegation (lean-and-durable ticket 09): on Opus 5 Claude Code tells Claude not to start subagents unless asked, so each
+# flow skill names the agent it delegates to and when, and says that independent reads start together, in one message.
+# The grill's fact-finding, to-spec's exploring and foundations' survey go to the scout. implement sends reading beyond
+# a few files to the scout and reviews to the reviewer, in a standing rule before its first step, since both happen
+# in more than one step. The grill delegates whatever the codebase's size: in the first live eval every run read the
+# code itself instead, reasoning that "the codebase is small", while the skill only named which agent to use.
+section_says grill "$GRILL" Method "\`matt-pocock-workflow:scout\`" "in one message" "however small the codebase"
+section_says to-spec "$PLUGIN/skills/to-spec/SKILL.md" Process "\`matt-pocock-workflow:scout\`" "in one message"
+section_says foundations "$PLUGIN/skills/foundations/SKILL.md" "1. Survey" "\`matt-pocock-workflow:scout\`" "in one message"
+IMPL_OPENING=$(awk '/^## /{exit} {print}' "$IMPL")
+for needle in "\`matt-pocock-workflow:scout\`" "\`matt-pocock-workflow:reviewer\`" "beyond a few files" "in one message"; do
+  [[ $IMPL_OPENING == *"$needle"* ]] || fail "implement should say, before its first step, where it holds throughout: $needle"
+done
 # Effort (lean-and-durable ticket 08): with no pin, each Seams skill reads the session's level from ${CLAUDE_EFFORT},
 # which Claude Code fills in when the skill loads, and says in one line which of its extras it skips at `low`, never a
 # gate or a check. A skill added later carries the line too. Not the bootstrap, which the session-start hook injects

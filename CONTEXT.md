@@ -28,6 +28,10 @@ _Avoid_: state file, cache, log
 The facts the prompt hook gives Claude when a typed message starts a new request after a declared one: which declarations lapsed, that invoking one again continues that work, and that new work takes its own route. It restores no declaration itself.
 _Avoid_: warning, reminder
 
+**Read-only agent**:
+One of the two agents Seams ships for delegated reading: `scout` finds facts in the code and docs, `reviewer` reviews a named diff. Each returns its conclusions with their citations and what it couldn't confirm. Neither can change the project: the gate refuses a change from either, whatever the request has declared.
+_Avoid_: helper, worker (a subagent is any agent Claude starts)
+
 **Trivial change**:
 A change with no effect on behavior, data shape or security-relevant configuration, reversible in one commit.
 _Avoid_: quick fix, small change (a small change can still change behavior)

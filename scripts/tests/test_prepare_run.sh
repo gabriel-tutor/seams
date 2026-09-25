@@ -107,6 +107,14 @@ NOTE=$(printf '{"source":"clear","cwd":"%s","session_id":"prep-resume-ticket"}' 
 [[ $(grep '^- ' <<< "$NOTE" | sed 's/; next:.*//') == $'- coupons: stage integrated, ticket 02 in progress, updated 2026-09-24\n- gift-cards: stage designing, updated 2026-09-20' ]] \
   || fail "resume-ticket: the note should list coupons (ticket 02) first, then gift-cards: $NOTE"
 
+# The delegation scenario (lean-and-durable ticket 09): the baseline, clean and green, with nothing about gift cards yet,
+# so the grill has facts about the code to find before its first question.
+WS=$(prep grill-fact-finding)
+[[ -z "$(porcelain "$WS")" ]] || fail "grill-fact-finding tree should be clean"
+grep -rqi 'gift' "$WS/src" "$WS/CONTEXT.md" "$WS/README.md" && fail "grill-fact-finding: nothing about gift cards should be there yet"
+[[ ! -e "$WS/.scratch" ]] || fail "grill-fact-finding: no progress file, so nothing is resumed"
+green "$WS" || fail "grill-fact-finding tests should pass"
+
 # Every scenario carries the files the harness reads.
 for dir in "$REPO"/plugin/evals/*/; do
   name="$(basename "$dir")"

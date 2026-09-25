@@ -474,6 +474,19 @@ class JudgeTest(unittest.TestCase):
         self.assertRegex(report, r"miss\s+run 4: first skill matt-pocock-workflow:grill, expected " + implement)
         self.assertRegex(report, r"miss\s+run 5: .*without a change")
 
+    def test_the_grills_fact_finding_must_go_to_the_scout(self):
+        # lean-and-durable ticket 09: the grill names the agent it delegates fact-finding to, and a run that
+        # found its facts through another agent, or read everything itself, did not delegate as the skill says.
+        grill, scout = "matt-pocock-workflow:grill", "matt-pocock-workflow:scout"
+        asked = "Money is integer cents (src/format.ts:3). Does the gift card apply before or after the tier discount?"
+        code, report = judge(record("grill-fact-finding", 1, skill=grill, agents=[scout, scout], result=asked),
+                             record("grill-fact-finding", 2, skill=grill, agents=["general-purpose"], result=asked),
+                             record("grill-fact-finding", 3, skill=grill, agents=[], result=asked))
+        self.assertEqual(code, 1)
+        self.assertIn("1 of 3", report)
+        self.assertRegex(report, r"miss\s+run 2: never started the matt-pocock-workflow:scout agent")
+        self.assertRegex(report, r"miss\s+run 3: never started the matt-pocock-workflow:scout agent")
+
     def test_a_scenario_without_an_expectation_file_fails_loudly(self):
         code, report = judge(record("no-such-scenario", 1, skill=self.TRIVIAL))
         self.assertEqual(code, 1)
@@ -612,6 +625,31 @@ class ScenarioFilesTest(unittest.TestCase):
                     self.assertEqual(len(refusal), 1, "one grader forbidding a refusal")
                     self.assertEqual(refusal[0].get("match"), "not_contains")
 
+    def test_a_scenario_that_expects_an_agent_has_an_agent_grader_that_agrees(self):
+        # The eval's grader on Agent and the harness's `agents` expectation name the same agents the plugin ships.
+        # A plugin's agent cannot run without the plugin, so its grader is an indicator (arm: with-only), as the
+        # Skill grader is, and never pushes the baseline's score down.
+        harness = load_harness()
+        shipped = {f"matt-pocock-workflow:{p.stem}" for p in (harness.PLUGIN / "agents").glob("*.md")}
+        expecting = []
+        for name in harness.all_scenarios():
+            with self.subTest(scenario=name):
+                expect = harness.expectation(name)
+                graders = [grader_frontmatter(p) for p in sorted((harness.SCENARIOS / name / "graders").glob("*.md"))]
+                agent_graders = [g for g in graders if g.get("type") == "tool_used" and g.get("tool") == "Agent"]
+                self.assertEqual(bool(agent_graders), bool(expect["agents"]), "an Agent grader exactly where agents are expected")
+                for agent in expect["agents"]:
+                    self.assertIn(agent, shipped)
+                    matching = [g for g in agent_graders
+                                if re.search(g["input_match"].strip("'\""), json.dumps({"subagent_type": agent}))]
+                    self.assertTrue(matching, f"no Agent grader matches {agent}")
+                    for g in matching:
+                        self.assertEqual(g.get("arm"), "with-only")
+                        for other in ("general-purpose", "Explore", "scout-helper"):
+                            self.assertFalse(re.search(g["input_match"].strip("'\""), json.dumps({"subagent_type": other})), other)
+                    expecting.append(name)
+        self.assertIn("grill-fact-finding", expecting)
+
     def test_the_gate_scenarios_allow_a_refusal_and_run_past_the_skill(self):
         harness = load_harness()
         gates = [n for n in harness.all_scenarios() if n.startswith("gate-")]
@@ -652,6 +690,22 @@ class PastSkillTest(unittest.TestCase):
                  assistant(tool("Bash", command="echo x > notes.txt", id="t2")),
                  past_skill=True)
         self.assertEqual(r["commands"], ["cat .scratch/gift-cards/progress.md; git status --short"])
+
+    def test_the_agents_a_run_starts_are_recorded_by_type_and_the_scan_continues(self):
+        scout = "matt-pocock-workflow:scout"
+        r = scan(INIT,
+                 assistant(tool("Skill", skill="matt-pocock-workflow:grill")),
+                 assistant(tool("Agent", id="t1", description="totals", prompt="How is an order's total computed?",
+                                subagent_type=scout),
+                           tool("Agent", id="t2", description="checkout", prompt="How does checkout hold stock?",
+                                subagent_type=scout), mid="m1"),
+                 tool_result("t1", "Totals are integer cents (src/pricing.ts:12)."),
+                 assistant(tool("Agent", id="t3", description="docs", prompt="Find the money rule")),
+                 result("Does the gift card apply before or after the tier discount?"),
+                 past_skill=True)
+        self.assertEqual(r["agents"], [scout, scout, None])        # no type named: Claude Code's default
+        self.assertIsNone(r["first_tool"])
+        self.assertEqual(r["result"], "Does the gift card apply before or after the tier discount?")
 
     def test_an_edit_still_stops_the_scan(self):
         r = scan(INIT,

@@ -133,6 +133,18 @@ post_skill "matt-pocock-workflow:implement"
 OUT=$(printf '{"session_id":"s1","cwd":"%s","hook_event_name":"PreToolUse","agent_id":"a1","agent_type":"general-purpose","tool_name":"Write","tool_input":{"file_path":"%s/src/b.ts","content":"x"}}' "$PROJ" "$PROJ" | hook pre-tool-use)
 [[ -z "$OUT" ]] || fail "subagent edit after the parent's declaration should pass: $OUT"
 
+# 7b. Seams' read-only agents never change the project (lean-and-durable ticket 09): with the request declared, a
+# reviewer's commit and a scout's write are refused, each refusal names the agent, and neither reaches the ledger;
+# a reviewer's read and its scratch write pass. The hook input names a plugin's agent by its plugin-scoped name.
+agent() { printf '{"session_id":"s1","cwd":"%s","hook_event_name":"PreToolUse","agent_id":"a2","agent_type":"matt-pocock-workflow:%s","tool_name":"%s","tool_input":%s}' "$PROJ" "$1" "$2" "$3" | hook pre-tool-use; }
+OUT=$(agent reviewer Bash '{"command":"git commit -m fix"}'); denied "$OUT" || fail "a reviewer's commit should be denied, declared or not: $OUT"
+grep -q '`matt-pocock-workflow:reviewer` is a read-only agent' <<< "$OUT" || fail "the refusal should name the read-only agent: $OUT"
+OUT=$(agent scout Write "{\"file_path\":\"$PROJ/src/c.ts\",\"content\":\"x\"}"); denied "$OUT" || fail "a scout's write should be denied, declared or not: $OUT"
+grep -q '`matt-pocock-workflow:scout` is a read-only agent' <<< "$OUT" || fail "the refusal should name the scout: $OUT"
+grep -q 'src/c.ts\|"git commit"' "$LEDGER" && fail "a read-only agent's refused change must not reach the ledger"
+OUT=$(agent reviewer Bash '{"command":"git diff HEAD~1"}'); [[ -z "$OUT" ]] || fail "a reviewer's read should pass: $OUT"
+OUT=$(agent reviewer Bash "{\"command\":\"echo x > $TMPDIR/probe.txt\"}"); [[ -z "$OUT" ]] || fail "a reviewer's scratch write should pass: $OUT"
+
 # 8. Session start: clear and startup reset the ledger; compact and resume keep it; a fork is a new
 # session, which starts with an empty ledger and leaves its parent's alone.
 start compact
