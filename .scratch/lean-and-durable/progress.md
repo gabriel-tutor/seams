@@ -2,9 +2,10 @@
 
 Status: active
 Stage: integrated
-Next: Ticket 08's build is committed on main (from e5f1875): review it against e5f1875 with code-review, then the fixes, the paid eval on the user's yes, and the definition of done.
+Next: The fixes for 65988ac's review are committed on main: run the paid eval the user approved (Opus 5 and Sonnet 5, routing and gate) on that commit, then the record and the definition of done.
 Updated: 2026-09-25
 Ticket: 08
+Candidate: 65988ac
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback) and ticket 06 (pr-review under the cap, scripts without prompts), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.

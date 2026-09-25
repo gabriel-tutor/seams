@@ -6,6 +6,7 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLUGIN="$REPO/plugin"
+KEPT="using-git-worktrees verification-before-completion receiving-code-review"   # the Superpowers copies, byte-identical
 fail() { echo "FAIL: $*" >&2; exit 1; }
 headings_in_order() {   # $1 = skill name, $2 = file, $3... = "## " headings that must appear in this order
   local name="$1" file="$2" prev=0 n h; shift 2
@@ -30,8 +31,8 @@ section_says() {   # $1 = skill name, $2 = file, $3 = heading text, $4... = phra
   body=$(section "$heading" "$file"); [[ -n "$body" ]] || fail "$name lacks the section: ## $heading"
   for needle in "$@"; do [[ $body == *"$needle"* ]] || fail "$name, under '## $heading', should say: $needle"; done
 }
-plugin_guards() {   # $1 = a plugin directory: prints a line for each SKILL.md over 11,000 bytes and each pin of a
-  python3 - "$1" <<'PY'   # model or an effort level in a skill's or an agent's frontmatter; prints nothing when all hold
+plugin_guards() {   # $1 = a plugin directory: a line for each SKILL.md over 11,000 bytes and each model or effort pin
+  python3 - "$1" <<'PY'
 import pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 skills = sorted(root.glob("skills/*/SKILL.md"))
@@ -46,9 +47,26 @@ for path in skills + sorted(root.glob("agents/**/*.md")):
             print(f"{path.relative_to(root)} sets {key}")
 PY
 }
+effort_problem() {   # $1 = a SKILL.md: what is wrong with its effort line, or nothing when it holds
+  local line rest
+  line=$(grep -F -- '`${CLAUDE_EFFORT}`' "$1") || { echo "no line reads \${CLAUDE_EFFORT}"; return; }
+  [[ $(wc -l <<< "$line") -eq 1 ]] || { echo "more than one effort line"; return; }
+  line=${line#- }   # a list item where the standing rules are a list (pr-review)
+  [[ $line == '**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; '* ]] \
+    || { echo "the line does not open with the rule that every step, gate and check runs at every level: $line"; return; }
+  rest=${line#*at every level; }
+  [[ $rest == 'nothing here is optional.' || ( $rest == 'at `low`, skip only '*. && $rest != *[Gg]ate* && $rest != *[Cc]heck* && $rest != *[Ss]tep* ) ]] \
+    || echo "the line should name the extras it skips at \`low\` (never a step, a gate or a check), or say nothing here is optional: $line"
+}
 
-claude plugin validate --strict "$PLUGIN" >/dev/null || fail "plugin manifest does not validate"
-claude plugin validate --strict "$REPO" >/dev/null || fail "marketplace manifest does not validate"
+# Manifest validation needs the claude CLI, which CI does not install; every other check here is plain bash and Python
+# and runs everywhere (lean-and-durable ticket 08: CI had skipped this whole file, so no static guard held there).
+if command -v claude >/dev/null; then
+  claude plugin validate --strict "$PLUGIN" >/dev/null || fail "plugin manifest does not validate"
+  claude plugin validate --strict "$REPO" >/dev/null || fail "marketplace manifest does not validate"
+else
+  echo "note: no claude CLI, so the manifests were not validated"
+fi
 
 # No bytecode in the plugin (lean-and-durable ticket 06, the spec's housekeeping): a marketplace added from a local
 # directory loads this folder in place, so what is in it is what runs. The suites, the hooks and the scripts write none.
@@ -274,24 +292,39 @@ done
 [[ $GUARD_OUT != *at-bound* && $GUARD_OUT != *fine* ]] || fail "the guard flagged a file within its rules: $GUARD_OUT"
 GUARD_OUT=$(plugin_guards "$PLUGIN")
 [[ -z $GUARD_OUT ]] || fail "$GUARD_OUT"
-# What every session pays for the plugin before any skill fires (lean-and-durable ticket 08): its listing, the skills'
-# and agents' names and descriptions, at most 875 tokens as `claude plugin details` measures this tree (3.2.1 paid about
-# 1,165). Measured from disk (`--plugin-dir`, source "@inline"), never from an installed copy.
-DETAILS=$(claude --plugin-dir "$PLUGIN" plugin details matt-pocock-workflow 2>&1) || fail "claude plugin details failed: $DETAILS"
-[[ $DETAILS == *"matt-pocock-workflow@inline"* ]] || fail "claude plugin details did not measure this tree: $DETAILS"
-ALWAYS_ON=$(sed -n 's/^ *Always-on: *~\([0-9,]*\) tok.*/\1/p' <<< "$DETAILS" | tr -d ,)
-[[ -n $ALWAYS_ON ]] || fail "no always-on figure in claude plugin details: $DETAILS"
-(( ALWAYS_ON <= 875 )) || fail "always-on cost is ~$ALWAYS_ON tokens by claude plugin details, over 875"
+# What every session pays for the plugin before any skill fires (lean-and-durable ticket 08): its listing, each skill's
+# and agent's name and description, at most 875 tokens by `claude plugin details` (3.2.1 paid about 1,165). That tool
+# counts through the count_tokens API for the active model, or estimates offline, so its figure moves with the machine;
+# the guard is the listing's length instead: at most 2,650 characters, 875 tokens at the ratio the tool measured on
+# 65988ac (2,426 characters, ~801 tokens). `claude --plugin-dir plugin plugin details matt-pocock-workflow` measures it.
+LISTING=$(python3 - "$PLUGIN" <<'PY'
+import pathlib, re, sys
+root, total = pathlib.Path(sys.argv[1]), 0
+for path in sorted(root.glob("skills/*/SKILL.md")) + sorted(root.glob("agents/**/*.md")):
+    front = re.match(r"---\n(.*?)\n---\n", path.read_text(), re.S)
+    fields = dict(line.split(":", 1) for line in front.group(1).splitlines() if ":" in line and line[:1].isalpha())
+    total += len(f"matt-pocock-workflow:{fields['name'].strip()}: {fields.get('description', '').strip()}")
+print(total)
+PY
+)
+(( LISTING <= 2650 )) || fail "the plugin's listing is $LISTING characters, over 2,650 (about 875 tokens by claude plugin details)"
 # Effort (lean-and-durable ticket 08): with no pin, each Seams skill reads the session's level from ${CLAUDE_EFFORT},
 # which Claude Code fills in when the skill loads, and says in one line which of its extras it skips at `low`, never a
 # gate or a check. A skill added later carries the line too. Not the bootstrap, which the session-start hook injects
-# without that substitution and which runs no steps, nor the three Superpowers copies, which stay byte-identical.
+# without that substitution and which runs no steps, nor the three Superpowers copies, which stay byte-identical. Two
+# fixture lines show the check refusing a line that skips a gate and one that names nothing.
+EFFORT_FIX=$(mktemp -d)
+printf -- '**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the Gate.\n' > "$EFFORT_FIX/gate"
+printf -- '**Effort** `${CLAUDE_EFFORT}`: at `low`, skip the Gate; the rest runs at every level.\n' > "$EFFORT_FIX/loose"
+printf -- '**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; that is all.\n' > "$EFFORT_FIX/silent"
+for probe in gate loose silent; do
+  [[ -n $(effort_problem "$EFFORT_FIX/$probe") ]] || { rm -rf "$EFFORT_FIX"; fail "the effort check passed the '$probe' fixture line"; }
+done
+rm -rf "$EFFORT_FIX"
 for f in "$PLUGIN"/skills/*/SKILL.md; do
   s=$(basename "$(dirname "$f")")
-  [[ " using-matt-pocock-skills using-git-worktrees verification-before-completion receiving-code-review " == *" $s "* ]] && continue
-  line=$(grep -F -- "\`\${CLAUDE_EFFORT}\`" "$f") || fail "$s does not read the session's effort level from \${CLAUDE_EFFORT}"
-  [[ $(wc -l <<< "$line") -eq 1 && $line == *"**Effort**"* && $line == *"at every level"* ]] \
-    || fail "$s's effort line should say that its gates and checks run at every level: $line"
+  [[ " using-matt-pocock-skills $KEPT " == *" $s "* ]] && continue
+  problem=$(effort_problem "$f"); [[ -z $problem ]] || fail "$s's effort line: $problem"
 done
 
 # The grill's design lens: present, and referenced from the grill.
@@ -448,8 +481,7 @@ must_say design-lens "$PLUGIN/skills/grill/references/design-lens.md" "**A sensi
 for s in to-spec to-tickets implement release; do must_say "$s" "$PLUGIN/skills/$s/SKILL.md" "a yes earlier in this request covered"; done
 must_say release "$PLUGIN/skills/release/SKILL.md" "never skipped"
 
-# The three kept Superpowers skills: present, and matching the checksums recorded in the notices.
-KEPT="using-git-worktrees verification-before-completion receiving-code-review"
+# The three kept Superpowers skills (KEPT, above): present, and matching the checksums recorded in the notices.
 for s in $KEPT; do [[ -f "$PLUGIN/skills/$s/SKILL.md" ]] || fail "missing copied skill: $s"; done
 SP_SECTION=$(section Superpowers "$NOTICES")
 SP_SUMS=$(grep -E '^[0-9a-f]{64}  skills/[a-z-]+/SKILL\.md$' <<< "$SP_SECTION") \

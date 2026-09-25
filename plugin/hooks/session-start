@@ -51,7 +51,7 @@ BOOTSTRAP = HERE / "skills" / "using-matt-pocock-skills" / "SKILL.md"
 REQUIRED_SKILLS = ("grilling", "domain-modeling", "tdd", "diagnosing-bugs", "code-review",
                    "codebase-design", "setup-matt-pocock-skills", "setup-pre-commit",
                    "setup-ts-deep-modules")
-INSTALL = "the user runs `npx skills add mattpocock/skills -g -a claude-code` and restarts."
+HOW_TO_INSTALL = "the user installs them with `npx skills add mattpocock/skills -g -a claude-code` and a restart."
 
 
 def without_frontmatter(text: str) -> str:
@@ -82,8 +82,8 @@ def mp_line(config: Path, repo: "Path | None" = None) -> str:
     if not missing:
         return f"- Matt Pocock's skill files: `{skills}/<name>/SKILL.md`."
     if len(missing) == len(REQUIRED_SKILLS):
-        return f"- Matt Pocock's skills are not installed at `{skills}`: {INSTALL}"
-    return f"- Matt Pocock's skills at `{skills}` are missing {', '.join(missing)}: {INSTALL}"
+        return f"- Matt Pocock's skills are not installed at `{skills}`: {HOW_TO_INSTALL}"
+    return f"- Matt Pocock's skills at `{skills}` are missing {', '.join(missing)}: {HOW_TO_INSTALL}"
 
 
 def repo_root(start: Path) -> Path | None:
@@ -99,7 +99,7 @@ def setup_line(cwd: Path) -> str | None:
     root = repo_root(cwd)
     if root is None or (root / "docs" / "agents" / "issue-tracker.md").is_file():
         return None
-    return "- No `docs/agents/issue-tracker.md` here: `matt-pocock-workflow:foundations` comes first."
+    return "- No `docs/agents/issue-tracker.md` here: `matt-pocock-workflow:foundations` is offered first."
 
 
 # --- The resume note (ADR 0003) ------------------------------------------------------------

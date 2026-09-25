@@ -176,9 +176,9 @@ budget() {   # budget <home> [config-dir]
 for H in "$MP_HOME" "$PARTIAL_HOME" "$BARE_HOME" "$LINK_HOME" "$DIRLINK_HOME"; do budget "$H"; done
 budget "$BARE_HOME" "$CUSTOM_CONFIG"
 
-# The real injection, every variant of its dynamic lines included, is the project's facts from its first word: it
-# opens by saying how development work in this project runs, and no part of it is a wrapper, a preamble addressed to
-# Claude, or a line telling Claude what to do.
+# The real injection, every variant of its dynamic lines included, is the project's facts from its first word
+# (lean-and-durable ticket 08): it opens by saying how development work in this project runs, and no part of it is a
+# wrapper, a preamble addressed to Claude, or a line telling Claude what to do.
 for H in "$MP_HOME" "$PARTIAL_HOME" "$BARE_HOME"; do
   C=$(context "$REPO/plugin" "$H" "$REPO_UNSET")
   [[ "$C" == "Development work in this project "* ]] || fail "the injection should open with the project's facts (HOME=$H): $C"

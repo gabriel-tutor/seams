@@ -3,7 +3,7 @@ name: using-matt-pocock-skills
 description: Use when starting any conversation - how development work here is routed to Matt Pocock's skills
 ---
 
-Development work in this project starts with the skill its row below names, invoked with the Skill tool before the first read, command or edit; a 1% chance is enough. Between two rows the lower applies; complexity found mid-task moves down, never up. * marks this plugin's skills (`matt-pocock-workflow:<name>`); bare names are Matt Pocock's. Subagents skip this routing.
+Development work in this project starts with the skill its row below names, invoked with the Skill tool before any read, command or edit; a 1% chance is enough. Between two rows the lower applies; mid-task complexity moves down, never up. * marks this plugin's skills (`matt-pocock-workflow:<name>`); bare names are Matt Pocock's. Subagents skip this routing.
 
 | Request | First move |
 | --- | --- |
@@ -27,4 +27,4 @@ Development work in this project starts with the skill its row below names, invo
 2. Seams are settled in the grill; `tdd` and `to-spec` do not ask again.
 3. `code-review` runs on features and builds, is offered on bounded changes and bugs.
 4. Flow: spec → `to-tickets`*, tickets → `implement`*; each step asks before it starts; a yes covering later steps is not asked again; deploy and publish always ask.
-5. Grill → spec → tickets stay in one context. Phase boundaries, durable state, on-ramps, Superpowers overlaps: `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/routing.md`
+5. Grill → spec → tickets share one context. Phase boundaries, durable state, on-ramps, Superpowers overlaps: `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/routing.md`

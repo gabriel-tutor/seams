@@ -1,6 +1,6 @@
 ---
 name: foundations
-description: Use when starting in a repo for the first time, or when it lacks run or test commands, lint, pre-commit hooks, CI, a glossary, or the production basics (deploys, environments, backups, monitoring)
+description: Use when starting in a repo for the first time, or when it lacks run, test or typecheck commands, lint, pre-commit hooks, CI, a glossary, boundary rules, or the production basics (deploys, environments, backups, monitoring, scanning)
 ---
 
 # Foundations

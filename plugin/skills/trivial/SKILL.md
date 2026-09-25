@@ -1,6 +1,6 @@
 ---
 name: trivial
-description: Use before a change with no effect on behavior, data shape or security (copy, a typo, a comment, a rename that changes nothing observable)
+description: Use before a change with no effect on behavior, data shape or security (copy, a typo, a comment, a rename that changes nothing observable); this declaration opens the gate
 ---
 
 # Trivial

@@ -26,8 +26,9 @@ if [[ -x $SYS_PY && "$($SYS_PY -c 'import sys;print(sys.version_info[:2])')" != 
   run "test_plugin_hook ($($SYS_PY --version 2>&1))" env PATH="$(dirname $SYS_PY):$PATH" bash "$REPO/scripts/tests/test_plugin_hook.sh"
 else skip "system-python suites" "no distinct /usr/bin/python3"; fi
 
-if command -v claude >/dev/null; then run "test_plugin" bash "$REPO/scripts/tests/test_plugin.sh"
-else skip "test_plugin" "needs the claude CLI for 'claude plugin validate'"; fi
+# The static checks run everywhere, CI included; only their manifest validation needs the claude CLI.
+run "test_plugin" bash "$REPO/scripts/tests/test_plugin.sh"
+command -v claude >/dev/null || skip "test_plugin's manifest validation" "needs the claude CLI for 'claude plugin validate'"
 
 if [[ $FAST == 1 ]]; then skip "test_prepare_run" "--fast"
 elif ! command -v node >/dev/null; then skip "test_prepare_run" "needs node"
