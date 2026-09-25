@@ -188,14 +188,20 @@ must_say routing.md "$PLUGIN/skills/using-matt-pocock-skills/references/routing.
 # its gate question when the file and git agree, and reports a mismatch instead of acting on the file.
 IMPL="$PLUGIN/skills/implement/SKILL.md"
 headings_in_order implement "$IMPL" "## Gate" "## Progress file" "## Resuming" "## Build"
-section_says implement "$IMPL" Gate "resume a ticket in progress whose state matches its progress file"
+section_says implement "$IMPL" Gate "resume a ticket in progress whose state matches its progress file" \
+  "invoke \`matt-pocock-workflow:implement\` again before the next change"
+# A commit cannot name itself (the live resume run kept the reviewed commit as the candidate and said what
+# the fix did in Next): the candidate is the commit under review, and a resume checks that the history
+# after it holds only commits the file accounts for.
 section_says implement "$IMPL" "Progress file" "\`.scratch/<feature>/progress.md\`" "references/progress-file.md" \
-  "stage it by name with each of the ticket's commits" "\`Ticket\`" "\`Candidate\`" "\`## Review\`" "the stage reached" \
-  "\`Status: done\`" "Release section" "\`matt-pocock-workflow:release\`" "never a secret" \
-  "naming the branch and the SHAs it needs" "finds something unmet, put \`Ticket\` back"
+  "stage it by name with each of the ticket's commits" "\`Ticket\`" "\`Candidate\` is the commit under review" \
+  "\`## Review\`" "the stage reached" "\`Status: done\`" "Release section" "\`matt-pocock-workflow:release\`" "never a secret" \
+  "naming the branch and the SHAs it needs"
 section_says implement "$IMPL" Resuming "resume note" "the ticket and the spec" "git state" "report the mismatch" \
-  "don't ask the gate question again" "the branch is not the one \`Next\` names" "HEAD is not \`Candidate\`"
-section_says implement "$IMPL" "Definition of done" "after the record commit"
+  "don't ask the gate question again" "the branch is not the one \`Next\` names" "commits the file doesn't account for"
+# The live run's definition of done found a row unmet and still left the feature done: the rule to put the
+# ticket back sits where the table is.
+section_says implement "$IMPL" "Definition of done" "after the record commit" "put \`Ticket\` back"
 # to-spec sets the stage to designed and points to the spec; its publish question names the commit that
 # follows (the spec, the progress file, the grill's glossary and ADR changes), made by name after the yes.
 section_says to-spec "$PLUGIN/skills/to-spec/SKILL.md" Process "name the commit that follows" "the progress file" \

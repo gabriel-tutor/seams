@@ -97,7 +97,8 @@ flowchart LR
     CM --> CR["code-review of the candidate<br/>merge-base…HEAD · Standards ‖ Spec<br/>(an empty diff is reported, not reviewed)"]
     CR -->|findings| FX["verify each finding against the code<br/>fix → commit → re-run the affected checks"] --> CR
     CR -->|clean| REC["record commit<br/>the progress file: stage reached,<br/>next ticket"] --> DOD["Definition of done, with evidence<br/>candidate SHA · seam + suite · typecheck · lint<br/>every criterion · no debug leftovers · docs · commit message"]
-    CM -.ticket · candidate · next step.-> PF[(progress file<br/>.scratch/feature/progress.md)]
+    CM -.ticket · next step.-> PF[(progress file<br/>.scratch/feature/progress.md)]
+    CR -.candidate under review.-> PF
     FX -.findings to fix.-> PF
     DOD --> V["verification-<br/>before-completion"]
     V --> H["Handover<br/>1 run it · 2 try it · 3 what changed<br/>4 next, with the stage: built or integrated"]
