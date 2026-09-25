@@ -205,6 +205,8 @@ class QuotedOperators(unittest.TestCase):
         # Arithmetic compares; it redirects nothing.
         "echo $((n > 5))",
         "[ $((a >= b)) -eq 1 ] && echo big",
+        # An unquoted heredoc's text is data, even beside a substitution the shell runs.
+        "cat <<EOF\nnpm install left-pad\nbuilt on $(date)\nEOF",
     ]
 
     BYPASSES = {
@@ -230,6 +232,22 @@ class QuotedOperators(unittest.TestCase):
         # `$((` not closed by `))` is a command substitution holding a subshell: every shell runs it.
         "x=$((echo a); touch made)": "touch",
         "echo $(( $(rm -rf src) + 1 ))": "rm",
+        # Found by the review of 6faea1d, each written by bash and zsh and missed by it.
+        # An apostrophe in a comment opens no quote.
+        "# Stash what's there\nSTASHED=$(git stash)": "git stash",
+        "echo hi # it's\nx=\"$(touch made)\"": "touch",
+        "# don't\nx=${y:-$(touch made)}": "touch",
+        "# don't\nn=$(( $(rm -rf src) + 1 ))": "rm",
+        "# it's\nx=`touch made`": "touch",
+        "x=$(true # it's\n) ; rm -rf src ; y=$(echo ')')": "rm",
+        # An unquoted heredoc's text runs only its substitutions; its apostrophes are text.
+        "cat > /dev/null <<EOF\nWe can't ship until $(date +%F)\nEOF\nrm -rf src # it's rebuilt below": "rm",
+        "cat > /dev/null <<EOF\nThis doesn't change `true`.\nEOF\ngit checkout -q -b feature  # it's new": "git checkout",
+        "cat > /dev/null <<EOF\nToday's run: $(touch made)\nEOF": "touch",
+        # In an ANSI-C quote, `\\'` is an escaped quote.
+        "printf $'Don\\'t edit\\n' > src/generated.ts  # it's generated": "a redirect to a file",
+        "echo $'\\'' ; rm -rf src ; \\'": "rm",
+        "x=$(echo $'\\')' ; rm -rf src)": "rm",
     }
 
     def test_text_the_shell_reads_as_text_is_not_a_change(self):
@@ -241,6 +259,23 @@ class QuotedOperators(unittest.TestCase):
         for command, label in self.BYPASSES.items():
             with self.subTest(command=command):
                 self.assertEqual(gate.classify_command(command), label)
+
+
+class NestingTooDeepToRead(unittest.TestCase):
+    """A command nested far past any real one is refused as unreadable. Reading it would exhaust
+    Python's recursion, and a hook that crashes lets the call through; the review of 6faea1d saw
+    `rm -rf src` followed by a thousand `$((` pass that way."""
+
+    def test_a_command_nested_too_deeply_to_read_is_refused(self):
+        deep = 1000
+        for command in ["rm -rf src\n: " + "$((" * deep,
+                        "rm -rf src\n: " + "$(( " * deep + "1" + " ))" * deep,
+                        "echo " + "$(echo " * deep + "x" + ")" * deep,
+                        "eval " * deep + "rm -rf src"]:
+            with self.subTest(command=command[:30]):
+                self.assertIsNotNone(gate.classify_command(command))
+                decision = gate.decide_pre_tool_use(event("Bash", command=command), gate.empty_ledger("s1"))
+                self.assertEqual(decision["decision"], "deny")
 
 
 class LabelsAreFixedText(unittest.TestCase):
@@ -503,6 +538,10 @@ class ProjectChanges(unittest.TestCase):
             f"sort -o {evid}/sorted.txt {evid}/words.txt",
             f"cat > {evid}/y.md <<'EOF'\nrun $(rm -rf src) to break it\nEOF",   # a quoted heredoc is literal
             f'A={evid}/x; rm -rf "$A" $A',
+            # A word may join quoted and bare parts, as the shell reads it (review of 6faea1d).
+            f'EVID={evid}; echo ok > "$EVID"/log.txt',
+            f'EVID={evid}; mkdir -p "$EVID"/checks && cp "$EVID"/a.log "$EVID"/checks/',
+            f"mkdir -p '{evid}'/probes",
         ]:
             with self.subTest(command=command):
                 self.assertIsNone(self.change(event("Bash", command=command)))
@@ -555,6 +594,9 @@ class ProjectChanges(unittest.TestCase):
             (f'A={t}/x; A+=/../../proj; rm -rf "$A"', "rm"),            # an append is not followed
             ('eval "rm -rf src"', "rm"),                                # eval runs its text
             ("\\rm -rf src", "rm"),                                     # a backslash before the name
+            ('EVID=/tmp/x; echo x > "$EVID"/../../proj/src/a.ts', "a redirect to a file"),   # the parts join first
+            (f'EVID={t}/x; rm -rf "$EVID"/*', "rm"),                     # a bare part's glob
+            (f'EVID={t}/x; rm -rf "$EVID"/$(echo src)', "rm"),          # a bare part's substitution
         ]:
             with self.subTest(command=command):
                 change = self.change(event("Bash", command=command))
@@ -620,11 +662,12 @@ class ScratchpadDir(unittest.TestCase):
                 self.assertIsNotNone(self.change("Bash", scratchpad, command="echo x > /proj/src/a.ts"))
         self.assertIsNotNone(self.change("Write", "/proj/.scratch", file_path="/proj/.scratch/n.md", content="x"))
 
-    def test_a_field_that_is_not_an_absolute_path_is_ignored(self):
+    def test_a_field_that_is_not_an_absolute_path_changes_nothing(self):
         relative = os.path.join(os.getcwd(), "scratchpad", "n.md")   # where a relative field would resolve
         for scratchpad in ("scratchpad", "", 42, ["/seams-test-scratchpad"]):
             with self.subTest(scratchpad=scratchpad):
-                self.assertIsNotNone(self.change("Write", scratchpad, file_path=relative, content="x"))
+                self.assertEqual(self.change("Write", scratchpad, file_path=relative, content="x"),
+                                 self.change("Write", file_path=relative, content="x"))
                 self.assertIsNotNone(self.change("Write", scratchpad, file_path=f"{self.SCRATCHPAD}/n.md", content="x"))
 
 
@@ -648,7 +691,7 @@ class PreToolUseDecision(unittest.TestCase):
                       "matt-pocock-workflow:implement", "matt-pocock-workflow:trivial"]:
             self.assertIn(route, reason)
         # Scratch work is not a change: the reason says so, so it is not declared as trivial.
-        self.assertIn("absolute path under the temp directory needs no declaration", reason)
+        self.assertIn("absolute path under the temp directory or the session's scratchpad needs no declaration", reason)
 
     def test_a_shell_mutation_without_a_declaration_is_refused_by_its_label(self):
         decision = self.decide(event("Bash", command="sed -i 's/a/b/' src/a.ts"))
@@ -742,6 +785,9 @@ class PowerShellCommands(unittest.TestCase):
         "Get-ChildItem\nRemove-Item x",
         "git diff --output=patch.diff",
         "git log --output patch.txt",
+        'git diff "--output=patch.diff"',            # PowerShell removes the quotes before git reads it
+        "git log '--output' log.txt",
+        'git diff --out""put=patch.diff',
         "Select-String -Pattern 'a|b' -Path x",      # strict: a pipe character counts, quoted or not
     ]
 
@@ -772,6 +818,18 @@ class PowerShellCommands(unittest.TestCase):
         self.assertEqual(decision["decision"], "allow")
         self.assertEqual(decision["change"]["tool"], "PowerShell")
         self.assertIsNone(self.decide("git status")["change"])
+
+    def test_the_done_check_treats_a_lone_git_command_as_git(self):
+        # As from Bash: a commit or a push after the checks needs no new verification; anything
+        # else PowerShell runs, a git command joined to another included, still does.
+        for command, blocks in (("git commit -m done", False), ("git push origin main", False),
+                                ("Remove-Item src -Recurse", True), ("git commit -m x; Remove-Item src", True)):
+            with self.subTest(command=command):
+                self.ledger = gate.empty_ledger("s1")
+                gate.add_declaration(self.ledger, "tdd")
+                gate.mark_verified(self.ledger)
+                gate.add_change(self.ledger, self.decide(command)["change"])
+                self.assertEqual(gate.decide_stop(self.ledger, stop_hook_active=False) is not None, blocks)
 
 
 class StopDecision(unittest.TestCase):

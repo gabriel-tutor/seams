@@ -1,6 +1,6 @@
 # Compatibility
 
-What Seams was tested with, and where. "Tested" means `scripts/test.sh` passed on that combination: the gate module's unit tests, the hook suites fed JSON on stdin, the session-start suite against fixture homes, the installer suite against a stub `claude`, the static plugin checks (where the `claude` CLI exists) and the sandbox-workspace suite. The live headless runs (the model choosing a route) are recorded separately in [plugin-behavior-tests.md](plugin-behavior-tests.md). A combination not listed here is untested, not unsupported; Windows is unsupported (the hooks are Python executables run through `env`). The installer prints a pointer to this file at the end of every run.
+What Seams was tested with, and where. "Tested" means `scripts/test.sh` passed on that combination: the gate module's unit tests, the hook suites fed JSON on stdin, the session-start suite against fixture homes, the installer suite against a stub `claude`, the static plugin checks (where the `claude` CLI exists) and the sandbox-workspace suite. The live headless runs (the model choosing a route) are recorded separately in [plugin-behavior-tests.md](plugin-behavior-tests.md). A combination not listed here is untested, not unsupported; Windows is unsupported (the hooks run as `python3` scripts, and the gate's ledger needs a POSIX user id). The installer prints a pointer to this file at the end of every run.
 
 The plugin under test is this repository at the commit that last changed this file (`git log -1 --format=%h -- docs/compatibility.md`).
 

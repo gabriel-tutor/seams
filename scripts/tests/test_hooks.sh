@@ -190,20 +190,19 @@ hooks = json.load(open(config))["hooks"]
 tools = {t for entry in hooks["PreToolUse"] for t in (entry.get("matcher") or "").split("|")}
 missing = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "PowerShell", "Monitor"} - tools
 assert not missing, f"PreToolUse does not match {sorted(missing)}"
-# One session through every event, in the config's order: each hook's answer is known.
+# One session through every event, in this order: each hook's answer is known.
 steps = {"SessionStart": ({"source": "startup"}, '"additionalContext"'),
          "UserPromptSubmit": ({"prompt": "add a feature"}, ""),
          "PreToolUse": ({"tool_name": "Edit", "tool_input": {"file_path": f"{proj}/src/a.ts", "old_string": "a",
                                                              "new_string": "b"}}, '"permissionDecision": "deny"'),
          "PostToolUse": ({"tool_name": "Skill", "tool_input": {"skill": "tdd"}, "tool_response": {}}, ""),
          "Stop": ({"stop_hook_active": False}, "")}
-assert list(hooks) == list(steps), f"the config's events changed: {list(hooks)}"
+assert set(hooks) == set(steps), f"the config's events changed: {sorted(hooks)}"
 put = lambda text: text.replace("${CLAUDE_PLUGIN_ROOT}", root)
-for event, entries in hooks.items():
-    for entry in entries:
+for event, (fields, expected) in steps.items():      # the session's order, whatever the config's
+    for entry in hooks[event]:
         for hook in entry["hooks"]:
             assert isinstance(hook.get("args"), list), f"{event} is not in exec form: {hook}"
-            fields, expected = steps[event]
             run = subprocess.run([put(hook["command"])] + [put(a) for a in hook["args"]], cwd=proj, timeout=60,
                                  input=json.dumps(dict(fields, session_id="exec", cwd=proj, hook_event_name=event)),
                                  capture_output=True, text=True, env=dict(os.environ, CLAUDE_PLUGIN_ROOT=root))

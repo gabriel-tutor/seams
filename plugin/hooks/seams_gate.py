@@ -5,7 +5,7 @@ invocation of a process skill, or a slash command the user typed for one. This m
 the pure parts (what counts as a change, what counts as a declaration, what a continuation
 is, the ledger's shape and the decisions) so the hooks stay thin. The routing harness scores a
 shell write with the same classifier: it counts every write, where the gate also lets through
-a write confined to the temp directory. Python 3.9: macOS's system interpreter runs the hooks
+a write confined to the temp directory or the session's scratchpad. Python 3.9: macOS's system interpreter runs the hooks
 when nothing newer is first on PATH.
 """
 from __future__ import annotations
@@ -76,15 +76,24 @@ ASSIGNING_BUILTINS = {"export", "declare", "local", "readonly", "typeset"}
 REBINDING_BUILTINS = {"read", "mapfile", "readarray", "getopts", "unset", "printf", "let"}
 HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([A-Za-z_][A-Za-z0-9_]*))")
 APPEND = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\+=")
+# Nesting far past any real command (substitutions in substitutions, arithmetic in arithmetic,
+# `eval` of `eval`). Deeper is refused unread: reading it could exhaust Python's recursion, and a
+# hook that crashes lets the call through.
+MAX_NESTING = 50
+TOO_DEEP = "a command nested too deeply to read"
 
 
-def _without_heredoc_text(command: str) -> str:
-    """The command with each heredoc's text taken out: its lines are data, not commands. A `<<`
-    inside quotes or a comment opens nothing; a heredoc whose end line never comes keeps all its
-    lines, and so does one whose word is unquoted when its text holds `$(` or a backquote, since
-    the shell runs those. Taking text out can never hide a command."""
+class _TooDeep(Exception):
+    """Raised past MAX_NESTING; classify_command turns it into the TOO_DEEP label."""
+
+
+def _without_heredoc_text(command: str) -> tuple:
+    """The command with each heredoc's text taken out, and the texts of its unquoted heredocs. A
+    heredoc's lines are data, not commands; an unquoted one's `$(...)` and backquotes still run,
+    which `_runs` finds in the text handed back. A `<<` inside quotes or a comment opens nothing;
+    a heredoc whose end line never comes keeps all its lines as commands, which can never hide one."""
     lines = command.split("\n")
-    out, i, quote = [], 0, None
+    out, texts, i, quote = [], [], 0, None
     while i < len(lines):
         line = lines[i]
         out.append(line)
@@ -93,12 +102,16 @@ def _without_heredoc_text(command: str) -> str:
         while j < len(line):
             char = line[j]
             if quote:
-                if char == "\\" and quote == '"':
+                if char == "\\" and quote != "'":       # double and ANSI-C quotes escape; single quotes do not
                     j += 2
                     continue
-                if char == quote:
+                if char == quote[-1]:
                     quote = None
             elif char == "\\":
+                j += 2
+                continue
+            elif line.startswith("$'", j):
+                quote = "$'"
                 j += 2
                 continue
             elif char in "'\"":
@@ -117,20 +130,22 @@ def _without_heredoc_text(command: str) -> str:
             end = next((k for k in range(i, len(lines))
                         if (lines[k].lstrip("\t") if tabs else lines[k]) == word), None)
             if end is None:
-                return "\n".join(out + lines[i:])
-            if not literal and any("$(" in text or "`" in text for text in lines[i:end]):
-                out += lines[i:end]           # the shell runs these: keep them in view
+                return "\n".join(out + lines[i:]), texts
+            if not literal:
+                texts.append("\n".join(lines[i:end]))
             i = end + 1
-    return "\n".join(out)
+    return "\n".join(out), texts
 
 
 def _end_of(text: str, i: int) -> Optional[int]:
-    """Past the end of the quote, backquote or parenthesis that opens at i (for `$(`, i is the
-    `$`), with whatever it nests, or None when it never ends. Inside single quotes everything is
-    text; elsewhere a backslash escapes the next character. A command substitution's quotes are its
-    own, so the `)` in `"$(printf ')')"` ends nothing, and neither does the `>` in `'$1>0'`."""
-    start = i + 1 if text.startswith("$(", i) else i
-    stack, j = [text[start]], start + 1
+    """Past the end of what opens at i, with whatever it nests, or None when it never ends: a
+    quote (`'`, `"`, or ANSI-C `$'`), a backquote, `(`, or `$(` (i is the `$`). Inside single
+    quotes everything is text; elsewhere a backslash escapes the next character. A command
+    substitution's quotes and comments are its own, so the `)` in `"$(printf ')')"` ends nothing,
+    and neither does the `>` in `'$1>0'`."""
+    ansi = text.startswith("$'", i)
+    start = i + 1 if ansi or text.startswith("$(", i) else i
+    stack, j = ["$'" if ansi else text[start]], start + 1
     while stack and j < len(text):
         char, top = text[j], stack[-1]
         if top == "'":
@@ -138,9 +153,19 @@ def _end_of(text: str, i: int) -> Optional[int]:
                 stack.pop()
         elif char == "\\":
             j += 1                                # the escaped character is text
+        elif top == "$'":
+            if char == "'":
+                stack.pop()
         elif top == "(":
             if char == ")":
                 stack.pop()
+            elif char == "#" and text[j - 1] in " \t\n;&|(":
+                end = text.find("\n", j)          # a comment runs to the end of its line
+                j = len(text) if end == -1 else end
+                continue
+            elif text.startswith("$'", j):
+                stack.append("$'")
+                j += 1                            # past the `$`
             elif char in "'\"`(":
                 stack.append(char)
         elif char == top:                         # the closing double quote or backquote
@@ -161,41 +186,59 @@ def _is_arithmetic(text: str, i: int) -> bool:
     return end is not None and inner == end - 1
 
 
-def _substitutions(command: str) -> list:
-    """The commands inside `$(...)` and backquotes, which the shell runs wherever they stand but
-    inside single quotes (double quotes included). Arithmetic, `$((...))`, runs only the
-    substitutions it holds. One that never closes runs to the end of the command."""
-    out, i, quote, n = [], 0, None, len(command)
-    while i < n:
-        char = command[i]
-        if quote == "'":
-            if char == "'":
-                quote = None
-            i += 1
+def _runs(text: str, depth: int = 0) -> list:
+    """The commands that text runs where quotes are text, as inside double quotes or an unquoted
+    heredoc: those of its `$(...)` and backquotes. Arithmetic, `$((...))`, runs only the
+    substitutions it holds. One that never closes runs to the end of the text."""
+    if depth > MAX_NESTING:
+        raise _TooDeep
+    out, j = [], 0
+    while j < len(text):
+        if text[j] == "\\":
+            j += 2
             continue
-        if char == "\\":
-            i += 2
+        if text.startswith("$(", j) or text[j] == "`":
+            start, end = j + (1 if text[j] == "`" else 2), _end_of(text, j)
+            if end is None:
+                out.append(text[start:])
+                break
+            if text.startswith("$((", j) and _is_arithmetic(text, j):
+                out += _runs(text[j + 3:end - 2], depth + 1)
+            else:
+                out.append(text[start:end - 1])
+            j = end
             continue
-        if char == "'" and quote is None:
-            quote = "'"
-        elif char == '"':
-            quote = None if quote == '"' else '"'
-        elif command.startswith("$((", i) and _is_arithmetic(command, i):
-            i += 3                                # its text is arithmetic: look inside for substitutions
-            continue
-        elif command.startswith("$(", i) or char == "`":
-            start, end = i + (1 if char == "`" else 2), _end_of(command, i)
-            out.append(command[start:] if end is None else command[start:end - 1])
-            i = n if end is None else end
-            continue
-        i += 1
+        j += 1
     return out
 
 
-OPERATORS = ("&>>", "<<<", "<<-", "&&", "||", ";;", "|&", ">>", "&>", ">&", "<&", ">|", "<>", "<<",
-             ";", "&", "|", "(", ")", "<", ">", "\n")             # longest first
+def _word_runs(word: str) -> list:
+    """The commands a shell word runs: its command substitutions, bare or inside double quotes.
+    Single and ANSI-C quotes run nothing. The word comes from `_tokens`, so its quotes close."""
+    out, j = [], 0
+    while j < len(word):
+        char = word[j]
+        if char == "\\":
+            j += 2
+            continue
+        if char in "'\"`" or word.startswith("$(", j) or word.startswith("$'", j):
+            end = _end_of(word, j)
+            if end is None:                       # a rough token: its commands are segments already
+                break
+            if char == '"':
+                out += _runs(word[j + 1:end - 1])
+            elif char != "'" and not word.startswith("$'", j):
+                out += _runs(word[j:end])
+            j = end
+            continue
+        j += 1
+    return out
+
+
+OPERATORS = sorted(REDIRECT_TOKENS | INPUT_REDIRECTS | {"&&", "||", ";;", "|&"} | PUNCTUATION,
+                   key=len, reverse=True)      # longest first
 BLANKS = " \t\r"
-ORDINARY = re.compile(r"[^\\'\"`$ \t\r;&|()<>\n]+")      # a run of characters that are only themselves
+ORDINARY = re.compile("[^" + re.escape("\\'\"`$" + BLANKS + "".join(sorted(PUNCTUATION))) + "]+")  # only themselves
 
 
 def _rough_tokens(command: str) -> list:
@@ -218,7 +261,7 @@ def _tokens(command: str) -> list:
                 i += 2                            # a line continuation
                 continue
             end = i + 2
-        elif char in "'\"`" or command.startswith("$(", i):
+        elif char in "'\"`" or command.startswith("$(", i) or command.startswith("$'", i):
             end = _end_of(command, i)
             if end is None:
                 return _rough_tokens(command)
@@ -230,7 +273,7 @@ def _tokens(command: str) -> list:
             if word:
                 out.append("".join(word))
                 word = []
-            operator = "" if char in BLANKS else next(o for o in OPERATORS if command.startswith(o, i))
+            operator = "" if char in BLANKS else next((o for o in OPERATORS if command.startswith(o, i)), char)
             if operator:
                 out.append(operator)
             i += len(operator) or 1
@@ -339,21 +382,31 @@ def _initial_env() -> dict:
 
 
 def _expand(token: str, env: dict) -> Optional[str]:
-    """A token's text after quote removal and variable expansion, or None when it cannot be known."""
-    if token[:1] == "'":
-        inner = token[1:-1]
-        return inner if len(token) >= 2 and token[-1] == "'" and "'" not in inner else None
-    if token[:1] == '"':
-        if len(token) < 2 or token[-1] != '"' or '"' in token[1:-1]:
+    """A token's text after quote removal and variable expansion, or None when it cannot be known.
+    A token may join quoted and bare parts (`"$EVID"/log.txt`), each read as the shell reads it:
+    a single-quoted part is literal, and a bare part's value must not split or glob."""
+    out, i = [], 0
+    while i < len(token):
+        if token[i] in "'\"":
+            end = token.find(token[i], i + 1)
+            if end == -1:
+                return None
+            part = token[i + 1:end] if token[i] == "'" else _expand_part(token[i + 1:end], env, bare=False)
+            i = end + 1
+        else:
+            end = min([k for k in (token.find("'", i), token.find('"', i)) if k != -1] or [len(token)])
+            part = _expand_part(token[i:end], env, bare=True)
+            i = end
+        if part is None:
             return None
-        text = token[1:-1]
-    else:
-        if "'" in token or '"' in token:
-            return None
-        text = token
+        out.append(part)
+    return "".join(out)
+
+
+def _expand_part(text: str, env: dict, bare: bool) -> Optional[str]:
+    """A double-quoted or bare part of a token after variable expansion, or None when unknown."""
     if "$(" in text or "`" in text or "\\" in text:
         return None
-    bare = token[:1] not in "'\""
     unknown, values = [], []
 
     def value(match):
@@ -611,7 +664,7 @@ def _inline_program_writes(base: str, args: list, command: str) -> bool:
     return bool(inline and WRITE_PATTERNS.search(command))
 
 
-def _what_it_writes(segment: list, command: str, env: dict, is_exempt) -> tuple:
+def _what_it_writes(segment: list, command: str, env: dict, is_exempt, depth: int = 0) -> tuple:
     """What a simple command (its redirections removed) writes: its label and the raw tokens of
     the paths it writes, or None for the paths when they cannot be told. (None, None): no write."""
     words = _words(segment)
@@ -623,9 +676,9 @@ def _what_it_writes(segment: list, command: str, env: dict, is_exempt) -> tuple:
     by_xargs = any(_command_name(w) == "xargs" for w in segment[:len(segment) - len(words)])
     if base in {"bash", "sh", "zsh"} and "-c" in args:
         inner = args[args.index("-c") + 1:][:1]
-        return (_classify(inner[0], is_exempt, dict(env)) if inner else None), None
+        return (_classify(inner[0], is_exempt, dict(env), depth + 1) if inner else None), None
     if base == "eval":                        # it runs its arguments, joined, as a command
-        return (_classify(" ".join(args), is_exempt, dict(env)) if args else None), None
+        return (_classify(" ".join(args), is_exempt, dict(env), depth + 1) if args else None), None
     if base in FILE_COMMANDS:                 # xargs supplies its operands; patch names its own files
         if by_xargs or base == "patch" or (base in TARGET_DIRECTORY_COMMANDS and _into_target_directory(args)):
             return base, None
@@ -680,9 +733,9 @@ def _all_exempt(tokens: Optional[list], env: dict, is_exempt) -> bool:
     return True
 
 
-def _segment_label(segment: list, command: str, env: dict, is_exempt) -> Optional[str]:
+def _segment_label(segment: list, command: str, env: dict, is_exempt, depth: int = 0) -> Optional[str]:
     words, redirects = _split_redirects(segment)
-    label, targets = _what_it_writes(words, command, env, is_exempt)
+    label, targets = _what_it_writes(words, command, env, is_exempt, depth)
     if is_exempt is None:                     # every write counts; a redirection names it first
         return "a redirect to a file" if redirects else label
     if label and not _all_exempt(targets, env, is_exempt):
@@ -692,15 +745,19 @@ def _segment_label(segment: list, command: str, env: dict, is_exempt) -> Optiona
     return None
 
 
-def _classify(command: str, is_exempt, env: dict) -> Optional[str]:
+def _classify(command: str, is_exempt, env: dict, depth: int = 0) -> Optional[str]:
     if not command or not command.strip():
         return None
-    text = _without_heredoc_text(command)
-    for inner in _substitutions(text):          # what $(...) and backquotes run
-        label = _classify(inner, is_exempt, dict(env))
+    if depth > MAX_NESTING:
+        raise _TooDeep
+    text, heredocs = _without_heredoc_text(command)
+    tokens = _tokens(text)
+    runs = [run for body in heredocs for run in _runs(body)] + [run for token in tokens for run in _word_runs(token)]
+    for inner in runs:                            # what $(...) and backquotes run
+        label = _classify(inner, is_exempt, dict(env), depth + 1)
         if label:
             return label
-    for segment in _segments(_tokens(text)):
+    for segment in _segments(tokens):
         _forget_rebound(_split_redirects(segment)[0], env)
         for word in segment:
             appended = APPEND.match(word)
@@ -708,7 +765,7 @@ def _classify(command: str, is_exempt, env: dict) -> Optional[str]:
                 env.pop(appended.group(1), None)
         if _take_assignments(segment, env):
             continue
-        label = _segment_label(segment, command, env, is_exempt)
+        label = _segment_label(segment, command, env, is_exempt, depth)
         if label:
             return label
     return None
@@ -721,7 +778,10 @@ def classify_command(command: str, is_exempt: Optional[Callable[[str], bool]] = 
     the gate passes its scratch rule. Without it every write counts, which is how the routing
     harness scores a shell write before the first Skill call.
     """
-    return _classify(command, is_exempt, _initial_env())
+    try:
+        return _classify(command, is_exempt, _initial_env())
+    except (_TooDeep, RecursionError):
+        return TOO_DEEP
 
 
 # --- Declarations and requests ------------------------------------------------------------
@@ -964,6 +1024,7 @@ TEMP_ROOTS = ("/tmp", "/private/tmp")     # plus tempfile.gettempdir(), which ho
 POWERSHELL_READS = {"get-content", "get-childitem", "select-string"}
 POWERSHELL_GIT_READS = {"status", "diff", "log"}
 POWERSHELL_UNSAFE = set(";|&<>(){}`\n\r")
+POWERSHELL_QUOTES = re.compile("[\"'\u2018\u2019\u201a\u201b\u201c\u201d\u201e]")   # PowerShell's, typographic ones too
 
 
 def config_dir(explicit: Optional[str] = None) -> str:
@@ -1014,15 +1075,26 @@ def is_scratch_path(path: str, cwd: Optional[str] = None, scratchpad: object = N
 
 def powershell_reads(command: str) -> bool:
     """Whether a PowerShell command is on the read-only list, run on its own with plain arguments.
-    `git diff` and `git log` write a file when given --output."""
+    `git diff` and `git log` write a file when given --output, however it is quoted: PowerShell
+    removes the quotes, and joins `--out""put` into one argument, before git reads it."""
     text = (command or "").strip()
     if not text or POWERSHELL_UNSAFE & set(text):
         return False
     words = text.lower().split()
     if words[0] == "git":
         return (len(words) > 1 and words[1] in POWERSHELL_GIT_READS
-                and not any(word.startswith("--output") for word in words[2:]))
+                and "--output" not in POWERSHELL_QUOTES.sub("", text.lower()))
     return words[0] in POWERSHELL_READS
+
+
+def _powershell_label(command: str) -> str:
+    """git's own label for a git command run on its own, so the done-check treats a commit after the
+    checks as it treats one from Bash; "PowerShell" for anything else."""
+    text = command.strip()
+    words = text.split()
+    if words[0].lower() == "git" and not POWERSHELL_UNSAFE & set(text):
+        return _git_label(words) or "PowerShell"
+    return "PowerShell"
 
 
 def change_for_event(event: dict, config_dir: Optional[str] = None) -> Optional[dict]:
@@ -1055,12 +1127,12 @@ def change_for_event(event: dict, config_dir: Optional[str] = None) -> Optional[
     if tool == "PowerShell":
         command = tool_input.get("command") or ""
         if command.strip() and not powershell_reads(command):
-            return {"tool": "PowerShell", "label": "PowerShell", "doc": False}
+            return {"tool": "PowerShell", "label": _powershell_label(command), "doc": False}
     return None
 
 
 def describe(change: dict) -> str:
-    """How a refusal or a block names a change: the file, or the shell label."""
+    """How a refusal or a block names a change: the file, the shell label, or a PowerShell command."""
     if change.get("path"):
         return f"`{change['path']}`"
     if change.get("tool") == "PowerShell":
@@ -1079,7 +1151,7 @@ REFUSAL_PREFIX = "Seams gate: "                # a refused call's reason starts 
 
 
 SCRATCH = ("Scratch work is not a change: a write whose every path is an absolute path under the temp "
-           "directory needs no declaration, from Edit, Write or a shell command.")
+           "directory or the session's scratchpad needs no declaration, from Edit, Write or a shell command.")
 
 
 POWERSHELL_LIST = ("Before a declaration PowerShell runs only `Get-Content`, `Get-ChildItem`, `Select-String`, "
