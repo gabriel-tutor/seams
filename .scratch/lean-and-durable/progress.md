@@ -2,8 +2,9 @@
 
 Status: active
 Stage: integrated
-Next: Implement ticket 11 (the quality bar and reviews), /clear first; it is the only unblocked ticket. implement has 388 bytes left under the bound.
+Next: On main: ticket 11's build is committed; next, its review against the fixed point c13dc09, then the fixes and the definition of done.
 Updated: 2026-09-26
+Ticket: 11
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation) and ticket 10 (the repository facts, from the Seams hooks: decision 33), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.

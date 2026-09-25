@@ -9,7 +9,7 @@ Read this file when the bootstrap's table is not enough: the path is unclear, a 
 3. **One session or several?**
    - **One:** run `implement` right here.
    - **Several:** run `to-spec`, then `to-tickets` (vertical slices with blocking edges), then `implement` one ticket at a time. Each ticket ends with a handover that says whether to `/clear` before the next.
-4. **What `implement` does.** It runs `tdd` one slice at a time at the agreed seams, then typecheck, the full suite, a commit, `code-review` on the candidate (the diff from the fixed point to HEAD), the definition of done, and a handover naming the stage reached.
+4. **What `implement` does.** It runs `tdd` one slice at a time at the agreed seams, then typecheck, the full suite, a commit, the review scaled to risk (`code-review` and a correctness review, and a security review on a sensitive change) on the candidate (the diff from the fixed point to HEAD), the definition of done, and a handover naming the stage reached.
 5. **Past the merge.** `release` takes the integrated candidate to its target (readiness, a deploy behind an explicit yes, verification that the exact candidate runs, an operations handover). An outage goes to `incident`: contain and restore before diagnosis.
 
 Keep grill → spec → tickets in one context window. The spec and the tickets build on the grilling verbatim.
@@ -62,9 +62,9 @@ Evidence belongs to a candidate. Evidence gathered on an unchanged candidate is 
 ## Per-path notes
 
 - **TRIVIAL:** the `trivial` declaration carries the test of what is not trivial; no grill and no new tests. `matt-pocock-workflow:verification-before-completion` still applies before claiming it's done.
-- **SENSITIVE:** any size, on top of its size row. The design lens applies its security and failure axes to a sensitive change whatever the size; `code-review` is required, not offered.
-- **BUG:** show the ranked hypotheses before testing them. Write the regression test before the fix, at a seam that reproduces the real bug pattern.
-- **SMALL:** the grill has only a few questions, but it still settles the seams. Offer `code-review` rather than running it.
+- **SENSITIVE:** any size, on top of its size row. The design lens applies its security and failure axes to a sensitive change whatever the size; `code-review` and a security review (`/security-review`, or a `reviewer` agent where it can't run) are required, not offered.
+- **BUG:** show the ranked hypotheses before testing them. Write the regression test before the fix, at a seam that reproduces the real bug pattern. Offer the reviews (`code-review`, a correctness review) rather than running them.
+- **SMALL:** the grill has only a few questions, but it still settles the seams. Offer the reviews (`code-review`, a correctness review) rather than running them.
 - **FEATURE:** `implement` starts in a worktree via `matt-pocock-workflow:using-git-worktrees`. `code-review` uses the branch's merge-base as its fixed point.
 - **BIG:** each ticket is sized for one fresh context window. When all tickets are done, `matt-pocock-workflow:finishing-a-development-branch` integrates the work.
 - **RELEASE:** `release` deploys nothing without a yes that names the target, the environment and the candidate, every time; an earlier "go all the way" never covers a deploy or a publish.

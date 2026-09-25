@@ -256,6 +256,34 @@ section_says implement "$IMPL" Resuming "resume note" "the ticket and the spec" 
 # The live run's definition of done found a row unmet and still left the feature done: the rule to put the
 # ticket back sits where the table is.
 section_says implement "$IMPL" "Definition of done" "after the record commit" "put \`Ticket\` back"
+# The quality bar in the definition of done (lean-and-durable ticket 11): five more rows, each proven by a command's
+# output or a check, or marked n/a with a one-line reason. The table stays a table: each is one of its rows.
+IMPL_DOD=$(section "Definition of done" "$IMPL")
+for row in "Failure paths" "Security" "Performance" "Observability" "Rollback"; do
+  grep -qE "^\| $row \| [^|]+ \|$" <<< "$IMPL_DOD" || fail "implement's definition of done lacks the table row: $row"
+done
+section_says implement "$IMPL" "Definition of done" "a row that doesn't apply says \`n/a\` and why, in one line" "has a test" "no secret" \
+  "security findings resolved" "measured before and after" "logged at its boundary or shown to the user" "a revert, a flag or a down-migration"
+# Reviews scale with risk (ticket 11). Every build gets code-review and a correctness review, a sensitive change a
+# security review too, a large diff a /simplify offer, and never ultra unasked; the detail is in a reference named
+# before the first step with when to read it. Only correctness and requirement gaps are acted on, and a user-facing
+# change to a runnable app ends by offering /verify, which only the user can start.
+IMPL_REVIEWS="$PLUGIN/skills/implement/references/reviews.md"
+[[ -f "$IMPL_REVIEWS" ]] || fail "implement lacks references/reviews.md"
+grep -F -- "references/reviews.md" <<< "$(awk '/^## /{exit} {print}' "$IMPL")" | grep -qF "read this when" \
+  || fail "implement does not name references/reviews.md before its first step with when to read it (\"read this when\")"
+section_says implement "$IMPL" Review "a correctness review always" "a security review on a sensitive change" \
+  "\`/simplify\` offered on a large diff" "never \`ultra\` unless the user asks"
+section_says implement "$IMPL" "Review fixes" "\`matt-pocock-workflow:receiving-code-review\`" \
+  "Act only on correctness bugs and gaps against the ticket or spec" "nothing else changes because a reviewer suggested it"
+section_says implement "$IMPL" Handover "offer \`/verify\`, which only the user can start"
+must_say "implement's reviews reference" "$IMPL_REVIEWS" "Read this when \`implement\`'s review starts" "\`docs/agents/issue-tracker.md\`" \
+  "\`matt-pocock-workflow:foundations\`" "\`matt-pocock-workflow:reviewer\` agent on the correctness axis" "Unknown skill: review" \
+  "\`/security-review\`" "\`git merge-base origin/HEAD HEAD\` prints the fixed point" "for security findings only" \
+  "no \`origin\` remote" "400 changed lines" "15 files" "AskUserQuestion" "committed and re-checked like review fixes" \
+  "Never \`ultra\`" "in one message" "\`matt-pocock-workflow:receiving-code-review\`" \
+  "Act only on correctness bugs and gaps against the ticket or spec" "offered them instead"
+grep -qF '${CLAUDE_SKILL_DIR}' "$IMPL_REVIEWS" && fail "implement's reviews reference uses \${CLAUDE_SKILL_DIR}, which Claude Code fills in only in the skill itself"
 # to-spec sets the stage to designed and points to the spec; its publish question names the commit that
 # follows (the spec, the progress file, the grill's glossary and ADR changes), made by name after the yes.
 section_says to-spec "$PLUGIN/skills/to-spec/SKILL.md" Process "name the commit that follows" "the progress file" \
@@ -608,6 +636,17 @@ grep -qE "<[A-Z_-]+>" <<< "$BOOT_BODY" && fail "a pseudo-tag in the bootstrap: $
 must_say routing.md "$ROUTING" "\`matt-pocock-workflow:using-git-worktrees\`" "\`matt-pocock-workflow:receiving-code-review\`" "Durable state" "\`CONTEXT.md\`" "ADRs" \
   "resumed" "unchanged candidate" "Greenfield" "walking skeleton" "\`/ask-matt\`"
 for f in "$ROUTING" "$BOOT"; do grep -qE "[0-9]+k( |-)tokens?" "$f" && fail "a token figure is back in $(basename "$f"); the phase-boundary rule is a judgment rule"; done
+# Reviews scale with risk (lean-and-durable ticket 11): implement runs them on what it builds; a bounded change or a
+# bug is offered them; a sensitive change of any size requires code-review and a security review. The grill carries
+# that into a sensitive bounded change's Next, since no later Seams skill sees that change before it ships.
+must_say routing.md "$ROUTING" "the review scaled to risk (\`code-review\` and a correctness review, and a security review on a sensitive change)"
+for note in BUG SMALL; do
+  grep -E "^- \*\*$note:\*\*" "$ROUTING" | grep -qF "Offer the reviews (\`code-review\`, a correctness review) rather than running them" \
+    || fail "routing.md's $note note should offer the reviews rather than run them"
+done
+grep -E "^- \*\*SENSITIVE:\*\*" "$ROUTING" | grep -qF "\`code-review\` and a security review (\`/security-review\`, or a \`reviewer\` agent where it can't run) are required, not offered" \
+  || fail "routing.md's SENSITIVE note should require code-review and a security review"
+section_says grill "$PLUGIN/skills/grill/SKILL.md" Done "For a sensitive change, \`Next\` also names the reviews it needs before it ships: \`code-review\` and a security review"
 # The design lens carries the Sensitive row's rule, and the four gated skills honour rule 4: a yes given
 # earlier in the request that covered the step is the yes, while release's deploy question never is.
 must_say design-lens "$PLUGIN/skills/grill/references/design-lens.md" "**A sensitive change, at any size**" "security boundaries and failure modes"

@@ -59,7 +59,7 @@ flowchart LR
     R -->|bounded change| G["grill"] --> TDD["tdd at the<br/>agreed seams"] --> V
     R -->|new behavior| G2["grill"] --> I["implement"] --> V
     R -->|several sessions,<br/>or a new app| G3["grill"] --> SPEC["to-spec → to-tickets<br/>→ implement per ticket<br/>(a new app: ticket 01 is the walking skeleton)"] --> V
-    R -->|sensitive, any size:<br/>auth, secrets, billing, migrations,<br/>infra, CI, public API, destructive| SEC["its size row's path, with grill first<br/>on the security and failure axes<br/>→ code-review, required"] --> V
+    R -->|sensitive, any size:<br/>auth, secrets, billing, migrations,<br/>infra, CI, public API, destructive| SEC["its size row's path, with grill first<br/>on the security and failure axes<br/>→ code-review and a security review,<br/>both required"] --> V
     R -->|users affected now| INC["incident<br/>contain → restore → then diagnose"] --> V
     R -->|ship, deploy, publish| REL["release<br/>readiness → deploy on a yes<br/>→ verify → operations handover"] --> V
     R -->|too foggy to see the way| W[/"suggests /wayfinder"/]
@@ -96,9 +96,9 @@ flowchart LR
     WT --> RG["tdd: red → green,<br/>one slice at a time"]
     RG --> CHK["typecheck<br/>full suite"]
     CHK --> CM["commit the ticket's files by name<br/>(unrelated dirty files: listed as excluded)"]
-    CM --> CR["code-review of the candidate<br/>merge-base…HEAD · Standards ‖ Spec,<br/>each a read-only reviewer agent<br/>(an empty diff is reported, not reviewed)"]
-    CR -->|findings| FX["verify each finding against the code<br/>fix → commit → re-run the affected checks"] --> CR
-    CR -->|clean| REC["record commit<br/>the progress file: stage reached,<br/>next ticket"] --> DOD["Definition of done, with evidence<br/>candidate SHA · seam + suite · typecheck · lint<br/>every criterion · no debug leftovers · docs · commit message"]
+    CM --> CR["review of the candidate, merge-base…HEAD<br/>code-review (Standards ‖ Spec) ‖ correctness,<br/>read-only reviewer agents; security too<br/>on a sensitive change; /simplify offered on a large diff<br/>(an empty diff is reported, not reviewed)"]
+    CR -->|findings| FX["verify each finding against the code;<br/>act on correctness and requirement gaps only<br/>fix → commit → re-run the affected checks"] --> CR
+    CR -->|clean| REC["record commit<br/>the progress file: stage reached,<br/>next ticket"] --> DOD["Definition of done, with evidence<br/>candidate SHA · seam + suite · typecheck · lint<br/>every criterion · failure paths · security · performance<br/>observability · docs · rollback (each proven, or n/a and why)<br/>no debug leftovers · commit message"]
     CM -.ticket · next step.-> PF[(progress file<br/>.scratch/feature/progress.md)]
     CR -.candidate under review.-> PF
     FX -.findings to fix.-> PF
@@ -144,9 +144,9 @@ Why this shape works for real software:
 
 - **The workflow is enforced, not promised.** The bootstrap held 5/5 in every 2.x test and still had no way to stop an edit that skipped it. Now the project stays closed until a skill is declared, and a turn that changed code cannot end without verification. A false positive costs one declaration.
 - **Design happens before code, and it's interrogated.** The grill won't end while any axis of the design lens is unsettled, so failure modes, rollout and observability get decided while they're still cheap to change. Anything hard to reverse becomes an ADR.
-- **Ceremony scales with the change, and with its risk.** A typo is a declaration and an edit. A bug is a reproducing loop before any fix. A feature is a grill. A one-line change to permissions gets the security and failure axes and a required review, whatever its size.
+- **Ceremony scales with the change, and with its risk.** A typo is a declaration and an edit. A bug is a reproducing loop before any fix. A feature is a grill. A one-line change to permissions gets the security and failure axes and required reviews, `code-review` and a security review, whatever its size.
 - **Every slice is vertical and verifiable.** Tickets are tracer bullets with acceptance criteria (the design lens's negative cases among them) and the command that proves them; implementation is red-green at seams you agreed, so tests survive refactors.
-- **The review sees the candidate.** The ticket's files are committed by name before the review, so the two reviewers, standards and spec, read the work itself, never a stale or empty diff; unrelated files in your tree are listed as excluded and left alone.
+- **The review sees the candidate.** The ticket's files are committed by name before the review, so the reviewers (standards, spec and correctness, and security on a sensitive change) read the work itself, never a stale or empty diff; unrelated files in your tree are listed as excluded and left alone.
 - **Done has a definition, a stage, and a handover.** Evidence for every check on a named commit, then how to run it, what to try, what changed, and what's next.
 - **Production is part of the workflow.** Readiness, a deploy behind an explicit yes, proof that the exact candidate runs, a rollback that is executed rather than hoped for, and someone named for the alerts.
 - **You never have to remember a skill name.** Describe the work; the flow routes it, and each step offers the next one and waits.
@@ -156,7 +156,7 @@ The same flow, as a table:
 | Request | Path |
 | --- | --- |
 | Trivial: copy, a typo, a comment, an unobservable rename | the `trivial` declaration, then edit and verify |
-| Sensitive at any size: auth, permissions, secrets, billing, migrations, infrastructure, CI or deploy config, a public API, anything destructive | its size row's path, with `grill` on the security and failure axes first; `code-review` required |
+| Sensitive at any size: auth, permissions, secrets, billing, migrations, infrastructure, CI or deploy config, a public API, anything destructive | its size row's path, with `grill` on the security and failure axes first; `code-review` and a security review required |
 | Down or degraded for users now | `incident`: contain and restore before diagnosis |
 | Broken, failing, throwing, slow | `diagnosing-bugs`, then verify and finish |
 | Bounded change to existing code | short `grill`, then `tdd`, then verify and finish |
@@ -175,7 +175,8 @@ Three rules apply on every path: questions go through the clickable question too
 Matt Pocock's method plus the rigor around it that neither collection carried:
 
 - **Design lens.** Before the grill calls a design complete, it checks ten axes a design review covers: data model, interfaces and seams, failure modes, scale, security boundaries, observability, migration and rollout, testing strategy, operability, cost and reversibility. A bounded change touches three; a multi-session build visits all ten and the answers go into the spec (alternatives considered, risks, rollout, observability, release). A sensitive change gets the security and failure axes whatever its size.
-- **Definition of done.** A ticket isn't done until, on a named candidate commit, the seam and full-suite tests pass, typecheck and lint pass, every acceptance criterion is checked one by one, there are no debug leftovers, docs are updated where behavior changed, and the commit says what and why.
+- **Definition of done.** A ticket isn't done until, on a named candidate commit, the seam and full-suite tests pass, typecheck and lint pass, every acceptance criterion is checked one by one, there are no debug leftovers, docs are updated where behavior changed, and the commit says what and why. The quality bar is proven on the same commit: each new way it can fail has a test, the diff adds no secret (and a sensitive change's security findings are resolved), a hot path is measured before and after, a new failure is logged or shown, and there is a way to undo it; a row that doesn't apply says n/a and why.
+- **Reviews scale with risk.** Every build gets Matt Pocock's `code-review` (standards and spec) and a correctness review by the read-only `reviewer` agent, since the bundled `/review` can't be reached while his `code-review` holds its name. A sensitive change gets a security review too: `/security-review` when its diff from `origin/HEAD` is exactly this work, the `reviewer` agent on the security axis otherwise. A diff over 400 changed lines or 15 files gets `/simplify` offered, and a user-facing change to a runnable app ends by offering `/verify`, which only you can start. A bounded change or a bug is offered the reviews instead, and only correctness and requirement gaps are acted on.
 - **Handover.** Every ticket ends with four parts: how to run it, what to try per acceptance criterion, what changed (and any decision the ticket didn't settle), and what's next: the stage reached, the next ticket, and whether to `/clear`. Every ticket from `to-tickets` carries a "How to verify" line for the same reason.
 - **Foundations.** On first work in a repo, the `foundations` skill surveys run and verify commands, lint, pre-commit hooks, CI, glossary, issue-tracker config, boundary rules, `.env.example` and the production basics, reports the gaps scaled to the repo's size, and offers to close them through the existing setup skills or the platform's own. It writes nothing without a yes.
 - **Durable state.** The spec, the tickets, `CONTEXT.md` and the ADRs are what a ticket resumed in a fresh context reads; what a phase decided and did not write there is lost by design, so the skills write it there.
@@ -318,7 +319,7 @@ The platform itself refuses to let the model start the skill. What those runs di
 - `.claude-plugin/marketplace.json` — makes this repo a single-plugin marketplace
 - `scripts/install.sh` — the one-command installer; `scripts/behavior_test.py` — the routing-test harness; `scripts/test.sh` and `scripts/tests/` — the test suites
 - `docs/plugin-behavior-tests.md` — the routing evidence and its method; `docs/compatibility.md` — what it was tested with; `docs/adr/` — the decisions; `docs/case-study-web-downloader.md` — one feature end to end on a real repo; `docs/carousel/` — the workflow as five slides for sharing
-- `plugin/evals/` — the thirteen scenarios, one directory each, shared by the routing harness and `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
+- `plugin/evals/` — the fifteen scenarios, one directory each, shared by the routing harness and `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
 
 ## Tests
 
@@ -336,12 +337,13 @@ python3 scripts/behavior_test.py report tests/runs/mine/*/results.jsonl         
 claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write   # the same scenarios through claude plugin eval, from the clone
 ```
 
-The eval suite is the same thirteen scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
+The eval suite is the same fifteen scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
 
 ```bash
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag routing --tag gate --scaffold --allow-tools Edit Write
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag shell --scaffold --allow-tools Edit Write Bash   # the two cases that need a shell
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag delegation --scaffold   # the grill's fact-finding through the scout agent
+claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag review --scaffold --allow-tools Edit Write Bash   # a build's reviews, by risk
 ```
 
-`--scaffold` runs each case's scaffold as you: it copies the fixture into the run's workspace, installs its dependencies, and hands the run the nine Matt Pocock skills from your own config directory (a run loads nothing else of yours). The eight `routing` and `gate` cases need only `Edit` and `Write`; `gate-shell-write` and `gate-commit` need `Bash`, which the eval runs under an OS sandbox that refuses to start on a Mac whose `~/.docker` holds symlinks (Docker Desktop's `cli-plugins/` does), so those two run where the sandbox can. Add `--model claude-sonnet-5` to pin the model, `--ablation none` to skip the baseline, `--publish-report` for a shareable report. Every run is billed to your account.
+`--scaffold` runs each case's scaffold as you: it copies the fixture into the run's workspace, installs its dependencies, and hands the run the nine Matt Pocock skills from your own config directory (a run loads nothing else of yours). The eight `routing` and `gate` cases need only `Edit` and `Write`; `gate-shell-write` and `gate-commit` need `Bash`, and so do the two `review` cases, for git; the eval runs `Bash` under an OS sandbox that refuses to start on a Mac whose `~/.docker` holds symlinks (Docker Desktop's `cli-plugins/` does), so those run where the sandbox can. Add `--model claude-sonnet-5` to pin the model, `--ablation none` to skip the baseline, `--publish-report` for a shareable report. Every run is billed to your account.

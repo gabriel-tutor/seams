@@ -23,10 +23,11 @@ which starts with `Seams gate:`), or a change that failed, changed nothing, so i
       `claude plugin eval` runs as a case (prompt.md's frontmatter is the eval's; the harness
       sends the body).
       --assert judges every run against expect.json (the first skill expected; `refusal`,
-      whether a gate refusal is allowed; `reads`, `reply`, `changes` and `agents`, when present,
-      the files the run must read, what its reply must mention, whether it must go on to a change
-      rather than end on a reply, and the agents it must start) and exits 1 when any run is
-      short, naming each miss
+      whether a gate refusal is allowed; `reads`, `reply`, `changes`, `agents`, `skills` and
+      `tasks`, when present, the files the run must read, what its reply must mention, whether it
+      must go on to a change rather than end on a reply, the agents it must start, the skills it
+      must invoke after the first, and what those agents must be asked) and exits 1 when any run
+      is short, naming each miss
       and, apart from them, each run that was not a run at all: a timeout, a process that
       exited without a result, an error result, a reply with no tokens, a permission denial by
       the harness's own settings.
@@ -127,7 +128,7 @@ class Scanner:
         self.workspace = workspace.resolve() if workspace else None
         self.record = {"model": None, "superpowers_skills": None, "first_tool": None, "label": None,
                        "skill": None, "skills": [], "skill_failed": None, "questions": None, "reads": [],
-                       "commands": [], "agents": [],
+                       "commands": [], "agents": [], "tasks": [],
                        "before": [], "refusals": 0, "late_refusals": 0, "failed_calls": 0, "denials": 0,
                        "undeclared": 0, "text": "", "result": None, "result_subtype": None,
                        "result_error": None, "output_tokens": None, "text_questions": None,
@@ -239,6 +240,7 @@ class Scanner:
                 self.record["reads"].append(inputs["file_path"])
             elif name == "Agent":                      # by the type the call names; None leaves it to Claude Code
                 self.record["agents"].append(inputs.get("subagent_type"))
+                self.record["tasks"].append("\n".join(str(inputs.get(k) or "") for k in ("subagent_type", "description", "prompt")))
         self.pending[call_id] = info
         if self._commits(info) and self.awaiting is None and self.record["first_tool"] is None:
             self._take(call_id, info, message_id)
@@ -416,19 +418,23 @@ def expectation(scenario: str) -> Optional[dict]:
     takes (`runs`); optionally what the run must read (`reads`, one regex or several, each
     matched by a Read path or a read-only shell command), what its reply must mention (`reply`,
     regexes each found in the run's text, case-insensitive), whether it must go on to a
-    change rather than end on a reply (`changes`), and the agents it must start (`agents`, one
-    type or several, each named by an Agent call). That is how a resumed grill shows it read
-    its progress file and asked the questions recorded there, a resumed ticket that it
-    re-read its state and carried on from the recorded step, and a grill that it found its
-    facts through the agent the skill names. None when there is none."""
+    change rather than end on a reply (`changes`), the agents it must start (`agents`, one
+    type or several, each named by an Agent call), the skills it must invoke after the first
+    (`skills`, one name or several), and what those agents must be asked (`tasks`, regexes each
+    found in one Agent call's type, description and prompt, case-insensitive). That is how a
+    resumed grill shows it read its progress file and asked the questions recorded there, a
+    resumed ticket that it re-read its state and carried on from the recorded step, a grill that
+    it found its facts through the agent the skill names, and a build's review that it ran each
+    review its risk calls for. None when there is none."""
     path = SCENARIOS / scenario / "expect.json"
     if not path.is_file():
         return None
     data = json.loads(path.read_text())
-    skill, reads, agents = data.get("skill"), data.get("reads"), data.get("agents")
+    skill = data.get("skill")
     data["skill"] = [skill] if isinstance(skill, str) else list(skill or [])    # one, or any of several
-    data["reads"] = [reads] if isinstance(reads, str) else list(reads or [])    # one, or each of several
-    data["agents"] = [agents] if isinstance(agents, str) else list(agents or [])   # one, or each of several
+    for key in ("reads", "agents", "skills", "tasks"):                            # one, or each of several
+        value = data.get(key)
+        data[key] = [value] if isinstance(value, str) else list(value or [])
     return {"refusal": False, "past_skill": False, "runs": 5, "reply": [], "changes": False, **data}
 
 
@@ -490,6 +496,12 @@ def judge_run(record: dict, expect: dict) -> "tuple[str, str]":
     for agent in expect["agents"]:
         if agent not in (record.get("agents") or []):
             return "miss", f"never started the {agent} agent"
+    for skill in expect["skills"]:
+        if skill not in (record.get("skills") or []):
+            return "miss", f"never invoked {skill}"
+    for pattern in expect["tasks"]:
+        if not any(re.search(pattern, task, re.IGNORECASE) for task in (record.get("tasks") or [])):
+            return "miss", f"no agent was given a task matching {pattern}"
     if expect["changes"] and record.get("ended") != "verdict":
         return "miss", "the run ended on a reply without a change: it stopped to ask or report instead of carrying on"
     return "match", ""

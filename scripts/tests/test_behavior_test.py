@@ -487,6 +487,37 @@ class JudgeTest(unittest.TestCase):
         self.assertRegex(report, r"miss\s+run 2: never started the matt-pocock-workflow:scout agent")
         self.assertRegex(report, r"miss\s+run 3: never started the matt-pocock-workflow:scout agent")
 
+    def test_a_builds_review_runs_code_review_and_a_correctness_review(self):
+        # lean-and-durable ticket 11: a build's review is Matt Pocock's code-review and a correctness review. Claude
+        # can't reach the bundled /review while his code-review holds its name ("Unknown skill: review", 2.1.282), so
+        # the correctness review is a reviewer agent told its axis; code-review's own sub-agents are reviewers too.
+        implement, reviewer = "matt-pocock-workflow:implement", "matt-pocock-workflow:reviewer"
+        standards = f"{reviewer}\nStandards review\nReview 1a2b3c4...HEAD against the repository's documented standards."
+        correctness = f"{reviewer}\nCorrectness review\nReview 1a2b3c4...HEAD on the correctness axis."
+        code, report = judge(
+            record("feature-reviews", 1, skill=implement, skills=[implement, "code-review"], agents=[reviewer, reviewer],
+                   tasks=[standards, correctness]),
+            record("feature-reviews", 2, skill=implement, skills=[implement], agents=[reviewer], tasks=[correctness]),
+            record("feature-reviews", 3, skill=implement, skills=[implement, "code-review"], agents=[reviewer],
+                   tasks=[standards]))
+        self.assertEqual(code, 1)
+        self.assertIn("1 of 3", report)
+        self.assertRegex(report, r"miss\s+run 2: never invoked code-review")
+        self.assertRegex(report, r"miss\s+run 3: no agent was given a task matching .*correctness")
+
+    def test_a_sensitive_builds_review_adds_a_security_review(self):
+        # The fixture has no origin remote, so /security-review has no origin/HEAD to diff against: the reviewer agent
+        # reviews the ticket's diff for security findings only.
+        implement, reviewer = "matt-pocock-workflow:implement", "matt-pocock-workflow:reviewer"
+        correctness = f"{reviewer}\nCorrectness review\nReview 1a2b3c4...HEAD on the correctness axis."
+        security = f"{reviewer}\nSecurity review\nReview 1a2b3c4...HEAD for security findings only."
+        reviewed = {"skills": [implement, "code-review"], "agents": [reviewer, reviewer]}
+        code, report = judge(record("sensitive-reviews", 1, skill=implement, tasks=[correctness, security], **reviewed),
+                             record("sensitive-reviews", 2, skill=implement, tasks=[correctness], **reviewed))
+        self.assertEqual(code, 1)
+        self.assertIn("1 of 2", report)
+        self.assertRegex(report, r"miss\s+run 2: no agent was given a task matching .*security")
+
     def test_a_scenario_without_an_expectation_file_fails_loudly(self):
         code, report = judge(record("no-such-scenario", 1, skill=self.TRIVIAL))
         self.assertEqual(code, 1)
@@ -650,6 +681,50 @@ class ScenarioFilesTest(unittest.TestCase):
                     expecting.append(name)
         self.assertIn("grill-fact-finding", expecting)
 
+    def test_the_skills_a_scenario_expects_after_the_first_have_graders(self):
+        # A scenario holds one Skill grader, on its first skill, so a later skill it expects (code-review in a build's
+        # review, lean-and-durable ticket 11) is graded by a tool_order whose `after` names it.
+        harness = load_harness()
+        expecting = []
+        for name in harness.all_scenarios():
+            expect = harness.expectation(name)
+            if not expect["skills"]:
+                continue
+            with self.subTest(scenario=name):
+                graders = [grader_frontmatter(p) for p in sorted((harness.SCENARIOS / name / "graders").glob("*.md"))]
+                afters = [re.search(r"input_match:\s*'([^']*)'", g.get("after", "")) for g in graders if g.get("type") == "tool_order"]
+                for skill in expect["skills"]:
+                    self.assertTrue(any(m and re.search(m.group(1), json.dumps({"skill": skill})) for m in afters),
+                                    f"no tool_order grader has {skill} after the first skill")
+                expecting.append(name)
+        self.assertEqual(sorted(expecting), ["feature-reviews", "sensitive-reviews"])
+
+    def test_the_tasks_a_scenario_expects_have_agent_graders_that_agree(self):
+        # A build's review starts reviewer agents that differ only by what each is asked. On sample calls, one per
+        # axis a reviewer takes, the harness's `tasks` and the eval's task graders (Agent graders narrower than the
+        # agent's type) agree on which calls count.
+        harness = load_harness()
+        reviewer = "matt-pocock-workflow:reviewer"
+        calls = [{"subagent_type": reviewer, "description": f"{axis.capitalize()} review",
+                  "prompt": f"Review 1a2b3c4...HEAD on the {axis} axis."} for axis in ("correctness", "security", "standards", "spec")]
+        expecting = []
+        for name in harness.all_scenarios():
+            expect = harness.expectation(name)
+            if not expect["tasks"]:
+                continue
+            with self.subTest(scenario=name):
+                graders = [grader_frontmatter(p) for p in sorted((harness.SCENARIOS / name / "graders").glob("*.md"))]
+                matchers = [re.compile(g["input_match"].strip("'\"")) for g in graders
+                            if g.get("type") == "tool_used" and g.get("tool") == "Agent"]
+                narrower = [m for m in matchers if not m.search(json.dumps({"subagent_type": reviewer}))]
+                for call in calls:
+                    task = "\n".join(call[k] for k in ("subagent_type", "description", "prompt"))
+                    wanted = any(re.search(p, task, re.IGNORECASE) for p in expect["tasks"])
+                    graded = any(m.search(json.dumps(call)) for m in narrower)
+                    self.assertEqual(wanted, graded, f"the harness and the graders disagree on: {call['description']}")
+                expecting.append(name)
+        self.assertEqual(sorted(expecting), ["feature-reviews", "sensitive-reviews"])
+
     def test_the_gate_scenarios_allow_a_refusal_and_run_past_the_skill(self):
         harness = load_harness()
         gates = [n for n in harness.all_scenarios() if n.startswith("gate-")]
@@ -706,6 +781,26 @@ class PastSkillTest(unittest.TestCase):
         self.assertEqual(r["agents"], [scout, scout, None])        # no type named: Claude Code's default
         self.assertIsNone(r["first_tool"])
         self.assertEqual(r["result"], "Does the gift card apply before or after the tier discount?")
+
+    def test_each_agents_task_is_recorded_with_its_type(self):
+        # lean-and-durable ticket 11: a build's review starts reviewer agents that differ only by their task
+        # (code-review's two sub-agents, the correctness review, the security review), so the record keeps each
+        # Agent call's type, description and prompt, one line each, in the order the run made them.
+        reviewer = "matt-pocock-workflow:reviewer"
+        r = scan(INIT,
+                 assistant(tool("Skill", skill="matt-pocock-workflow:implement")),
+                 assistant(tool("Agent", id="t1", description="Correctness review",
+                                prompt="Review 1a2b3c4...HEAD on the correctness axis.", subagent_type=reviewer),
+                           tool("Agent", id="t2", description="Security review",
+                                prompt="Review 1a2b3c4...HEAD for security findings only.", subagent_type=reviewer), mid="m1"),
+                 tool_result("t1", "No findings."),
+                 assistant(tool("Agent", id="t3", description="docs", prompt="Find the money rule")),
+                 result("Both reviews are back."),
+                 past_skill=True)
+        self.assertEqual(r["tasks"], [f"{reviewer}\nCorrectness review\nReview 1a2b3c4...HEAD on the correctness axis.",
+                                      f"{reviewer}\nSecurity review\nReview 1a2b3c4...HEAD for security findings only.",
+                                      "\ndocs\nFind the money rule"])
+        self.assertEqual(r["agents"], [reviewer, reviewer, None])
 
     def test_an_edit_still_stops_the_scan(self):
         r = scan(INIT,

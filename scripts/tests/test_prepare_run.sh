@@ -115,6 +115,31 @@ grep -rqi 'gift' "$WS/src" "$WS/CONTEXT.md" "$WS/README.md" && fail "grill-fact-
 [[ ! -e "$WS/.scratch" ]] || fail "grill-fact-finding: no progress file, so nothing is resumed"
 green "$WS" || fail "grill-fact-finding tests should pass"
 
+# The review scenarios (lean-and-durable ticket 11): a feature ticket and a sensitive one (a permission check), each
+# built and committed on main with its review next. The candidate is HEAD, and the progress file names it, uncommitted,
+# as implement leaves it when a review starts; the fixed point is the commit before it. The checks are green, the diff
+# is small (no /simplify offer), and there is no remote, so /security-review has no origin/HEAD to diff against.
+for pair in feature-reviews:low-stock sensitive-reviews:price-overrides; do
+  name=${pair%%:*} feature=${pair#*:}
+  WS=$(prep "$name")
+  PF="$WS/.scratch/$feature/progress.md"
+  [[ "$(porcelain "$WS")" == " M .scratch/$feature/progress.md" ]] || fail "$name: only the progress file should be dirty: $(porcelain "$WS")"
+  grep -qx "Ticket: 01" "$PF" || fail "$name: ticket 01 should be in progress"
+  grep -qx "Candidate: $(cd "$WS" && git rev-parse --short HEAD)" "$PF" || fail "$name: the recorded candidate should be HEAD"
+  grep -qF "review ticket 01's commit against the fixed point $(cd "$WS" && git rev-parse --short HEAD~1)." "$PF" \
+    || fail "$name: Next should name the review against the commit before the build"
+  [[ -f "$WS/docs/agents/issue-tracker.md" && -f "$WS/.scratch/$feature/spec.md" ]] || fail "$name: the issue tracker's doc and the spec"
+  [[ -z "$(cd "$WS" && git remote)" ]] || fail "$name: no remote, so no origin/HEAD"
+  stat=$(cd "$WS" && git diff --shortstat HEAD~1 HEAD)
+  [[ $stat =~ ^\ ([0-9]+)\ files?\ changed ]] && (( BASH_REMATCH[1] <= 15 )) || fail "$name: the build should touch few files: $stat"
+  green "$WS" || fail "$name: tests should pass"
+  typecheck "$WS" || fail "$name: typecheck should pass"
+done
+grep -q "lowStock" "$TMP/feature-reviews/workspace/src/inventory.ts" || fail "feature-reviews: the build should be in src/inventory.ts"
+grep -q "overridePrice" "$TMP/sensitive-reviews/workspace/src/cart.ts" || fail "sensitive-reviews: the build should be in src/cart.ts"
+grep -q "(sensitive: permissions)" "$TMP/sensitive-reviews/workspace/.scratch/price-overrides/issues/01-"*.md \
+  || fail "sensitive-reviews: the ticket should say it is sensitive"
+
 # Every scenario carries the files the harness reads.
 for dir in "$REPO"/plugin/evals/*/; do
   name="$(basename "$dir")"
