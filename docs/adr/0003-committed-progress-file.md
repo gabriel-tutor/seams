@@ -10,5 +10,6 @@ We chose the repository over the plugin's data folder and over "phase ends only"
 
 - The resume note is a pointer, not the truth. Skills re-read the spec, the tickets and the git state before acting, and a missing, stale or unreadable progress file never blocks a session.
 - The file is committed, so it holds decisions and pointers only, never secrets or personal data. Because a cloned repository controls the file, the resume note is built from its fields, length-capped, stripped of markup and framed as the repository's record, so a planted file can't read as instructions.
+- A `pr-review` batch is the exception: its progress file sits beside its evidence under the temp directory and is never committed. The evidence it points at (worktrees, check logs, drafts) lives only on that machine, so a committed pointer would lead nowhere anywhere else. The session-start hook reads it only when it is the user's own, and lists it only in the repository it names.
 - Worktrees for this work are created from local HEAD. `worktree.baseRef` defaults to `fresh`, which leaves out unpushed commits.
 - Moving the file later means migrating every repository that has one, which is why this is an ADR.

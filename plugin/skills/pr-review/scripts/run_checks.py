@@ -33,7 +33,8 @@ the PR once more on the candidate, alone after a batch, and calls it flaky when 
 A check is absent from a tree when its command is not found or not executable (exit 127 or 126), or
 when a package manager or test runner reports the script or test file missing. Writes
 <out>/checks.json and <out>/checks.md, the table a review carries (no local paths in it; it names the
-bash version), and prints the table. Exits 0 when the comparison ran, whatever the verdicts, and 2 on
+bash version), and prints the table. When <out> is the checks/ of a review's evidence directory, the progress
+file of a batch listing that directory is brought up to date (evidence.py). Exits 0 when the comparison ran, whatever the verdicts, and 2 on
 a usage error.
 """
 from __future__ import annotations
@@ -50,6 +51,7 @@ import time
 from pathlib import Path
 
 sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # beside this script, even under PYTHONSAFEPATH
 try:
     import evidence                            # the batch's progress file, kept current as each step ends
 except Exception:                              # noqa: BLE001  never a reason for a script to stop
@@ -434,7 +436,7 @@ def main(argv: "list | None" = None) -> int:
     write_results(args.out, results)
     remember_left(args.out, {"base": args.base, "head": args.head}, known)
     if evidence is not None:
-        evidence.refresh(args.out.parent)
+        evidence.update_batches(args.out.parent)
     if slot is not None:
         slot.close()
     return 0

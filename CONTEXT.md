@@ -66,7 +66,7 @@ The furthest point a piece of work has evidence for: designed, built, integrated
 _Avoid_: gate (that is the hook), phase, status
 
 **Progress file**:
-A feature's durable record of work in progress, kept beside its spec: the grill's settled decisions and open questions, the ticket in progress, the candidate, the stage and the next step. Unlike the ledger, it outlives the session. It is committed with the work it describes, so it holds decisions and pointers only. Its `Status` says whether work remains (`active`) or the feature is finished (`done`); that is not its Stage.
+A feature's durable record of work in progress, kept beside its spec: the grill's settled decisions and open questions, the ticket in progress, the candidate, the stage and the next step. Unlike the ledger, it outlives the session. It is committed with the work it describes, so it holds decisions and pointers only. Its `Status` says whether work remains (`active`) or the feature is finished (`done`); that is not its Stage. A `pr-review` batch keeps one of the same shape beside its evidence, under the temp directory and never committed: its pull requests, each one's step and the command that continues it.
 _Avoid_: state file, work log, notes
 
 **Resume note**:

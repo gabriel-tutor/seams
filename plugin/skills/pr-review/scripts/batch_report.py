@@ -2,7 +2,7 @@
 """The opening of a pr-review handover: is each pull request ready to merge, and what does each author
 whose pull request is not ready have to change first.
 
-  batch_report.py DIR [DIR ...]
+  batch_report.py [--close] DIR [DIR ...]
 
 Each DIR is one pull request's evidence directory: review.json (see review_payload.py) and, when the
 checks ran, checks/checks.json (see run_checks.py). A directory without review.json is a review that
@@ -16,7 +16,10 @@ never finished; its error.txt, when there is one, says why. Each pull request ge
 
 Prints a Markdown table, the ones needing attention first, then one note per author whose pull request
 is not ready, each ready to paste to them: the link, the blocking items first, then the rest. Exits 0,
-or 2 when no directory is given.
+or 2 when no directory is given. With --close, given at the final review handover, it also closes the
+progress file of each batch whose pull requests the report covers, all of them, once every review in it is
+drafted or posted (evidence.py); without it the batch stays open, as a headless run's table before its post
+question leaves it.
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # beside this script, even under PYTHONSAFEPATH
 try:
     import evidence                            # the batch's progress file, kept current as each step ends
 except Exception:                              # noqa: BLE001  never a reason for a script to stop
@@ -135,13 +139,15 @@ def report(states: list) -> str:
 
 
 def main(argv: "list | None" = None) -> int:
-    folders = [Path(a) for a in (argv if argv is not None else sys.argv[1:])]
+    args = list(argv if argv is not None else sys.argv[1:])
+    close = "--close" in args
+    folders = [Path(a) for a in args if a != "--close"]
     if not folders:
         print(__doc__, file=sys.stderr)
         return 2
     print(report([load(f) for f in folders]), end="")
-    if evidence is not None:
-        evidence.finish(folders)
+    if close and evidence is not None:
+        evidence.close_batches(folders)
     return 0
 
 

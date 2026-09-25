@@ -21,7 +21,8 @@ not taken: the run says when to post again. Any other refusal, a failure of gh i
 that does not lift ends the run: the reviews after it are not tried, so the person can decide, and
 running it again finds what is already posted. --minute shortens the budget's minute for tests.
 
-Each review posted is recorded in EVID/posted.json and its link printed. Exits 0 when every review
+Each review posted is recorded in EVID/posted.json, and the progress file of a batch listing EVID brought up to
+date (evidence.py), and its link printed. Exits 0 when every review
 is on GitHub, 1 when any is not (each says why), and 2 on a usage error, before anything is posted.
 """
 from __future__ import annotations
@@ -34,6 +35,7 @@ import time
 from pathlib import Path
 
 sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # beside this script, even under PYTHONSAFEPATH
 try:
     import evidence                            # the batch's progress file, kept current as each step ends
 except Exception:                              # noqa: BLE001  never a reason for a script to stop
@@ -169,7 +171,7 @@ def record(review: dict, posted: dict) -> str:
         {"html_url": posted.get("html_url"), "id": posted.get("id"), "event": review["payload"].get("event"),
          "commit_id": review["head"]}, indent=2) + "\n")
     if evidence is not None:
-        evidence.refresh(review["folder"])
+        evidence.update_batches(review["folder"])
     return posted.get("html_url") or ""
 
 

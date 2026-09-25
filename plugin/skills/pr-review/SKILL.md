@@ -2,7 +2,7 @@
 name: pr-review
 description: Typed by hand only, for a deep review of GitHub pull requests with their checks run against the baseline, findings proven, and drafts posted only on your yes
 disable-model-invocation: true
-argument-hint: "<number | URL | owner/repo#number> [...] | open | requested [<n> slots]"
+argument-hint: "<number | URL | owner/repo#number> [...] | open | requested [<n> slots] [afresh]"
 allowed-tools:
   - Bash(gh auth status:*)
   - Bash(gh repo view:*)
@@ -49,7 +49,7 @@ Scripts: `python3 ${CLAUDE_SKILL_DIR}/scripts/evidence.py`, `python3 ${CLAUDE_SK
 
 ## Gate
 
-1. **Which pull requests.** Read `$ARGUMENTS`: pull request numbers (in the repository of the current directory, `gh repo view --json nameWithOwner`), URLs, or `owner/repo#number`, any mix; `open` for every open pull request that is not a draft (`gh pr list --state open --limit 1000 --json number,isDraft`); `requested` for the open ones waiting on the viewer's review (`gh pr list --search "review-requested:@me" --state open --limit 1000`). `<n> slots` ("4 slots") is not a pull request: it sets the machine's check slots for a batch. Nothing given: list the ten most recent open pull requests and ask which, with AskUserQuestion. One pull request is a single review; more than one is a batch.
+1. **Which pull requests.** Read `$ARGUMENTS`: pull request numbers (in the repository of the current directory, `gh repo view --json nameWithOwner`), URLs, or `owner/repo#number`, any mix; `open` for every open pull request that is not a draft (`gh pr list --state open --limit 1000 --json number,isDraft`); `requested` for the open ones waiting on the viewer's review (`gh pr list --search "review-requested:@me" --state open --limit 1000`). `<n> slots` ("4 slots") is not a pull request: it sets the machine's check slots for a batch. Nor is `afresh`: it reuses nothing an earlier run left (`checkout.md`). Nothing given: list the ten most recent open pull requests and ask which, with AskUserQuestion. One pull request is a single review; more than one is a batch.
 2. **Preconditions, as facts.** `gh auth status` must be logged in with access to the repository; if not, stop and say `gh auth login`. The viewer is `gh api user --jq .login`.
 3. **Each pull request's facts.** `gh pr view <n> --repo <owner/repo> --json number,title,body,url,state,isDraft,author,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,isCrossRepository,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,closingIssuesReferences,files,additions,deletions,changedFiles,commits,latestReviews,labels`, and `gh api repos/<owner>/<repo>/pulls/<n> --jq .author_association`. The candidate is `headRefOid`: say "Reviewing owner/repo#n at <first 7 of the SHA>". A closed, merged or draft pull request can be reviewed; say which it is.
 4. **Trust.** A pull request is trusted when the viewer wrote it (a fork included: it is the viewer's own code), or when it is not from a fork (`isCrossRepository` false) and its `author_association` is `OWNER`, `MEMBER` or `COLLABORATOR`. Any other is untrusted: its install scripts, build, tests and scripts would run its author's code as the viewer. Before anything of an untrusted pull request runs, ask in one round of questions (AskUserQuestion, one question per untrusted pull request, four per call), recommended answer first: "Static review only (Recommended)" (read and review, run nothing), "Run with install scripts off" (`npm ci --ignore-scripts` and each package manager's equivalent; a check that then cannot run is reported as such), "Run everything". Until the answer, nothing of that PR runs.
@@ -57,11 +57,11 @@ Scripts: `python3 ${CLAUDE_SKILL_DIR}/scripts/evidence.py`, `python3 ${CLAUDE_SK
 
 ## Checkout
 
-Always in this session, one PR at a time, even in a batch (`checkout.md`): pin each head and its baseline; `evidence.py pin` names each `$EVID` and says where its review starts, reusing only what finished at the same head and baseline. Record the user's state once, then make the worktrees and diff it asks for. An evidence directory without the marker stops the review for a question.
+Always in this session, one PR at a time, even in a batch (`checkout.md`): pin each head and its baseline; `evidence.py pin` names each `$EVID` and says where its review starts, reusing only what finished at the same head and baseline. Record the user's state once, then make what it asks for. An evidence directory without the marker stops the review for a question.
 
 ## Batch
 
-One pull request: skip this step; Understand through Draft run here, in this session. Several (`batch.md`): every question is asked here first, then one subagent per pull request reviews it; subagents never ask the user and never post.
+One pull request: skip this step; Understand through Draft run here. Several (`batch.md`): every question is asked here first, then one subagent per pull request reviews it; subagents never ask the user and never post.
 
 ## Understand
 
@@ -93,7 +93,7 @@ Show every draft in full and re-check each candidate (`draft-and-post.md`): a pu
 
 The closing message, in this order:
 
-1. **Ready to merge?** `python3 ${CLAUDE_SKILL_DIR}/scripts/batch_report.py "$EVID" ...` (every pull request's evidence directory, one pull request included): its table (pull request, author, candidate, ready to merge, blocking count, checks broken by the PR) and, for each author whose pull request is not ready, a Note for that author, ready to paste to them. Print it exactly as the script wrote it, not paraphrased.
+1. **Ready to merge?** `python3 ${CLAUDE_SKILL_DIR}/scripts/batch_report.py --close "$EVID" ...` (every pull request's evidence directory, one pull request included): its table (pull request, author, candidate, ready to merge, blocking count, checks broken by the PR) and, for each author whose pull request is not ready, a Note for that author, ready to paste to them. Print it exactly as the script wrote it, not paraphrased.
 2. **Each pull request,** in the table's order: posted (the review's URL and event) or not (where the draft is); the checks table; the findings by severity with their places; questions last.
 3. **Not verified.** Every check that could not run and every axis left unchecked, with why. A review never implies more certainty than its evidence.
-4. **Next.** What each author should fix first; re-review after they push with the same command, which compares with this review; and where the evidence stays (`$EVID`, under the temp directory).
+4. **Next.** What each author should fix first; re-review after they push with the same command, which compares with this review; and where the evidence stays (`$EVID`).

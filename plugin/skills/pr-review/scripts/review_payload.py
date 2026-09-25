@@ -25,7 +25,9 @@ from the checks.json beside --checks) and no merge conflict (pr.mergeable).
 
 Writes payload.json ({commit_id, event, body, comments}), ready for
 `gh api --method POST repos/<owner>/<repo>/pulls/<number>/reviews --input payload.json`.
-Exits 0 when written, 1 when a rule refuses the event (nothing written), 2 on a usage error.
+Exits 0 when written, 1 when a rule refuses the event (no payload written), 2 on a usage error. The progress
+file of a batch listing --out's directory is brought up to date as the review is read, and again once the
+payload is written (evidence.py).
 """
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # beside this script, even under PYTHONSAFEPATH
 try:
     import evidence                            # the batch's progress file, kept current as each step ends
 except Exception:                              # noqa: BLE001  never a reason for a script to stop
@@ -306,7 +309,7 @@ def main(argv: "list | None" = None) -> int:
     parser.add_argument("--preview", type=Path, help="where the Markdown preview goes")
     args = parser.parse_args(argv)
     if evidence is not None:
-        evidence.refresh(args.out.parent)
+        evidence.update_batches(args.out.parent)
     try:
         review = json.loads(args.review.read_text())
         checks, broken = "", []
@@ -328,7 +331,7 @@ def main(argv: "list | None" = None) -> int:
     if args.preview:
         args.preview.write_text(preview + "\n")
     if evidence is not None:
-        evidence.refresh(args.out.parent)
+        evidence.update_batches(args.out.parent)
     print(f"{len(payload['comments'])} inline comment(s); body {len(payload['body'])} characters; event {args.event}")
     return 0
 

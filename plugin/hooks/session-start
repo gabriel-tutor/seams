@@ -178,6 +178,18 @@ def modified(path: Path) -> float:
         return 0.0
 
 
+def open_entry(fields: dict, path: Path) -> "dict | None":
+    """A progress file's header as a note entry's fields (its stage, next step and update date, each plain text,
+    and its order: when it was updated, then when the file was modified), or None unless the header has the status
+    active, a Stage, a Next and a dated Updated."""
+    status = re.match(r"[a-z]*", fields.get("status", "").lower()).group()
+    when = updated_at(fields.get("updated", ""))
+    stage, next_step = plain(fields.get("stage", "")), plain(fields.get("next", ""))
+    if not (status == "active" and when and stage and next_step):
+        return None
+    return {"stage": stage, "next": next_step, "updated": when.date().isoformat(), "order": (when, modified(path))}
+
+
 def active_features(root: Path) -> list:
     """The active features recorded under <root>/.scratch/<feature>/progress.md, most recently
     updated first (between two updated at the same moment, the file modified last), each field plain
@@ -187,20 +199,14 @@ def active_features(root: Path) -> list:
     for path in sorted(root.glob(".scratch/*/progress.md")):
         shown = path.relative_to(root).as_posix()
         fields = progress_header(path, root)
-        if fields is None or plain(shown) != shown:
-            continue
-        status = re.match(r"[a-z]*", fields.get("status", "").lower()).group()
-        when = updated_at(fields.get("updated", ""))
-        stage, next_step = plain(fields.get("stage", "")), plain(fields.get("next", ""))
-        if status == "active" and when and stage and next_step:
-            features.append({"feature": path.parent.name, "stage": stage, "next": next_step,
-                             "ticket": plain(fields.get("ticket", ""), TICKET_CAP),
-                             "updated": when.date().isoformat(), "path": shown,
-                             "order": (when, modified(path))})
+        entry = open_entry(fields, path) if fields is not None and plain(shown) == shown else None
+        if entry:
+            features.append(dict(entry, feature=path.parent.name, path=shown,
+                                 ticket=plain(fields.get("ticket", ""), TICKET_CAP)))
     return sorted(features, key=lambda f: f["order"], reverse=True)
 
 
-# A pr-review batch keeps its own progress file beside its evidence (lean-and-durable ticket 07), written by the skill's
+# A pr-review batch keeps its own progress file beside its evidence (ADR 0003 names the exception), written by the skill's
 # scripts, under ${TMPDIR:-/tmp}/seams-pr-review as the skill's commands resolve it; where the shell leaves TMPDIR
 # unset, Claude Code gives commands CLAUDE_CODE_TMPDIR instead. Each names the repository the review ran in, and the
 # note lists the newest unfinished one of the session's repository. Only the user's own files are read: a directory
@@ -244,7 +250,8 @@ def shown_path(path: Path) -> str:
 
 
 def unfinished_batch(repo: Path) -> "dict | None":
-    """The newest unfinished pr-review batch run in this repository, as a note entry, or None."""
+    """The newest unfinished pr-review batch run in this repository, as a note entry, or None. A file that cannot be
+    read or does not parse drops out alone."""
     want, best = os.path.realpath(repo), None
     for root in evidence_roots():
         try:
@@ -255,17 +262,16 @@ def unfinished_batch(repo: Path) -> "dict | None":
         except OSError:
             continue
         for name in filter(BATCH_FILE.match, names):
-            text = own_file_head(root / name)
-            fields = header_fields(text) if text is not None else {}
-            status = re.match(r"[a-z]*", fields.get("status", "").lower()).group()
-            when = updated_at(fields.get("updated", ""))
-            stage, next_step = plain(fields.get("stage", "")), plain(fields.get("next", ""))
-            repository = fields.get("repository", "")
-            if not (status == "active" and when and stage and next_step and os.path.isabs(repository)
-                    and os.path.realpath(repository) == want):
+            try:
+                text = own_file_head(root / name)
+                fields = header_fields(text) if text is not None else {}
+                entry = open_entry(fields, root / name)
+                repository = fields.get("repository", "")
+                if not (entry and os.path.isabs(repository) and os.path.realpath(repository) == want):
+                    continue
+            except (OSError, ValueError):     # ValueError: a NUL in a path, which realpath refuses
                 continue
-            entry = {"batch": True, "stage": stage, "next": next_step, "updated": when.date().isoformat(),
-                     "path": shown_path(root / name), "order": (when, modified(root / name))}
+            entry = dict(entry, feature="pr-review batch", batch=True, ticket="", path=shown_path(root / name))
             if best is None or entry["order"] > best["order"]:
                 best = entry
     return best
@@ -276,7 +282,12 @@ def resume_note(root: Path) -> "tuple[str, str] | None":
     notice for the user, or None when nothing is active. Entries are whole or left out: the note
     stays under NOTE_CAP characters."""
     entries = active_features(root)
-    batch = unfinished_batch(root)
+    try:
+        batch = unfinished_batch(root)
+    except Exception:                          # noqa: BLE001  a batch is never a reason to lose the features
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        batch = None
     if batch:
         entries = sorted(entries + [batch], key=lambda e: e["order"], reverse=True)
     entries = entries[:NOTE_ENTRIES]
@@ -290,13 +301,9 @@ def resume_note(root: Path) -> "tuple[str, str] | None":
              + (BATCH_NOTE if any(e.get("batch") for e in entries) else "")]
     shown = []
     for f in entries:
-        if f.get("batch"):
-            entry = f"- pr-review batch: {f['stage']}, updated {f['updated']}; next: {f['next']}" + \
-                    (f" File: {f['path']}" if f["path"] else "")
-        else:
-            ticket = f", ticket {f['ticket']} in progress" if f["ticket"] else ""
-            entry = (f"- {f['feature']}: stage {f['stage']}{ticket}, updated {f['updated']}; next: {f['next']} "
-                     f"File: {f['path']}")
+        ticket = f", ticket {f['ticket']} in progress" if f["ticket"] else ""
+        entry = f"- {f['feature']}: stage {f['stage']}{ticket}, updated {f['updated']}; next: {f['next']}" + \
+                (f" File: {f['path']}" if f["path"] else "")
         if len("\n".join(lines + [entry])) >= NOTE_CAP:
             break
         lines.append(entry)
@@ -304,8 +311,6 @@ def resume_note(root: Path) -> "tuple[str, str] | None":
     if not shown:
         return None
     newest = shown[0]
-    if newest.get("batch"):
-        return "\n".join(lines), f"Seams: resuming pr-review batch, {newest['stage']}: {newest['next']}"
     return "\n".join(lines), f"Seams: resuming {newest['feature']} ({newest['stage']}): {newest['next']}"
 
 

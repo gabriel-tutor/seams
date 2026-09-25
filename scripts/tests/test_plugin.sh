@@ -361,7 +361,7 @@ step_says() {   # $1 = a step's heading text, $2 = the reference holding its det
   done
 }
 must_say pr-review "$PRR" "\$ARGUMENTS" "headRefOid" "author_association" "Bash(gh pr reopen:*)"
-step_says Gate "" "untrusted" "Static review only" "nothing of that PR runs" "--limit 1000" "requested" \
+step_says Gate "" "untrusted" "Static review only" "nothing of that PR runs" "--limit 1000" "requested" "\`afresh\`" \
   "one round of questions" "needs no declaration" "never declare \`trivial\`"
 step_says Checkout checkout "one PR at a time" "--detach" ".seams-pr-review" "merge-base" \
   "once, before the first pull request's checkout" "earlier outputs" "a stale review can never stand in"
@@ -385,7 +385,7 @@ step_says Cleanup cleanup "only worktrees carrying" "the one record from Checkou
   "never deleted with the tree" "matt-pocock-workflow:verification-before-completion"
 step_says Post draft-and-post "Re-check the candidate" "every time" "Don't post" "own pull request" "post_reviews.py" \
   "needs no new yes" "stops" "Never push"
-step_says "Review handover" "" "batch_report.py" "Ready to merge" "Note for" "exactly as the script wrote it"
+step_says "Review handover" "" "batch_report.py --close" "Ready to merge" "Note for" "exactly as the script wrote it"
 # A step's gates and must-nots stay in the core where its detail moved out (the ticket's "gates, must-nots and steps
 # first"): an unmarked evidence directory, services and credentials, a head that moved, the viewer's own pull request.
 section_says pr-review "$PRR" Checkout "without the marker"
@@ -420,12 +420,13 @@ done
 # batch keeps a progress file the scripts bring up to date and the handover closes, which the next session's resume
 # note lists; a review already posted is not asked about again.
 section_says pr-review "$PRR" Checkout "\`evidence.py pin\`" "reusing only what finished at the same head and baseline"
-step_says Checkout checkout "evidence.py pin --pr" "continue at Review" "continue at Draft" "**reuse**" "**afresh**" \
+step_says Checkout checkout "evidence.py pin --pr" "--afresh" "continue with its checks" "Every other step runs" "continue at Draft" \
+  "**reuse**" "**afresh**" \
   "A head that moved" "old evidence never stands in" "exits 1" "worktrees \`evidence.py\` says to remove" \
   "leaving out the lines of this review's own worktrees"
-step_says Batch batch "The batch's progress file" "brings it up to date" "closes it" "resume note" "typed again" \
+step_says Batch batch "The batch's progress file" "brings it up to date" "--close\` closes it" "drafted or posted" "resume note" "typed again" \
   "a reused one" "has no run of it alone"
-step_says Post draft-and-post "posted at this head is not asked about again"
+step_says Post draft-and-post "posted at this head is not asked about again" "without \`--close\`"
 [[ $PRR_OPENING == *"\`<skill-dir>\`"* ]] || fail "pr-review's opening does not say what <skill-dir> in its references stands for"
 grep -F -- "\${CLAUDE_SKILL_DIR}/" "$PRR_REFS"/*.md && fail "a pr-review reference names a path through \${CLAUDE_SKILL_DIR}, which is not filled in there"
 grep -rF -- "this skill's base directory" "$PRR" "$PRR_REFS" && fail "pr-review still names its directory as \"this skill's base directory\""
