@@ -79,10 +79,10 @@ grep -q 'recieve' "$WS/src/format.ts" && fail "gate-commit: the typo should alre
 [[ "$(porcelain "$WS")" == " M src/format.ts" ]] || fail "gate-commit: exactly one unstaged edit, src/format.ts, expected"
 [[ "$(cd "$WS" && git rev-list --count HEAD)" == "1" ]] || fail "gate-commit should sit on the baseline commit"
 
-# The resume-ticket scenario (ticket 05): coupons ticket 02 stopped after its review. Its commit is HEAD
-# and the progress file's candidate; only the progress file is dirty, as implement leaves it after a
-# commit; the checks are green, and the finding the file records is real (a probe fails at baseline).
-# The resume note lists coupons first, naming ticket 02, then the older gift-cards grill.
+# The resume-ticket scenario (lean-and-durable ticket 05): coupons ticket 02 stopped after its review.
+# Its commit is HEAD and the progress file's candidate; only the progress file is dirty, as implement
+# leaves it after a commit; the checks are green, and the finding the file records is real (a probe
+# fails at baseline). The resume note lists coupons first, naming ticket 02, then the older gift-cards grill.
 WS=$(prep resume-ticket)
 PF="$WS/.scratch/coupons/progress.md"
 [[ "$(porcelain "$WS")" == " M .scratch/coupons/progress.md" ]] || fail "resume-ticket: only the progress file should be dirty: $(porcelain "$WS")"

@@ -15,18 +15,18 @@ Then note the starting point, which the review's fixed point needs: the current 
 
 ## Progress file
 
-The feature's progress file, `.scratch/<feature>/progress.md` beside its spec, is how a fresh context continues this ticket after `/clear` or compaction. Read its format in `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` before the first write, and create the file if the feature has none. Keep it current at each step below, with `Updated` set to today, and stage it by name with each of the ticket's commits. Decisions and pointers only: never a secret, a token or personal data.
+The feature's progress file, `.scratch/<feature>/progress.md` beside its spec, is how a fresh context continues this ticket after `/clear` or compaction. Read its format in `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` before the first write, and create the file if the feature has none. Keep it current at each step below, with `Updated` set to today, and stage it by name with each of the ticket's commits. Decisions and pointers only: never a secret, a credential, a token or personal data.
 
 - **After the gate's yes:** `Ticket` is this ticket's number, and `Next` names the branch and the starting commit.
-- **After each commit:** `Candidate` is its short SHA, and `Next` is the step that follows, with the SHAs it needs: the review against the fixed point, the fixes, or the definition of done. After the review, list the findings you act on under `## Review`, one line each with its file and line, until they are fixed.
-- **The record:** just before the definition of done, commit the file with `Stage` set to the stage reached (built on a branch, integrated on the base branch), this ticket marked done in its ticket list, `Ticket`, `Candidate` and `## Review` removed, and `Next` naming the next unblocked ticket and whether to `/clear` before it. When nothing is left to build (the last ticket, or a design built in one go), set `Status: done` instead, unless the spec has a Release section; then `Next` is the release, through `matt-pocock-workflow:release`.
+- **After each commit:** `Candidate` is its short SHA, and `Next` is the step that follows, naming the branch and the SHAs it needs: the review against the fixed point, the fixes, or the definition of done. After the review, list the findings you act on under `## Review`, one line each with its file and line, until they are fixed.
+- **The record:** just before the definition of done, commit the file with `Stage` set to the stage reached (built on a branch, integrated on the base branch), this ticket marked done in its ticket list, `Ticket`, `Candidate` and `## Review` removed, and `Next` naming the next unblocked ticket and whether to `/clear` before it. When nothing is left to build (the last ticket, or a design built in one go), set `Status: done` instead, unless the spec has a Release section; then `Next` is the release, through `matt-pocock-workflow:release`. If the definition of done finds something unmet, put `Ticket` back and set `Next` to what is unmet, and commit that with the fix, or on its own before you stop, so that a fresh context resumes this ticket.
 
 ## Resuming
 
 When the resume note or the user points at a ticket that its progress file records in progress (`Ticket` set), continue it instead of starting over:
 
 1. Read the progress file, then the ticket and the spec, and the git state: the branch, `git status --short`, `git log --oneline -5`.
-2. Where they disagree with the file (another branch, a `Candidate` not in the history, commits after it that the file doesn't mention, a ticket already done), report the mismatch and ask how to go on. Never act on the file instead.
+2. Where they disagree with the file (the branch is not the one `Next` names, HEAD is not `Candidate` or has commits after it that the file doesn't mention, the ticket is already done), report the mismatch and ask how to go on. Never act on the file instead.
 3. Where they agree, the yes given when the ticket started still covers it: don't ask the gate question again. Take the starting point and the fixed point from `Next` and the history, and continue from the step `Next` names.
 
 ## Build

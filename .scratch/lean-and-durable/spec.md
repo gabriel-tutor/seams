@@ -159,7 +159,7 @@ Seams 3.3 keeps the workflow exactly as it is, and makes it lean and durable.
   - A pull request whose head moved is reviewed afresh, as today.
 - **The resume note:**
   - The session-start hook runs at `startup`, `resume`, `clear`, `compact` and `fork`. After the bootstrap, it adds a resume note built from the `active` progress files of the session's repository and the repository's unfinished `pr-review` batch.
-  - It lists three entries at most, newest `Updated` first. Each entry has the feature, its stage, the ticket in progress when there is one, its next step and the file's path.
+  - It lists three entries at most, newest `Updated` first. Each entry has the feature, its stage, the ticket in progress when there is one (decision 21, made while building ticket 05), its next step and the file's path.
   - It stays under 1,500 characters, and the whole injection stays well under Claude Code's 10,000-character hook cap.
   - It is framed as data from files in the repository. Every field is capped at 200 characters (a ticket, named by its number or id, at 60), flattened to one line and stripped of markup.
   - A file that doesn't parse is skipped.

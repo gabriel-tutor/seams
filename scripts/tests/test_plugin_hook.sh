@@ -250,7 +250,7 @@ E=$(entries_of "$C")
 [[ "$M" == "Seams: resuming gift-cards (designing): Ask the open questions on the tier discount and the out-of-stock hold." ]] \
   || fail "the notice should name the feature, stage and next step: $M"
 
-# A ticket in progress (ticket 05): its entry names the ticket after the stage, and the note says that a
+# A ticket in progress (lean-and-durable ticket 05): its entry names the ticket after the stage, and the note says that a
 # ticket in progress continues through implement, as a grill in progress does through the grill. The
 # candidate stays in the file: the skill that resumes the ticket reads it there and checks it against git.
 TICKETED="$TMP/note-ticket"; mkdir -p "$TICKETED"; git -C "$TICKETED" init -q

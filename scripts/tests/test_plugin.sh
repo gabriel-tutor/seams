@@ -19,6 +19,11 @@ must_say() {   # $1 = skill name, $2 = file, $3... = phrases the file must conta
   local name="$1" file="$2" needle; shift 2
   for needle in "$@"; do grep -qF -- "$needle" "$file" || fail "$name should say: $needle"; done
 }
+last_line_says() {   # $1 = skill name, $2 = file, $3... = phrases its last non-blank line, the attribution, must contain
+  local name="$1" file="$2" last needle; shift 2
+  last=$(grep -v '^[[:space:]]*$' "$file" | tail -1)
+  for needle in "$@"; do [[ $last == *"$needle"* ]] || fail "$name: the last line does not attribute the original ($needle): $last"; done
+}
 section() { awk -v h="## $1" 'index($0, h) == 1 {p=1; next} /^## /{p=0} p' "$2"; }   # $1 = heading text, $2 = file: that section's body
 section_says() {   # $1 = skill name, $2 = file, $3 = heading text, $4... = phrases that section must contain verbatim
   local name="$1" file="$2" heading="$3" body needle; shift 3
@@ -95,9 +100,7 @@ for s in to-spec to-tickets implement; do
   esac
   headings_in_order "$s" "$f" "${headings[@]}"
   must_say "$s" "$f" "${needles[@]}"
-  last=$(grep -v '^[[:space:]]*$' "$f" | tail -1)
-  [[ $last == *"Matt Pocock"* && $last == *"MIT"* && $last == *"$MP_COMMIT"* ]] \
-    || fail "$s: the last line does not attribute the upstream skill, license and commit: $last"
+  last_line_says "$s" "$f" "Matt Pocock" "MIT" "$MP_COMMIT"
 done
 
 # The upstream files those three were adapted from: SHA-256 recorded at the upstream commit and
@@ -157,7 +160,7 @@ section_says incident "$INC" "Incident handover" "Stage reached" "designed, buil
 # and the rule sits in the Presentation section, where the facts-then-one-question format is.
 section_says grill "$PLUGIN/skills/grill/SKILL.md" Presentation "already settles is not a question; the fact goes in the facts section"
 
-# The progress file (ticket 04, ADR 0003): one format, defined once beside routing.md, that the skills
+# The progress file (lean-and-durable ticket 04, ADR 0003): one format, defined once beside routing.md, that the skills
 # write and the session-start hook reads. The grill keeps it from its first decision, resumes from it
 # instead of starting over, closes it itself when no later skill will, and asks every independent
 # question at once while a risky one still comes alone.
@@ -179,7 +182,7 @@ section_says grill "$GRILL" Resuming "resume note" "the spec, the tickets" "git 
 section_says grill "$GRILL" Done "\`Next\`" "set \`Status: done\` in the commit that ships the change"
 must_say routing.md "$PLUGIN/skills/using-matt-pocock-skills/references/routing.md" "\`.scratch/<feature>/progress.md\`" "progress-file.md"
 
-# The flow skills keep the progress file too (ticket 05). implement records the ticket in progress, each
+# The flow skills keep the progress file too (lean-and-durable ticket 05). implement records the ticket in progress, each
 # candidate and the review's findings, commits the file with the ticket's commits, and closes the ticket
 # with a record commit that the definition of done then runs on. It resumes a ticket in progress without
 # its gate question when the file and git agree, and reports a mismatch instead of acting on the file.
@@ -188,9 +191,10 @@ headings_in_order implement "$IMPL" "## Gate" "## Progress file" "## Resuming" "
 section_says implement "$IMPL" Gate "resume a ticket in progress whose state matches its progress file"
 section_says implement "$IMPL" "Progress file" "\`.scratch/<feature>/progress.md\`" "references/progress-file.md" \
   "stage it by name with each of the ticket's commits" "\`Ticket\`" "\`Candidate\`" "\`## Review\`" "the stage reached" \
-  "\`Status: done\`" "Release section" "\`matt-pocock-workflow:release\`" "never a secret"
+  "\`Status: done\`" "Release section" "\`matt-pocock-workflow:release\`" "never a secret" \
+  "naming the branch and the SHAs it needs" "finds something unmet, put \`Ticket\` back"
 section_says implement "$IMPL" Resuming "resume note" "the ticket and the spec" "git state" "report the mismatch" \
-  "don't ask the gate question again"
+  "don't ask the gate question again" "the branch is not the one \`Next\` names" "HEAD is not \`Candidate\`"
 section_says implement "$IMPL" "Definition of done" "after the record commit"
 # to-spec sets the stage to designed and points to the spec; its publish question names the commit that
 # follows (the spec, the progress file, the grill's glossary and ADR changes), made by name after the yes.
@@ -201,11 +205,24 @@ section_says to-spec "$PLUGIN/skills/to-spec/SKILL.md" Process "name the commit 
 # tickets and the progress file by name.
 section_says to-tickets "$PLUGIN/skills/to-tickets/SKILL.md" Process "references/progress-file.md" "\`## Tickets\`" \
   "first unblocked ticket" "\`matt-pocock-workflow:implement\`" "never a secret" \
-  "commit the tickets (when they are files) and the progress file by name" "the approval covers that commit"
+  "commit the tickets (when they are files) and the progress file by name" "the approval covers that commit" \
+  "The approval question names what its yes covers"
 # release records the stage it reached in the progress file at its operations handover, and sets it done
 # once the candidate is verified in the last environment the spec's Release section names.
 section_says release "$PLUGIN/skills/release/SKILL.md" "Operations handover" "references/progress-file.md" \
   "\`Status: done\`" "last environment the spec's Release section names" "what is left" "by name" "never a secret"
+# The progress file's commits move HEAD past what the review saw: release's candidate is the one implement's
+# definition of done covered, or that candidate as finishing-a-development-branch integrated and recorded it.
+section_says release "$PLUGIN/skills/release/SKILL.md" Readiness "the candidate \`implement\`'s definition of done covered" \
+  "integrated and recorded it"
+# Each skill that writes the progress file reads its format first, and states the file's one must-not in the
+# same words as the format reference, so that the rule cannot drift from one file to the next.
+for s in to-spec to-tickets finishing-a-development-branch release; do
+  must_say "$s" "$PLUGIN/skills/$s/SKILL.md" "read it before the first write"
+done
+for f in "$PF" "$PLUGIN"/skills/{grill,to-spec,to-tickets,implement,finishing-a-development-branch,release}/SKILL.md; do
+  must_say "$(basename "$(dirname "$f")")" "$f" "never a secret, a credential, a token or personal data"
+done
 # Each skill that keeps the progress file stays whole in what compaction keeps of an invoked skill: at most
 # 11,000 bytes, about 4,000 tokens (the spec's bound, calibrated from `claude plugin details`). Ticket 08
 # extends the bound to every skill.
@@ -303,16 +320,14 @@ SP_SUMS=$(grep -E '^[0-9a-f]{64}  skills/[a-z-]+/SKILL\.md$' <<< "$SP_SECTION") 
 [[ $(wc -l <<< "$SP_SUMS") -eq 3 ]] || fail "expected 3 recorded checksums, got: $SP_SUMS"
 (cd "$PLUGIN" && shasum -a 256 -c <<< "$SP_SUMS" >/dev/null) || fail "a copied skill differs from its recorded checksum"
 
-# finishing-a-development-branch is Seams' adaptation of the Superpowers original (ticket 05): after a local
-# merge it records integration in the feature's progress file. Its last line attributes the original, and
-# the notices record the original's checksum.
+# finishing-a-development-branch is Seams' adaptation of the Superpowers original (lean-and-durable ticket 05):
+# after a local merge it records integration in the feature's progress file. Its last line attributes the
+# original, and the notices record the original's checksum as `shasum -c` checks it in the plugin cache.
 FIN="$PLUGIN/skills/finishing-a-development-branch/SKILL.md"
 section_says finishing-a-development-branch "$FIN" "Step 5: Execute Choice" "record integration" "\`Stage: integrated\`" \
   "references/progress-file.md" "commit it by name on <base-branch>" "never a secret"
-last=$(grep -v '^[[:space:]]*$' "$FIN" | tail -1)
-[[ $last == *"Superpowers"* && $last == *"6.3.0"* && $last == *"MIT"* && $last == *"Jesse Vincent"* && $last == *"THIRD_PARTY_NOTICES.md"* ]] \
-  || fail "finishing-a-development-branch: the last line does not attribute the Superpowers original: $last"
-FIN_SUM=$(grep -E '^[0-9a-f]{64}  original: skills/finishing-a-development-branch/SKILL\.md$' <<< "$SP_SECTION" | cut -d' ' -f1) \
+last_line_says finishing-a-development-branch "$FIN" "Superpowers" "6.3.0" "MIT" "Jesse Vincent" "THIRD_PARTY_NOTICES.md"
+FIN_SUM=$(grep -E '^[0-9a-f]{64}  finishing-a-development-branch/SKILL\.md$' <<< "$SP_SECTION") \
   || fail "the notices do not record the checksum of finishing-a-development-branch's original"
 
 # ...and the copies identical to the Superpowers 6.3.0 originals whenever that cache is present, which also
@@ -322,7 +337,7 @@ if [[ -d "$SP" ]]; then
   for s in $KEPT; do
     cmp -s "$SP/$s/SKILL.md" "$PLUGIN/skills/$s/SKILL.md" || fail "$s differs from Superpowers 6.3.0"
   done
-  [[ $(shasum -a 256 "$SP/finishing-a-development-branch/SKILL.md" | cut -d' ' -f1) == "$FIN_SUM" ]] \
+  (cd "$SP" && shasum -a 256 -c <<< "$FIN_SUM" >/dev/null) \
     || fail "the recorded original of finishing-a-development-branch is not Superpowers 6.3.0's"
 fi
 

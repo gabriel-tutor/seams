@@ -1,2 +1,3 @@
 {"skill": "matt-pocock-workflow:implement", "refusal": false, "past_skill": true, "runs": 3,
- "reads": "\\.scratch/coupons/progress\\.md", "reply": ["ticket 02|FLAT5", "tier[- ]discounted|post[- ]tier|discounted total|2040|1938|1438"]}
+ "reads": ["\\.scratch/coupons/progress\\.md", "coupons/issues/02-", "coupons/spec\\.md", "git (log|status)"],
+ "reply": ["ticket 02|FLAT5", "tier[- ]discounted|2,?040|1,?938|1,?438|102 cents"], "changes": true}

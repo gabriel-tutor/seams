@@ -23,8 +23,9 @@ which starts with `Seams gate:`), or a change that failed, changed nothing, so i
       `claude plugin eval` runs as a case (prompt.md's frontmatter is the eval's; the harness
       sends the body).
       --assert judges every run against expect.json (the first skill expected; `refusal`,
-      whether a gate refusal is allowed; `reads` and `reply`, when present, a file the run must
-      read and what its reply must mention) and exits 1 when any run is short, naming each miss
+      whether a gate refusal is allowed; `reads`, `reply` and `changes`, when present, the files
+      the run must read, what its reply must mention, and whether it must go on to a change
+      rather than end on a reply) and exits 1 when any run is short, naming each miss
       and, apart from them, each run that was not a run at all: a timeout, a process that
       exited without a result, an error result, a reply with no tokens, a permission denial by
       the harness's own settings.
@@ -409,17 +410,20 @@ def expectation(scenario: str) -> Optional[dict]:
     """plugin/evals/<scenario>/expect.json: the first skill the scenario expects (`skill`, one
     name or a list of acceptable ones), whether a gate refusal is allowed in it (`refusal`),
     whether runs continue past skill calls (`past_skill`), and how many runs its evidence
-    takes (`runs`); optionally a file the run must read (`reads`, a regex that a Read path or a
-    read-only shell command must match) and what its reply must mention (`reply`, regexes each found in the run's text,
-    case-insensitive), which is how a resumed grill shows it read its progress file and asked
-    the questions recorded there. None when there is none."""
+    takes (`runs`); optionally what the run must read (`reads`, one regex or several, each
+    matched by a Read path or a read-only shell command), what its reply must mention (`reply`,
+    regexes each found in the run's text, case-insensitive), and whether it must go on to a
+    change rather than end on a reply (`changes`). That is how a resumed grill shows it read
+    its progress file and asked the questions recorded there, and a resumed ticket that it
+    re-read its state and carried on from the recorded step. None when there is none."""
     path = SCENARIOS / scenario / "expect.json"
     if not path.is_file():
         return None
     data = json.loads(path.read_text())
-    skill = data.get("skill")
+    skill, reads = data.get("skill"), data.get("reads")
     data["skill"] = [skill] if isinstance(skill, str) else list(skill or [])    # one, or any of several
-    return {"refusal": False, "past_skill": False, "runs": 5, "reads": None, "reply": [], **data}
+    data["reads"] = [reads] if isinstance(reads, str) else list(reads or [])    # one, or each of several
+    return {"refusal": False, "past_skill": False, "runs": 5, "reply": [], "changes": False, **data}
 
 
 def _first_line(text: Optional[str]) -> str:
@@ -470,12 +474,15 @@ def judge_run(record: dict, expect: dict) -> "tuple[str, str]":
     if refusals and not expect["refusal"]:
         return "miss", f"{_plural(refusals, 'refusal')}: a change was attempted before the route"
     looked = (record.get("reads") or []) + (record.get("commands") or [])     # Read calls, or `cat` and the like
-    if expect["reads"] and not any(re.search(expect["reads"], seen) for seen in looked):
-        return "miss", f"never read a file matching {expect['reads']}"
+    for pattern in expect["reads"]:
+        if not any(re.search(pattern, seen) for seen in looked):
+            return "miss", f"never read a file matching {pattern}"
     said = "\n".join(filter(None, (record.get("text"), record.get("result"))))
     for pattern in expect["reply"]:
         if not re.search(pattern, said, re.IGNORECASE):
             return "miss", f"the reply does not mention {pattern}"
+    if expect["changes"] and record.get("ended") != "verdict":
+        return "miss", "the run ended on a reply without a change: it stopped to ask or report instead of carrying on"
     return "match", ""
 
 

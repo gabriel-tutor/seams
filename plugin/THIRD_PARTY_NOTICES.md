@@ -60,10 +60,10 @@ Three of them are unmodified copies, and this plugin never edits them. To check 
 091df1629510af1b92fc4abd6f96732ebedb4cb2c0f3457e8f2740b0504a2438  skills/receiving-code-review/SKILL.md
 ```
 
-The fourth, `skills/finishing-a-development-branch/SKILL.md`, is an adaptation, not a copy. It keeps the original's process and adds one step: after a local merge, it records integration in the feature's progress file (ADR 0003, `docs/adr/0003-committed-progress-file.md`). Its last line attributes the original. The original's SHA-256 at 6.3.0 is below; `scripts/tests/test_plugin.sh` compares it with the plugin cache when the cache is present.
+The fourth, `skills/finishing-a-development-branch/SKILL.md`, is an adaptation, not a copy. It keeps the original's process and adds one step: after a local merge, it records integration in the feature's progress file (ADR 0003, `docs/adr/0003-committed-progress-file.md`). Its last line attributes the original. The original's SHA-256 at 6.3.0 is below; to check it, run `shasum -a 256 -c` from the plugin cache's `claude-plugins-official/superpowers/6.3.0/skills/`, as `scripts/tests/test_plugin.sh` does when the cache is present.
 
 ```text
-8db5a922b242dd4e1bf824cb91c13b3e8d8e8a86d6ceaf7f0774eb9cce909d65  original: skills/finishing-a-development-branch/SKILL.md
+8db5a922b242dd4e1bf824cb91c13b3e8d8e8a86d6ceaf7f0774eb9cce909d65  finishing-a-development-branch/SKILL.md
 ```
 
 Superpowers is released under the MIT License:

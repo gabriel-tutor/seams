@@ -49,6 +49,10 @@ _Avoid_: summary, wrap-up
 The exact committed state that a review, a verification or a release refers to; a later change makes a new candidate.
 _Avoid_: the branch, the work, current changes
 
+**Record commit**:
+A ticket's last commit, made just before its definition of done: it brings the progress file to the stage reached and the next step, and it is the candidate the definition of done refers to.
+_Avoid_: wrap-up commit, bookkeeping commit
+
 **Quality bar**:
 What every candidate that ships must meet: a definition of done covering how the change fails, is attacked, performs, is observed, is documented and is rolled back, each item proven by evidence, with scope and architecture sized to the stated needs plus the next order of growth.
 _Avoid_: perfection, gold-plating, bare minimum, best effort

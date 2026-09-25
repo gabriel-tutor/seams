@@ -24,7 +24,7 @@ Check every row and report one table: row, ready / unmet / not applicable, and t
 | Row | What counts as ready |
 | --- | --- |
 | Target and environment | named (the gate's facts) and reachable: the platform's CLI or skill is installed and signed in. With no deploy target, this row is unmet: report "no deploy target" and ask for one |
-| Integrated candidate | the SHA is on the base branch, `git status --short` is empty, and the candidate is what the review and the definition of done referred to |
+| Integrated candidate | the SHA is on the base branch and `git status --short` is empty; it is the candidate `implement`'s definition of done covered, after its review and fixes, or that candidate as `finishing-a-development-branch` integrated and recorded it, whose suite then runs here |
 | Suite green on that SHA | the full suite ran on the candidate with its output shown; evidence gathered on the same SHA by `matt-pocock-workflow:implement` is reused, not re-run |
 | Artifact built and identified | built with the repo's own build command and named by version and SHA (image tag, package version, bundle, installer) |
 | Config and variables per environment | every variable the code reads is named per environment (`.env.example`, the platform's config), secrets live in the platform's store, none in the artifact or the repo |
@@ -53,7 +53,7 @@ Against the environment just deployed, with the output shown:
 
 ## Operations handover
 
-First record the release in the feature's progress file, when the work has one (`.scratch/<feature>/progress.md`, in the format of `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md`): `Stage` the stage reached below and `Updated` today; `Status: done` once the candidate is verified in the last environment the spec's Release section names, and until then `Next` says what is left (an unmet row, the production deploy). Commit it by name. Decisions and pointers only: never a secret, a token or personal data.
+First record the release in the feature's progress file, when the work has one (`.scratch/<feature>/progress.md`, in the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` describes; read it before the first write): `Stage` the stage reached below and `Updated` today; `Status: done` once the candidate is verified in the last environment the spec's Release section names, and until then `Next` says what is left (an unmet row, the production deploy). Commit it by name. Decisions and pointers only: never a secret, a credential, a token or personal data.
 
 The closing message, in this order:
 

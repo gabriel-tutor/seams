@@ -115,7 +115,7 @@ describe("applyCoupon", () => {
 });
 TS
 FIXED=$(git rev-parse --short HEAD)
-progress designed "Review ticket 01's commit against the fixed point $FIXED." 2026-09-23 "$TICKETS" "Ticket: 01"
+progress designed "On main: review ticket 01's commit against the fixed point $FIXED." 2026-09-23 "$TICKETS" "Ticket: 01"
 git add src/pricing.ts tests/coupons.test.ts .scratch/coupons/progress.md
 git commit -qm "SAVE10 and unknown codes (ticket 01)"
 progress integrated "Implement ticket 02 (FLAT5 and case-insensitive codes); /clear before it." 2026-09-23 \
@@ -131,14 +131,14 @@ grep -q 'case "FLAT5"' src/pricing.ts || { echo "setup: the ticket 02 edit did n
 perl -0pi -e 's/\n\}\);\n\z/\n\n  it("FLAT5 takes 500 cents off from a 2000-cent subtotal", () => {\n    expect(applyCoupon(cart(25), "FLAT5")).toBe(1875);\n  });\n\n  it("FLAT5 is not applicable below a 2000-cent subtotal", () => {\n    expect(() => applyCoupon(cart(10), "FLAT5")).toThrow(\/not applicable\/);\n  });\n\n  it("reads codes case-insensitively", () => {\n    expect(applyCoupon(cart(25), "save10")).toBe(2137);\n  });\n});\n/' tests/coupons.test.ts
 grep -q 'case-insensitively' tests/coupons.test.ts || { echo "setup: the ticket 02 tests did not apply" >&2; exit 1; }
 LIST=$'- 01 SAVE10 and unknown codes (blocked by: none) (done)\n- 02 FLAT5 and case-insensitive codes (blocked by: 01)'
-progress integrated "Review ticket 02's commit against the fixed point $FIXED." 2026-09-24 "$LIST" "Ticket: 02"
+progress integrated "On main: review ticket 02's commit against the fixed point $FIXED." 2026-09-24 "$LIST" "Ticket: 02"
 git add src/pricing.ts tests/coupons.test.ts .scratch/coupons/progress.md
 git commit -qm "FLAT5 and case-insensitive codes (ticket 02)"
 
 # After the review, as implement leaves the file: the candidate, the next step and the finding it acts
 # on. Not committed yet; it goes in with the fix.
 CANDIDATE=$(git rev-parse --short HEAD)
-progress integrated "Fix the review finding under Review, test first; then commit the ticket's record and run the definition of done." \
+progress integrated "On main: fix the review finding under Review, test first; then commit the ticket's record and run the definition of done." \
   2026-09-24 "$LIST" "$(printf 'Ticket: 02\nCandidate: %s' "$CANDIDATE")"
 cat >> .scratch/coupons/progress.md <<MD
 

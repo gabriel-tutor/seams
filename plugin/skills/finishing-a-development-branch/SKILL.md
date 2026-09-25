@@ -105,10 +105,11 @@ and recoverable.
 
 Once the merged result is green, record integration in the feature's
 progress file when the work has one (`.scratch/<feature>/progress.md`, in
-the format of `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md`):
+the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md`
+describes; read it before the first write):
 set `Stage: integrated`, `Next` to the next unblocked ticket or the
 release, and `Updated` to today, then commit it by name on <base-branch>.
-Decisions and pointers only: never a secret, a token or personal data.
+Decisions and pointers only: never a secret, a credential, a token or personal data.
 Then clean up the worktree (Step 6), and delete the branch:
 
 ```bash
