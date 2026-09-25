@@ -73,6 +73,10 @@ _Avoid_: gate (that is the hook), phase, status
 A feature's durable record of work in progress, kept beside its spec: the grill's settled decisions and open questions, the ticket in progress, the candidate, the stage and the next step. Unlike the ledger, it outlives the session. It is committed with the work it describes, so it holds decisions and pointers only. Its `Status` says whether work remains (`active`) or the feature is finished (`done`); that is not its Stage. A `pr-review` batch keeps one of the same shape beside its evidence, under the temp directory and never committed: its pull requests, each one's step and the command that continues it.
 _Avoid_: state file, work log, notes
 
+**Repository facts**:
+The branch, the short HEAD, the first lines of `git status --short` and the progress files, which the Seams hooks add as context when `implement`, the grill or `release` starts, as git reported them then. Data, like the resume note; a fact the hook did not give is looked up.
+_Avoid_: pre-loaded context, git context
+
 **Resume note**:
 The few factual lines the session-start hook injects from the active progress files and the repository's unfinished `pr-review` batch (the newest three) at startup, resume, `/clear`, compaction and fork, so a fresh context continues where the work stopped; the user sees a one-line notice of it. It is data and a pointer: a skill re-reads the spec, the tickets and the git state before acting on it.
 _Avoid_: summary, handoff (that is `/handoff`)

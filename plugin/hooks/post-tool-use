@@ -3,13 +3,15 @@
 mark the request verified when a verification skill ran.
 
 Only a completed invocation reaches this hook, so a failed or unknown skill never counts.
-Prints nothing. Fails open (see seams_gate.run_hook).
+When the skill is implement, the grill or release, it then adds the repository facts as context
+(see seams_facts); for any other skill it prints nothing. Fails open (see seams_gate.run_hook).
 """
 import os
 import sys
 
 sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import seams_facts as facts  # noqa: E402
 import seams_gate as gate  # noqa: E402
 
 
@@ -18,16 +20,15 @@ def handle(event: dict):
         return None
     skill = (event.get("tool_input") or {}).get("skill") or ""
     declares, verifies = gate.is_declaration(skill), gate.is_verification(skill)
-    if not (declares or verifies):
-        return None
-    session = event.get("session_id") or ""
-    ledger = gate.load_ledger(session)
-    if declares:
-        gate.add_declaration(ledger, skill, event.get("agent_id"))
-    if verifies:
-        gate.mark_verified(ledger)
-    gate.save_ledger(session, ledger)
-    return None
+    if declares or verifies:
+        session = event.get("session_id") or ""
+        ledger = gate.load_ledger(session)
+        if declares:
+            gate.add_declaration(ledger, skill, event.get("agent_id"))
+        if verifies:
+            gate.mark_verified(ledger)
+        gate.save_ledger(session, ledger)
+    return facts.hook_output("PostToolUse", skill, event.get("cwd"))
 
 if __name__ == "__main__":
     sys.exit(gate.run_hook(handle))

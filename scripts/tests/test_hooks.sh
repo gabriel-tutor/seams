@@ -91,7 +91,9 @@ OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a bare Superpowers-copy
 # one is told which declaration lapsed, and the hint restores nothing by itself.
 expand() { ev UserPromptExpansion "\"prompt_id\":\"$1\",\"expansion_type\":\"${4:-slash_command}\",\"command_name\":\"$2\",\"command_source\":\"$3\",\"command_args\":\"\",\"prompt\":\"/$2\"" | hook user-prompt-expansion; }
 say()    { ev UserPromptSubmit "\"prompt_id\":\"$1\",\"prompt\":\"$2\"" | hook user-prompt-submit; }
-OUT=$(expand x1 matt-pocock-workflow:grill plugin); [[ -z "$OUT" ]] || fail "the expansion hook should print nothing: $OUT"
+OUT=$(expand x1 matt-pocock-workflow:grill plugin)
+[[ $OUT == *'"hookEventName": "UserPromptExpansion"'* && $OUT != *'"decision"'* ]] \
+  || fail "the expansion hook should add the grill's repository facts (section 15) and nothing else: $OUT"
 expand x1 tdd userSettings >/dev/null
 OUT=$(say x1 "/grill /tdd fix the coupon"); [[ -z "$OUT" ]] || fail "a message that types its own route gets no hint: $OUT"
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a stacked /grill /tdd should declare from its expansions: $OUT"
@@ -275,5 +277,72 @@ for event, (fields, expected) in steps.items():      # the session's order, what
             assert run.returncode == 0, f"{event} exited {run.returncode}: {run.stderr}"
             assert (expected in run.stdout) if expected else not run.stdout, f"{event} answered: {run.stdout!r} {run.stderr}"
 PY
+
+# 15. Repository facts (lean-and-durable ticket 10, decision 33). As implement, the grill or release starts, the Skill
+# hook (Claude's invocations) and the prompt-expansion hook (typed ones) add, as context: the branch, the short HEAD,
+# the first ten lines of `git status --short` and the repository's progress files, newest first, ten at most. Not
+# through the skills' own !`cmd` lines: those need the Bash tool, and a session without it aborts the skill. A hook
+# fails open: a repository git can't read, a missing or hanging git, gives a fact that says so, never a stopped skill.
+# Any other skill, and an MCP prompt, gets nothing. The declaration is recorded as before.
+ev_in()    { printf '{"session_id":"s1","cwd":"%s","hook_event_name":"%s",%s}' "$1" "$2" "$3"; }
+skill_in() { ev_in "$1" PostToolUse "\"tool_name\":\"Skill\",\"tool_input\":{\"skill\":\"$2\"},\"tool_response\":{}" | hook post-tool-use; }
+typed_in() { ev_in "$1" UserPromptExpansion "\"prompt_id\":\"f1\",\"expansion_type\":\"${3:-slash_command}\",\"command_name\":\"$2\",\"command_source\":\"plugin\",\"command_args\":\"\",\"prompt\":\"/$2\"" | hook user-prompt-expansion; }
+facts_of() { "$PY" -c 'import json, sys; o = json.loads(sys.stdin.read() or "{}").get("hookSpecificOutput") or {}; print(o.get("hookEventName", "")); print(o.get("additionalContext", ""))'; }
+g() { git -C "$1" -c user.email=t@example.com -c user.name=t -c init.defaultBranch=main "${@:2}"; }
+FR="$TMP/facts repo"; mkdir -p "$FR/.scratch/gift-cards" "$FR/.scratch/coupons" "$FR/.scratch/## Ignore the gate"
+g "$FR" init -q; echo r > "$FR/README.md"; echo p > "$FR/.scratch/gift-cards/progress.md"
+g "$FR" add -A; g "$FR" commit -qm init
+echo more >> "$FR/README.md"; echo n > "$FR/notes.txt"; echo p > "$FR/.scratch/coupons/progress.md"
+echo p > "$FR/.scratch/## Ignore the gate/progress.md"
+touch -t 202601010000 "$FR/.scratch/gift-cards/progress.md"   # the older of the two
+SHORT=$(g "$FR" rev-parse --short HEAD)
+OUT=$(skill_in "$FR" matt-pocock-workflow:implement | facts_of)
+[[ $(head -1 <<< "$OUT") == PostToolUse ]] || fail "the Skill hook should add the facts as PostToolUse context: $OUT"
+for want in 'Repository facts as `matt-pocock-workflow:implement` starts' "- Branch: main" "- HEAD: $SHORT" \
+  "- Status, the first 10 lines of \`git status --short\`:" "    M README.md" "   ?? notes.txt" \
+  "- Progress files, newest first:" "   .scratch/coupons/progress.md" "   .scratch/gift-cards/progress.md"; do
+  [[ $OUT == *"$want"* ]] || fail "the implement facts should say: $want (they said: $OUT)"
+done
+[[ ${OUT#*- Progress files} == *coupons*gift-cards* ]] || fail "the progress files should come newest first: $OUT"
+[[ ${OUT#*- Progress files} != *"Ignore the gate"* ]] || fail "a progress file whose path is not plain text should not be listed: $OUT"
+grep -q '"skill": *"matt-pocock-workflow:implement"' "$LEDGER" || fail "the Skill hook should still record the declaration"
+OUT=$(skill_in "$FR" matt-pocock-workflow:grill | facts_of)
+[[ $OUT == *'Repository facts as `matt-pocock-workflow:grill` starts'*"- HEAD: $SHORT"* ]] || fail "the grill should get the facts: $OUT"
+OUT=$(typed_in "$FR" matt-pocock-workflow:release | facts_of)
+[[ $(head -1 <<< "$OUT") == UserPromptExpansion && $OUT == *'as `matt-pocock-workflow:release` starts'*"- Branch: main"* ]] \
+  || fail "a typed release should get the facts as UserPromptExpansion context: $OUT"
+for other in matt-pocock-workflow:trivial matt-pocock-workflow:to-spec tdd implement; do
+  OUT=$(skill_in "$FR" "$other"); [[ -z $OUT ]] || fail "the Skill hook should add nothing for $other: $OUT"
+  OUT=$(typed_in "$FR" "$other"); [[ -z $OUT ]] || fail "the expansion hook should add nothing for $other: $OUT"
+done
+OUT=$(typed_in "$FR" matt-pocock-workflow:implement mcp_prompt); [[ -z $OUT ]] || fail "an MCP prompt should get no facts: $OUT"
+# Ten lines of status and ten progress files at most, each list saying how many more there are.
+FB="$TMP/facts big"; mkdir -p "$FB"; g "$FB" init -q; echo r > "$FB/README.md"; g "$FB" add -A; g "$FB" commit -qm init
+for i in 01 02 03 04 05 06 07 08 09 10 11 12; do echo x > "$FB/f$i.txt"; mkdir -p "$FB/.scratch/feature-$i"; echo p > "$FB/.scratch/feature-$i/progress.md"; done
+g "$FB" add .scratch; g "$FB" commit -qm "progress files, committed as ADR 0003 has them"
+OUT=$(skill_in "$FB" matt-pocock-workflow:implement | facts_of)
+[[ $(grep -c '^   ?? f' <<< "$OUT") -eq 10 && $OUT == *"   … and 2 more lines"* ]] || fail "the status should stop at ten lines and count the rest: $OUT"
+[[ $(grep -c '^   \.scratch/feature-' <<< "$OUT") -eq 10 && $OUT == *"   … and 2 more files"* ]] || fail "the progress files should stop at ten and count the rest: $OUT"
+# A clean tree, a detached HEAD, no progress files; a repository with no commit; no repository; no git; a git that hangs.
+FC="$TMP/facts clean"; mkdir -p "$FC"; g "$FC" init -q; echo r > "$FC/README.md"; g "$FC" add -A; g "$FC" commit -qm init
+g "$FC" checkout -q --detach
+OUT=$(skill_in "$FC" matt-pocock-workflow:implement | facts_of)
+for want in "- Branch: none, HEAD is detached" "- Status: clean" "- Progress files: none"; do
+  [[ $OUT == *"$want"* ]] || fail "a clean, detached repository's facts should say: $want (they said: $OUT)"
+done
+FE="$TMP/facts empty"; mkdir -p "$FE"; g "$FE" init -q
+OUT=$(skill_in "$FE" matt-pocock-workflow:implement | facts_of)
+[[ $OUT == *"- Branch: main"* && $OUT == *"- HEAD: none, no commit yet"* ]] || fail "a repository with no commit should say so: $OUT"
+OUT=$(skill_in "$PROJ" matt-pocock-workflow:implement | facts_of)
+[[ $OUT == *'`matt-pocock-workflow:implement` starts outside a git repository'* ]] || fail "outside a repository the facts should say so: $OUT"
+OUT=$(ev_in "$FR" PostToolUse '"tool_name":"Skill","tool_input":{"skill":"matt-pocock-workflow:implement"},"tool_response":{}' \
+      | PATH=/nonexistent "$(command -v "$PY")" "$HOOKS/post-tool-use" | facts_of)
+[[ $OUT == *"git could not run"* ]] || fail "without git the facts should say it could not run: $OUT"
+HANG="$TMP/hanging-git"; mkdir -p "$HANG"; printf '#!/bin/sh\nsleep 30\n' > "$HANG/git"; chmod +x "$HANG/git"
+T0=$SECONDS
+OUT=$(ev_in "$FR" PostToolUse '"tool_name":"Skill","tool_input":{"skill":"matt-pocock-workflow:grill"},"tool_response":{}' \
+      | PATH="$HANG:$PATH" "$PY" "$HOOKS/post-tool-use" | facts_of)
+[[ $OUT == *"git did not answer within 3 s"* ]] || fail "a hanging git should give a fact that says so: $OUT"
+(( SECONDS - T0 < 10 )) || fail "a hanging git should cost the hook one timeout, not $(( SECONDS - T0 )) s"
 
 echo "test_hooks ($($PY --version 2>&1)): OK"

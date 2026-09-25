@@ -1,13 +1,6 @@
 ---
 name: release
 description: Use when the user says ship, deploy, release, publish or go live, or when an integrated candidate is to reach a host, a store, a registry or a marketplace
-allowed-tools:
-  - Bash(git branch --show-current)
-  - Bash(git rev-parse --short HEAD)
-  - Bash(git status --short)
-  - Bash(head -n 10)
-  - Bash(git ls-files -co ':(top,glob).scratch/*/progress.md')
-  - Bash(true)
 ---
 
 # Release
@@ -16,17 +9,13 @@ Take an integrated candidate to its target and prove that exact candidate is wha
 
 **Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
 
-**The repository at load** (look up a line that reads `[shell command execution disabled by policy]` yourself, the progress files as `.scratch/*/progress.md`; an empty line means none):
-- Branch: !`git branch --show-current 2>/dev/null || true`
-- HEAD: !`git rev-parse --short HEAD 2>/dev/null || true`
-- Status, first 10 lines: !`git status --short 2>/dev/null | head -n 10 || true`
-- Progress files: !`git ls-files -co ':(top,glob).scratch/*/progress.md' 2>/dev/null || true`
+**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of `git status --short` and the progress files, as git reported them then. Look up yourself any the hook did not give.
 
 ## Gate
 
 Establish three facts, from the repo where the repo can answer (facts are not questions):
 
-1. **Candidate.** The exact commit: the SHA the user names, or `git rev-parse HEAD` on the base branch with a clean tree. A dirty tree has no candidate. A candidate still on its own branch is *built*, not integrated: integrate it first (`matt-pocock-workflow:finishing-a-development-branch`) and release from the base branch.
+1. **Candidate.** The exact commit: the SHA the user names, or HEAD from the repository facts, on the base branch with a clean tree. A dirty tree has no candidate. A candidate still on its own branch is *built*, not integrated: integrate it first (`matt-pocock-workflow:finishing-a-development-branch`) and release from the base branch.
 2. **Target.** Where the work runs: the user's words, the spec's Release section, or the repo's deploy configuration (a platform config file, a deploy workflow or script, a publish script, a store or marketplace manifest). See the target table below.
 3. **Environment.** The environments the target has (staging, preview, a test track, production) and which one this release is for.
 

@@ -47,31 +47,16 @@ for path in skills + sorted(root.glob("agents/**/*.md")):
             print(f"{path.relative_to(root)} sets {key}")
 PY
 }
-injected_problems() {   # $1 = a plugin directory: a line for each injected command (!`cmd`) in a SKILL.md that breaks a rule
+injected_commands() {   # $1 = a plugin directory: a line for each SKILL.md that injects a shell command
   python3 - "$1" <<'PY'
 import pathlib, re, sys
-READ_ONLY = {"git branch --show-current", "git rev-parse --short HEAD", "git status --short", "head -n 10",
-             "git ls-files -co ':(top,glob).scratch/*/progress.md'", "true"}
 root = pathlib.Path(sys.argv[1])
 for path in sorted(root.glob("skills/*/SKILL.md")):
     name, text = path.relative_to(root), path.read_text()
-    front = re.match(r"---\n(.*?)\n---\n", text, re.S)
-    rules = set(re.findall(r"^\s*-\s*Bash\((.*)\)\s*$", front.group(1) if front else "", re.M))
-    body = text[front.end():] if front else text
-    if re.search(r"^\s*```!", body, re.M):
-        print(f"{name} injects a fenced ```! block; inject each fact inline, one command per line")
-    for cmd in re.findall(r"(?:^|(?<=\s))!`([^`]*)`", body, re.M):   # Claude Code runs !` at a line start or after whitespace
-        if "$" in cmd:
-            print(f"{name} puts an argument or a variable in an injected command: {cmd}")
-        if not cmd.endswith(" || true"):
-            print(f"{name} injects a command that can fail (it does not end in || true): {cmd}")
-            continue
-        for part in cmd[:-len(" || true")].split(" | ") + ["true"]:
-            part = part[:-len(" 2>/dev/null")] if part.endswith(" 2>/dev/null") else part
-            if part not in READ_ONLY:
-                print(f"{name} injects a command not on the read-only list: {part}")
-            elif part not in rules:
-                print(f"{name} injects a command its allowed-tools does not pre-approve: Bash({part})")
+    for cmd in re.findall(r"(?:^|(?<=\s))!`([^`]*)`", text, re.M):   # Claude Code runs !` at a line start or after whitespace
+        print(f"{name} injects a shell command: !`{cmd}`")
+    if re.search(r"(```|~~~)!", text):                               # any fence opened with !, anywhere in a line
+        print(f"{name} injects a fenced block of shell commands")
 PY
 }
 effort_problem() {   # $1 = a SKILL.md: what is wrong with its effort line, or nothing when it holds
@@ -319,38 +304,40 @@ done
 [[ $GUARD_OUT != *at-bound* && $GUARD_OUT != *fine* ]] || fail "the guard flagged a file within its rules: $GUARD_OUT"
 GUARD_OUT=$(plugin_guards "$PLUGIN")
 [[ -z $GUARD_OUT ]] || fail "$GUARD_OUT"
-# Pre-loaded facts (lean-and-durable ticket 10): Claude Code runs a skill's !`cmd` lines before Claude sees the skill,
-# and one that fails, or whose permission check is not an allow, aborts the whole invocation. So each is a fixed
-# command from the read-only list, with no `$` (an argument, a variable or a substitution), ending in `|| true` so no
-# exit status aborts it, and every part pre-approved in allowed-tools. A rule is written without the part's redirect:
-# Claude Code matches the part with its redirect stripped (the probe's `Bash(python3 -V 2>/dev/null)` matched nothing).
-# A fixture that breaks each rule shows the guard catching what it is for.
-INJ_FIX=$(mktemp -d); mkdir -p "$INJ_FIX"/skills/{fenced,argument,can-fail,unlisted,unapproved,fine}
-inj_skill() { printf -- '---\nname: %s\ndescription: x\n%s---\n\n%s\n' "$1" "$2" "$3" > "$INJ_FIX/skills/$1/SKILL.md"; }
-INJ_RULES=$'allowed-tools:\n  - Bash(git branch --show-current)\n  - Bash(git status --short)\n  - Bash(head -n 10)\n  - Bash(true)\n'
-inj_skill fenced "$INJ_RULES" $'```!\ngit status --short\n```'
-inj_skill argument "$INJ_RULES" 'Log: !`git log $ARGUMENTS 2>/dev/null || true`'
-inj_skill can-fail "$INJ_RULES" 'Branch: !`git branch --show-current`'
-inj_skill unlisted "$INJ_RULES" 'Pull request: !`gh pr view 2>/dev/null || true`'
-inj_skill unapproved '' 'Branch: !`git branch --show-current 2>/dev/null || true`'
-inj_skill fine "$INJ_RULES" $'Branch: !`git branch --show-current 2>/dev/null || true`\nStatus: !`git status --short 2>/dev/null | head -n 10 || true`\nProse names the syntax as `!`cmd`` and runs nothing.'
-INJ_OUT=$(injected_problems "$INJ_FIX"); rm -rf "$INJ_FIX"
-for want in "skills/fenced/SKILL.md injects a fenced" "skills/argument/SKILL.md puts an argument or a variable" \
-  "skills/can-fail/SKILL.md injects a command that can fail" "skills/unlisted/SKILL.md injects a command not on the read-only list: gh pr view" \
-  "skills/unapproved/SKILL.md injects a command its allowed-tools does not pre-approve: Bash(git branch --show-current)" \
-  "skills/unapproved/SKILL.md injects a command its allowed-tools does not pre-approve: Bash(true)"; do
+# No skill injects a shell command (lean-and-durable ticket 10, decision 33). Claude Code runs a SKILL.md's !`cmd` lines
+# and its ```! blocks through the Bash tool before Claude sees the skill, and in a session without that tool (a plugin
+# eval's, --restricted, a Bash deny rule) the invocation aborts: a probe on 2.1.282 with `--tools` without Bash got
+# "Permission to use Bash has been denied" and no skill. New output on each invocation would also make a re-invocation
+# append the whole skill again. The repository facts come from the Skill hooks instead. A fixture holding each form of
+# injection, and one that only names the syntax, shows the guard catching what it is for.
+INJ_FIX=$(mktemp -d); mkdir -p "$INJ_FIX"/skills/{inline,line-start,after-tab,fenced,tilde,four-ticks,mid-line,prose}
+inj_skill() { printf -- '---\nname: %s\ndescription: x\n---\n\n%s\n' "$1" "$2" > "$INJ_FIX/skills/$1/SKILL.md"; }
+inj_skill inline 'Branch: !`git branch --show-current || true`'
+inj_skill line-start '!`git status --short`'
+inj_skill after-tab $'Where:\t!`pwd`'
+inj_skill fenced $'```!\ngit status --short\n```'
+inj_skill tilde $'~~~!\ngit status --short\n~~~'
+inj_skill four-ticks $'````!\ngit status --short\n````'
+inj_skill mid-line $'Then: ```!\ngit status --short\n```'
+inj_skill prose 'Prose names the syntax as `!`cmd`` and runs nothing.'
+INJ_OUT=$(injected_commands "$INJ_FIX"); rm -rf "$INJ_FIX"
+for want in "skills/inline/SKILL.md injects a shell command: !\`git branch --show-current || true\`" \
+  "skills/line-start/SKILL.md injects a shell command" "skills/after-tab/SKILL.md injects a shell command" \
+  "skills/fenced/SKILL.md injects a fenced block" "skills/tilde/SKILL.md injects a fenced block" \
+  "skills/four-ticks/SKILL.md injects a fenced block" "skills/mid-line/SKILL.md injects a fenced block"; do
   [[ $INJ_OUT == *"$want"* ]] || fail "the injected-command guard missed: $want (it said: $INJ_OUT)"
 done
-[[ $INJ_OUT != *skills/fine/* ]] || fail "the injected-command guard flagged a skill within its rules: $INJ_OUT"
-INJ_OUT=$(injected_problems "$PLUGIN")
+[[ $INJ_OUT != *skills/prose/* ]] || fail "the injected-command guard flagged prose that only names the syntax: $INJ_OUT"
+INJ_OUT=$(injected_commands "$PLUGIN")
 [[ -z $INJ_OUT ]] || fail "$INJ_OUT"
-# implement, the grill and release start with the facts they always look up (the branch, the short HEAD, the first
-# lines of the status, the progress files), and each says what to do when disableSkillShellExecution replaces them.
-for s in implement grill release; do
-  must_say "$s" "$PLUGIN/skills/$s/SKILL.md" '!`git branch --show-current 2>/dev/null || true`' \
-    '!`git rev-parse --short HEAD 2>/dev/null || true`' '!`git status --short 2>/dev/null | head -n 10 || true`' \
-    "!\`git ls-files -co ':(top,glob).scratch/*/progress.md' 2>/dev/null || true\`" \
-    '`[shell command execution disabled by policy]`'
+# The skills the Skill hooks give the repository facts to are the three that say so, and each says to look up
+# itself any fact the hook did not give (hooks off, or a fact git could not give).
+FACT_SKILLS=$(PYTHONDONTWRITEBYTECODE=1 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import seams_facts
+print(" ".join(sorted(s.split(":", 1)[1] for s in seams_facts.FACT_SKILLS)))' "$PLUGIN/hooks")
+[[ $FACT_SKILLS == "grill implement release" ]] || fail "the hooks give the repository facts to: $FACT_SKILLS"
+for s in $FACT_SKILLS; do
+  must_say "$s" "$PLUGIN/skills/$s/SKILL.md" "**Repository facts.** As this skill starts, the Seams hook adds the branch" \
+    "Look up yourself any the hook did not give."
 done
 # What every session pays for the plugin before any skill fires (lean-and-durable ticket 08): its listing, each skill's
 # and agent's name and description, at most 875 tokens by `claude plugin details` (3.2.1 paid about 1,165). That tool

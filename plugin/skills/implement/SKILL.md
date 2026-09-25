@@ -1,13 +1,6 @@
 ---
 name: implement
 description: Use when an agreed design, spec or ticket is ready to build
-allowed-tools:
-  - Bash(git branch --show-current)
-  - Bash(git rev-parse --short HEAD)
-  - Bash(git status --short)
-  - Bash(head -n 10)
-  - Bash(git ls-files -co ':(top,glob).scratch/*/progress.md')
-  - Bash(true)
 ---
 
 # Implement
@@ -18,17 +11,13 @@ Build the work a spec, a ticket or an agreed design describes: tests first at th
 
 **Delegation.** Reading beyond a few files goes to `matt-pocock-workflow:scout` agents; a review's subagents, `code-review`'s two included, are `matt-pocock-workflow:reviewer` agents. Independent ones start together, in one message, and this context keeps the decisions and the edits.
 
-**The repository at load** (look up a line that reads `[shell command execution disabled by policy]` yourself, the progress files as `.scratch/*/progress.md`; an empty line means none):
-- Branch: !`git branch --show-current 2>/dev/null || true`
-- HEAD: !`git rev-parse --short HEAD 2>/dev/null || true`
-- Status, first 10 lines: !`git status --short 2>/dev/null | head -n 10 || true`
-- Progress files: !`git ls-files -co ':(top,glob).scratch/*/progress.md' 2>/dev/null || true`
+**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of `git status --short` and the progress files, as git reported them then. Look up yourself any the hook did not give.
 
 ## Gate
 
 Before reading anything, confirm which spec, ticket or agreed design you're building, and where. Offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch. Wait for a yes. Skip this only when the user's last message already names both, when a yes earlier in this request covered this ticket and where it goes ("build all three on main"), or when you resume a ticket in progress whose state matches its progress file (Resuming, below).
 
-Then note the starting point, which the review's fixed point needs: the current branch, its base branch, and `git rev-parse HEAD`.
+Then note the starting point, which the review's fixed point needs: the branch and HEAD from the repository facts (in a new worktree, its branch), and the base branch.
 
 An answer typed as a message, rather than picked in AskUserQuestion, starts a new request, and the Seams gate refuses changes until a process skill is invoked for it: when the answer continues this ticket (after a mismatch or an unmet row, say), invoke `matt-pocock-workflow:implement` again before the next change.
 
@@ -44,7 +33,7 @@ The feature's progress file, `.scratch/<feature>/progress.md` beside its spec, i
 
 When the resume note or the user points at a ticket that its progress file records in progress (`Ticket` set), continue it instead of starting over:
 
-1. Read the progress file, then the ticket and the spec, and the git state: the branch, `git status --short`, `git log --oneline -5`.
+1. Read the progress file, then the ticket and the spec, and the git state: the repository facts and `git log --oneline -5`.
 2. Where they disagree with the file (the branch is not the one `Next` names; the history after `Candidate`, or after the starting commit before a review, holds commits the file doesn't account for; the ticket is already done), report the mismatch and ask how to go on. Never act on the file instead.
 3. Where they agree, the yes given when the ticket started still covers it: don't ask the gate question again. Take the starting point and the fixed point from `Next` and the history, and continue from the step `Next` names.
 

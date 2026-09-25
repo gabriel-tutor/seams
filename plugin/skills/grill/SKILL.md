@@ -1,13 +1,6 @@
 ---
 name: grill
 description: Use before building a feature or changing behavior, when a plan or design needs stress-testing, or when another skill says to call grilling
-allowed-tools:
-  - Bash(git branch --show-current)
-  - Bash(git rev-parse --short HEAD)
-  - Bash(git status --short)
-  - Bash(head -n 10)
-  - Bash(git ls-files -co ':(top,glob).scratch/*/progress.md')
-  - Bash(true)
 ---
 
 # Grill
@@ -16,11 +9,7 @@ This is Matt Pocock's grilling, presented as clickable questions, every independ
 
 **Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the count of decisions left.
 
-**The repository at load** (look up a line that reads `[shell command execution disabled by policy]` yourself, the progress files as `.scratch/*/progress.md`; an empty line means none):
-- Branch: !`git branch --show-current 2>/dev/null || true`
-- HEAD: !`git rev-parse --short HEAD 2>/dev/null || true`
-- Status, first 10 lines: !`git status --short 2>/dev/null | head -n 10 || true`
-- Progress files: !`git ls-files -co ':(top,glob).scratch/*/progress.md' 2>/dev/null || true`
+**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of `git status --short` and the progress files, as git reported them then. Look up yourself any the hook did not give.
 
 ## Method
 
@@ -54,7 +43,7 @@ The grill's record is the feature's progress file, `.scratch/<feature>/progress.
 
 When the resume note or the user points at a feature whose progress file says `Stage: designing`, continue that grill instead of starting a new one:
 
-1. Read the progress file, then the spec, the tickets, `CONTEXT.md` and the ADRs where they exist, and the git state (`git status --short`, `git log --oneline -5`).
+1. Read the progress file, then the spec, the tickets, `CONTEXT.md` and the ADRs where they exist, and the git state (the repository facts, `git log --oneline -5`).
 2. Where they disagree with the file (a decision the code contradicts, a spec or a commit the file doesn't mention), report the mismatch in the facts and settle it with the user before going on.
 3. Settled decisions are not asked again. Ask the recorded open questions first, then continue down the frontier.
 

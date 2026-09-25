@@ -42,7 +42,7 @@ Seams 3.3 keeps the workflow exactly as it is, and makes it lean and durable.
   - No skill pins a model or effort level; skills pass the session's level on.
 - **Faster.**
   - The grill asks up to four independent questions at once.
-  - Skills pre-load read-only facts that cannot fail, and bundled scripts run without permission prompts.
+  - Skills start with read-only facts the hooks add, which cannot stop them, and bundled scripts run without permission prompts.
   - Reading and research go to read-only subagents that Seams ships.
   - Tickets with no open blockers can be built in parallel worktrees.
 - **Higher quality.**
@@ -209,11 +209,11 @@ Seams 3.3 keeps the workflow exactly as it is, and makes it lean and durable.
   - running reviews.
 
   Independent reads start in parallel. The main context keeps decisions and edits.
-- **Pre-loading:**
-  - Skills use `` !`cmd` `` only for fast, read-only, fixed commands: the branch, the short HEAD, the first lines of `git status --short`, and the list of progress files.
-  - Each command is written so it can't fail (`|| true`) and is pre-approved in the skill's `allowed-tools`.
-  - No user argument is ever placed in an injected command.
-  - Every skill says what to do when a pre-loaded fact is missing, which happens when `disableSkillShellExecution` replaces it.
+- **Pre-loading** (changed while building ticket 10, decision 33):
+  - As `implement`, the grill or `release` starts, the Seams hooks add the repository facts as context: the branch, the short HEAD, the first lines of `git status --short`, and the progress files. The Skill hook covers Claude's invocations, and the prompt-expansion hook covers typed ones.
+  - No skill injects a shell command (`` !`cmd` ``). Claude Code runs those through the Bash tool, and a session without it aborts the skill. New output on each invocation would also make a re-invocation append the whole skill again.
+  - Each git call is fixed and read-only, has a timeout and fails open. No user argument reaches one.
+  - Every skill says to look up a fact the hook did not give.
 - **Scripts:** bundled scripts are referenced through `${CLAUDE_SKILL_DIR}` in both the body and an `allowed-tools` rule, so `pr-review`'s scripts run without prompts from any working directory.
 - **Parallel tickets:**
   - When two or more tickets have no open blockers, `implement` offers to build them at once. The user picks the tickets in one multi-select question.
@@ -300,9 +300,9 @@ Seams 3.3 keeps the workflow exactly as it is, and makes it lean and durable.
      - the size caps: bootstrap at most 2,900 bytes, resume note under 1,500 characters, the whole injection well under 10,000;
      - the one-line `systemMessage`.
 
-     Also the Stop hook's feedback form, and exec-form entries in the hook config.
+     Also the Stop hook's feedback form, exec-form entries in the hook config, and the repository facts each of the three skills gets, with their caps and failure paths (decision 33).
   3. **The plugin guards (static test).**
-     - Every SKILL.md within the byte bound.
+     - Every SKILL.md within the byte bound, and none injecting a shell command (decision 33).
      - The descriptions' total within its target.
      - No `model` or `effort` in any SKILL.md or agent.
      - The agents' tool lists read-only as specified.
@@ -351,7 +351,7 @@ The grill's full record, with every rejected option, is `.scratch/lean-and-durab
 - **Pinning effort by skill role, or `max` everywhere:** rejected. A pin overrides the user's own level both ways, and the docs call `max` prone to overthinking.
 - **A 5,000-token skill cap** (no headroom) or **a 2,500-token cap** (too many reference reads): rejected in favor of 4,000.
 - **Leaving delegation to judgment:** rejected, because on Opus 5 Claude rarely delegates unless asked. **Delegating almost everything:** rejected for latency and cold starts.
-- **Pre-loading slow commands:** rejected, because one failure aborts the whole skill. **No pre-loading at all:** rejected as needless round trips.
+- **Pre-loading slow commands:** rejected, because one failure aborts the whole skill. **No pre-loading at all:** rejected as needless round trips. **`` !`cmd` `` lines in the skills:** built first in ticket 10 and replaced by the hooks (decision 33), because a session without the Bash tool aborts such a skill.
 - **Every review on every change:** rejected for cost and noise. **The bundled review alone:** rejected, because it drops the spec and standards checks.
 - **`/batch` for parallel tickets:** rejected, because it plans its own units and skips Seams' seams and reviews. **Strictly one ticket at a time:** rejected as slow.
 - **Leaving `Monitor` and `PowerShell` ungated:** rejected as a bypass. **Making both fully strict:** rejected, because even tailing a log would need a route.
@@ -363,7 +363,7 @@ The grill's full record, with every rejected option, is `.scratch/lean-and-durab
 - **A resume note that's stale or wrong:** it's a pointer. Skills re-read the real state and report mismatches, and a bad file is skipped.
 - **A planted progress file in a cloned repo:** only capped, flattened fields are shown, framed as data. Its effect is no stronger than the repo's own CLAUDE.md, which Claude Code already loads.
 - **A reference file never read after the split:** the first screen names each reference with a "read this when…" line, and the resume and routing evals exercise the split skills.
-- **Pre-loading disabled, or a command missing:** each command can't fail, and each skill says how to get the fact another way.
+- **Hooks off, or git missing, failing or hanging:** a hook fails open and a git call times out. The facts say what git could not give, or are absent, and each skill says to look them up.
 - **`/review` not invocable by Claude:** the `reviewer` agent covers correctness. The build confirms which applies.
 - **`/security-review` without an `origin` remote:** the `reviewer` agent reviews for security findings only.
 - **Parallel tickets:**
