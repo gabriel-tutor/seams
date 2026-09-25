@@ -21,7 +21,7 @@ The hook that refuses any change to the project until the current request has a 
 _Avoid_: guard, blocker, permission
 
 **Ledger**:
-The per-session record of declarations and changes that the gate and the done-check read.
+The per-session record of declarations and changes that the gate and the done-check read, and of the skills a typed prompt expanded to, until that prompt starts its request.
 _Avoid_: state file, cache, log
 
 **Lapse hint**:

@@ -113,6 +113,20 @@ OUT=$(say x6 "and the title"); [[ -z "$OUT" ]] || fail "a request that had no de
 expand x7 tdd userSettings >/dev/null
 say x8 "delete the old tables" >/dev/null
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "an expansion must declare only its own prompt's request: $OUT"
+# A skill only the user can type (disable-model-invocation) is named so, and the hint does not send Claude
+# to a Skill call Claude Code would refuse. Once an expansion arrived, the prompt's parse does not decide:
+# a project's own pr-review is not Seams'. In either hook order, an expansion declares its own prompt's request.
+mkdir -p "$CLAUDE_CONFIG_DIR/skills/implement"
+printf -- '---\nname: implement\ndescription: x\ndisable-model-invocation: true\n---\n' > "$CLAUDE_CONFIG_DIR/skills/implement/SKILL.md"
+expand y1 implement userSettings >/dev/null; say y1 "/implement ticket 03" >/dev/null
+OUT=$(say y2 "now fix the failing test")
+grep -q '`implement` (only the user can type it)' <<< "$OUT" || fail "a skill only the user can type should be named so: $OUT"
+grep -q 'with the Skill tool restores' <<< "$OUT" && fail "the hint must not send Claude to the Skill tool for it: $OUT"
+expand y3 pr-review projectSettings >/dev/null; say y3 "/pr-review 42" >/dev/null
+OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a project's own /pr-review should not declare Seams' skill: $OUT"
+say y4 "/grill add coupons" >/dev/null; expand y4 matt-pocock-workflow:grill plugin >/dev/null
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "an expansion after its prompt hook should declare that prompt's request: $OUT"
+grep -q '"prompt"' "$LEDGER" && fail "the ledger keys a prompt by its id, never by a prompt field"
 
 # 7. A subagent's call is judged by the same session ledger.
 post_skill "matt-pocock-workflow:implement"
@@ -154,14 +168,14 @@ OUT=$(stop true); [[ -z "$OUT" ]] || fail "the second stop of the turn should pa
 post_skill "matt-pocock-workflow:verification-before-completion"
 OUT=$(stop false); [[ -z "$OUT" ]] || fail "stop after verification should pass: $OUT"
 pre_edit "$PROJ/README.md" >/dev/null
-OUT=$(stop false); [[ -z "$OUT" ]] || fail "a documentation-only change should not block: $OUT"
+OUT=$(stop false); [[ -z "$OUT" ]] || fail "a documentation-only change should not ask: $OUT"
 pre_bash "sed -i s/a/b/ src/a.ts" >/dev/null
 OUT=$(stop false); asks "$OUT" || fail "an unverified shell mutation should ask for verification: $OUT"
 grep -q 'sed -i' <<< "$OUT" || fail "the request should name the shell label"
 post_skill "superpowers:verification-before-completion"
 OUT=$(stop false); [[ -z "$OUT" ]] || fail "Superpowers' verification copy should count: $OUT"
 pre_bash "git commit -m x" >/dev/null
-OUT=$(stop false); [[ -z "$OUT" ]] || fail "a commit after verification should not re-block: $OUT"
+OUT=$(stop false); [[ -z "$OUT" ]] || fail "a commit after verification should not ask again: $OUT"
 
 # 11. Every shell tool is gated. A Monitor watch's command is judged as a Bash command is, and a
 # WebSocket watch runs nothing; a PowerShell command is a change unless it is on the read-only list.

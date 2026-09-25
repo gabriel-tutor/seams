@@ -2,12 +2,23 @@
 
 Status: active
 Stage: integrated
-Next: Ticket 03's build is committed on main after starting commit b40f571; run the two-step headless check on it, then review it with code-review and a correctness review against b40f571.
+Next: Ticket 03's review fixes are committed on main after the reviewed f32ec75; commit the ticket's record (the live evidence, the review notes), then run the definition of done on it.
 Updated: 2026-09-25
 Ticket: 03
+Candidate: f32ec75
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file) and ticket 02 (the gate sees every shell), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+
+## Review
+
+The review of f32ec75 (code-review's Standards and Spec, and a correctness and security review that drove the hooks). Findings acted on, each fixed in the commit after it:
+- The hint sent Claude to a Skill call Claude Code refuses, for a skill only the user can type: Seams' `pr-review`, Matt Pocock's own `implement`, `to-spec`, `to-tickets` and his other user-only skills (plugin/hooks/seams_gate.py:872, 1106).
+- The prompt's own parse overrode an expansion that named what really ran: a project's own `pr-review`, another plugin's `code-review`, an MCP prompt (plugin/hooks/seams_gate.py:1078).
+- An expansion arriving after its prompt hook, the order the hooks reference lists, declared nothing (plugin/hooks/seams_gate.py:1055).
+- A damaged list in the ledger made the prompt hook raise and keep the old request (plugin/hooks/seams_gate.py:1048).
+- The name filter let a trailing newline through (plugin/hooks/seams_gate.py:817).
+- Stale text: the README's and CONTEXT.md's account of the ledger, the done-check's docstring (plugin/hooks/seams_gate.py:1326) and two test messages; the hint's cap and its rules recorded in the spec.
 
 ## Decisions
 
@@ -63,6 +74,7 @@ Ticket: 03
 19. `finishing-a-development-branch` becomes a Seams adaptation of the Superpowers copy, so the skill that merges also records integration. The other three Superpowers copies stay byte-identical. (The user's choice while building ticket 05, 2026-09-25.)
 20. A ticket resumed in a fresh session continues without `implement`'s gate question when the progress file's ticket, branch and candidate match the git state: the yes given when the ticket started still covers it. A mismatch is reported and asked about instead. (The user's choice while building ticket 05, 2026-09-25.)
 21. The resume note names a ticket in progress, in at most 60 characters, and says that `implement` continues it, as it says the grill continues a grill in progress. A resumed ticket then routes as reliably as a resumed grill. (Made while building ticket 05, beyond its criteria, and not the user's choice; the review flagged it, and the user may revert it.)
+22. A message that types its own route gets no lapse hint: its request is already declared, so no change would be refused, and a hint would say otherwise. (Made while building ticket 03, beyond the letter of its criteria, and not the user's choice; the review flagged it, and the user may revert it.)
 
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.

@@ -813,6 +813,8 @@ OPTION = re.compile(r"^(option\s+)?[a-d1-9]$")
 
 
 BOOTSTRAP_SKILL = PLUGIN_PREFIX + "using-matt-pocock-skills"   # the routing policy: not a route
+# A skill's name as Claude Code writes it (matched whole); anything else in a ledger is damage.
+SKILL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9:._-]{0,79}")
 
 
 def is_declaration(skill: str) -> bool:
@@ -844,18 +846,40 @@ def manual_seams_skill(bare: str) -> Optional[str]:
     try:
         if bare not in os.listdir(SKILLS_DIR):
             return None
-        with open(os.path.join(SKILLS_DIR, bare, "SKILL.md"), encoding="utf-8") as f:
-            lines = f.read().split("\n")
     except OSError:
         return None
+    return PLUGIN_PREFIX + bare if _manual_only(os.path.join(SKILLS_DIR, bare, "SKILL.md")) else None
+
+
+def _manual_only(path: str) -> bool:
+    """Whether the SKILL.md at `path` says `disable-model-invocation: true` in its frontmatter: only the
+    user can invoke that skill, and Claude Code refuses a Skill call for it."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+    except (OSError, ValueError):
+        return False
     if not lines or lines[0].strip() != "---":
-        return None
+        return False
     for line in lines[1:]:
         if line.strip() == "---":
-            return None
+            return False
         if line.strip() == "disable-model-invocation: true":
-            return PLUGIN_PREFIX + bare
-    return None
+            return True
+    return False
+
+
+def typed_only(skill: str, config: Optional[str] = None, cwd: Optional[str] = None) -> bool:
+    """Whether only the user can invoke this skill, so the Skill tool cannot declare it again: a Seams
+    skill by the plugin's own file; one of Matt Pocock's by the copy Claude Code loads, from the config
+    directory or the project's .claude/skills (either one marking it counts). A name that is not a
+    plain skill name, or a skill with no file there, is taken as invocable."""
+    if skill.startswith(PLUGIN_PREFIX):
+        return manual_seams_skill(skill[len(PLUGIN_PREFIX):]) is not None
+    if not SKILL_NAME.fullmatch(skill) or ":" in skill:
+        return False
+    roots = [os.path.join(config_dir(config), "skills")] + ([os.path.join(cwd, ".claude", "skills")] if cwd else [])
+    return any(_manual_only(os.path.join(root, skill, "SKILL.md")) for root in roots)
 
 
 def slash_declaration(prompt: str) -> Optional[str]:
@@ -929,7 +953,8 @@ def ledger_path(session_id: str, root: Optional[str] = None) -> str:
 
 def empty_ledger(session_id: str) -> dict:
     return {"version": LEDGER_VERSION, "session": session_id, "started": time.time(), "seq": 0,
-            "declarations": [], "changes": [], "verified_at": None, "verified_seq": 0, "expanded": []}
+            "declarations": [], "changes": [], "verified_at": None, "verified_seq": 0, "expanded": [],
+            "request_prompt": None}
 
 
 def load_ledger(session_id: str, root: Optional[str] = None) -> dict:
@@ -1014,68 +1039,92 @@ def cleanup_ledgers(root: Optional[str] = None, days: int = 7) -> None:
 
 # --- Prompts ------------------------------------------------------------------------------
 # Claude Code runs the UserPromptExpansion hook once for each skill a typed prompt expands, and only
-# then the UserPromptSubmit hook for the prompt itself (captured on 2.1.282). A typed skill therefore
-# waits in the ledger until its prompt starts the request it declares.
+# then the UserPromptSubmit hook for the prompt itself (captured on 2.1.282), both with the prompt's
+# id. A typed skill therefore waits in the ledger until its prompt starts the request it declares.
+# The hooks reference lists the two the other way round, so an expansion that arrives after its
+# prompt hook declares that prompt's request directly.
+
+
+def _listed(ledger: dict, key: str) -> list:
+    """A ledger list, or an empty one when the file holds something else there: a hook that raised on
+    it would fail open and leave the old request, and its declarations, in place."""
+    value = ledger.get(key)
+    return value if isinstance(value, list) else []
 
 
 def record_expansion(event: dict, ledger: dict) -> bool:
-    """Keep the process skill a UserPromptExpansion event expanded until its prompt is submitted,
-    under the prompt's id; an earlier prompt's leftovers go (its prompt hook never ran). True when the
-    ledger changed. An MCP server's prompt (`mcp_prompt`) never declares, whatever its name: only a
-    skill or command (`slash_command`) can. Without a prompt id nothing ties the skill to a request."""
-    skill, prompt_id = event.get("command_name") or "", event.get("prompt_id")
-    if not prompt_id or event.get("expansion_type") != "slash_command" or not is_declaration(skill):
+    """Keep what a UserPromptExpansion event expanded, under its prompt's id, until the prompt is
+    submitted: the process skill, or None for anything else, since once an expansion arrived it alone
+    says what the prompt typed. An earlier prompt's leftovers go (its prompt hook never ran). When the
+    prompt was submitted first and started the current request, a process skill declares that request
+    at once. True when the ledger changed. Only a skill or command (`slash_command`) can declare; an
+    MCP server's prompt (`mcp_prompt`) never does, whatever its name. Without a prompt id nothing ties
+    it to a request."""
+    prompt_id, skill = event.get("prompt_id"), event.get("command_name")
+    if not prompt_id:
         return False
-    kept = [e for e in ledger.get("expanded") or [] if isinstance(e, dict) and e.get("prompt") == prompt_id]
-    ledger["expanded"] = kept + [{"skill": skill, "prompt": prompt_id}]
+    declares = event.get("expansion_type") == "slash_command" and isinstance(skill, str) and is_declaration(skill)
+    if prompt_id == ledger.get("request_prompt"):     # its prompt hook ran first: the request is this prompt's
+        declared = [d.get("skill") for d in _listed(ledger, "declarations") if isinstance(d, dict)]
+        if not declares or skill in declared:
+            return False
+        add_declaration(ledger, skill)
+        return True
+    kept = [e for e in _listed(ledger, "expanded") if isinstance(e, dict) and e.get("prompt_id") == prompt_id]
+    ledger["expanded"] = kept + [{"prompt_id": prompt_id, "skill": skill if declares else None}]
     return True
 
 
-def submit_prompt(event: dict, ledger: dict) -> dict:
+def submit_prompt(event: dict, ledger: dict, config_dir: Optional[str] = None) -> dict:
     """A submitted prompt: a go-ahead or a machine notice keeps the request; anything else starts a new
-    one, declared by the process skills typed in it (the expansions recorded for this prompt, or its
-    leading slash command). Returns {"changed": whether the ledger changed, "context": the lapse hint
-    or None}. A damaged entry is skipped rather than raised on: a hook that fails here would leave the
-    old request, and its declarations, in place."""
+    one, declared by the process skills typed in it: the expansions recorded for this prompt, or, when
+    none arrived, its leading slash command. After a declared request, a new one that typed no route of
+    its own gets the lapse hint. Returns {"changed": whether the ledger changed, "context": the lapse
+    hint or None}. A damaged entry is skipped rather than raised on: a hook that fails here would leave
+    the old request, and its declarations, in place."""
     prompt, prompt_id = event.get("prompt") or "", event.get("prompt_id")
-    expanded = ledger.get("expanded") or []
-    typed = [e.get("skill") for e in expanded
-             if isinstance(e, dict) and prompt_id and e.get("prompt") == prompt_id]
-    typed = [s for s in typed if isinstance(s, str) and is_declaration(s)]
-    parsed = slash_declaration(prompt)
-    if parsed:
-        typed.append(parsed)
+    expanded = _listed(ledger, "expanded")
+    mine = [e for e in expanded if isinstance(e, dict) and prompt_id and e.get("prompt_id") == prompt_id]
+    if mine:                                   # what ran; the prompt's parse would only guess from the typed word
+        typed = [e.get("skill") for e in mine if isinstance(e.get("skill"), str) and is_declaration(e["skill"])]
+    else:
+        typed = [s for s in [slash_declaration(prompt)] if s]
     ledger["expanded"] = []
     if not typed and is_continuation(prompt):
         return {"changed": bool(expanded), "context": None}
-    lapsed = [] if typed else [d.get("skill") for d in ledger.get("declarations") or []
-                               if isinstance(d, dict)]
+    lapsed = [] if typed else [d.get("skill") for d in _listed(ledger, "declarations") if isinstance(d, dict)]
     new_request(ledger)
+    ledger["request_prompt"] = prompt_id              # a late expansion of this prompt still declares it
     for skill in dict.fromkeys(typed):
         add_declaration(ledger, skill)
-    return {"changed": True, "context": _lapse_hint(lapsed)}
+    return {"changed": True, "context": _lapse_hint(lapsed, config_dir, event.get("cwd"))}
 
 
-# A skill's name as Claude Code writes it; anything else in a ledger is damage, and stays out of the hint.
-SKILL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,79}$")
 LAPSE_NAMES = 5
 
 
-def _lapse_hint(skills: list) -> Optional[str]:
+def _lapse_hint(skills: list, config: Optional[str] = None, cwd: Optional[str] = None) -> Optional[str]:
     """The facts a new request after a declared one gives Claude: which declarations lapsed, that
-    invoking one again continues that work, that new work routes afresh. None when nothing lapsed."""
-    names = list(dict.fromkeys(s for s in skills if isinstance(s, str) and SKILL_NAME.match(s)))[:LAPSE_NAMES]
+    invoking one again continues that work (or, for a skill only the user can type, that the user
+    types it again or the work takes a route Claude can invoke), that new work routes afresh. None
+    when nothing lapsed."""
+    names = list(dict.fromkeys(s for s in skills if isinstance(s, str) and SKILL_NAME.fullmatch(s)))[:LAPSE_NAMES]
     if not names:
         return None
-    listed = ", ".join(f"`{name}`" for name in names)
-    if len(names) == 1:
-        lapsed, again = f"declaration lapsed: {listed}", f"invoking {listed} again"
+    manual = {name for name in names if typed_only(name, config, cwd)}
+    listed = ", ".join(f"`{name}`" + (" (only the user can type it)" if name in manual else "") for name in names)
+    which = f"`{names[0]}`" if len(names) == 1 else "the one it used"
+    if not manual:
+        how = f"invoking {which} again with the Skill tool restores the declaration"
+    elif len(manual) == len(names):
+        how = f"the Skill tool cannot invoke {which}: the user types it again, or the work takes a route Claude can invoke"
     else:
-        lapsed, again = f"declarations lapsed: {listed}", "invoking the one it used again"
-    return (f"Seams: this message started a new request, so the previous request's {lapsed}. The gate "
-            f"refuses the next change to the project until a process skill is invoked for this request. "
-            f"If this message continues that work, {again} with the Skill tool restores the declaration; "
-            f"new work needs its own route.")
+        how = (f"invoking {which} again with the Skill tool restores the declaration, unless only the user can "
+               "type it: then the user types it again, or the work takes a route Claude can invoke")
+    noun = "declaration" if len(names) == 1 else "declarations"
+    return (f"Seams: this message started a new request, so the previous request's {noun} lapsed: {listed}. "
+            "The gate refuses the next change to the project until a process skill is invoked for this request. "
+            f"If this message continues that work, {how}; new work needs its own route.")
 
 
 # --- Project changes and the decision ------------------------------------------------------
@@ -1275,7 +1324,8 @@ def unverified_changes(ledger: dict) -> list:
 
 
 def decide_stop(ledger: dict, stop_hook_active: bool) -> Optional[str]:
-    """The reason to block this stop, or None. Blocks at most once per turn."""
+    """The done-check's request for verification at this stop, or None. Asks at most once per turn:
+    the second stop of a turn (stop_hook_active) always ends it."""
     if stop_hook_active:
         return None
     pending = unverified_changes(ledger)
