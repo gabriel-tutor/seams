@@ -1,8 +1,8 @@
 ---
 type: regex
 target: last_message
-pattern: 'tier[- ]discounted|2,?040|1,?938|1,?438|102 cents'
+pattern: 'finding[\s\S]*subtotal|subtotal[\s\S]*finding'
 flags: i
 ---
 
-The reply takes up the review finding the progress file records: FLAT5's minimum is checked against the tier-discounted total instead of the subtotal (20 units at 102 cents: a 2040-cent subtotal, 1938 after the tier, 1438 by the spec). Those words and numbers are only in the uncommitted progress file; the ticket and the spec say "post-tier total" and "subtotal", so the pattern leaves those out, and a session that started the ticket over, or re-ran its review from nothing, would not name the finding.
+The reply takes up the review finding the progress file records: FLAT5's minimum is checked against the tier-discounted total instead of the subtotal. The ticket and the spec name the subtotal and the post-tier total too, so a session that started the ticket over could use those words; only one that read the uncommitted progress file knows there is a finding to act on.

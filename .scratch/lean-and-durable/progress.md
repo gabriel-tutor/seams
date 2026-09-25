@@ -2,10 +2,10 @@
 
 Status: active
 Stage: integrated
-Next: On main: the approved paid live runs on the review-fix commit (harness, headless resume, plugin eval), then ticket 05's record commit and its definition of done.
+Next: On main: the plugin eval of resume-ticket and the headless resume's results (the harness gave 3 of 3 on 9e14539, re-judged), then ticket 05's record commit and its definition of done.
 Updated: 2026-09-25
 Ticket: 05
-Candidate: 9d52d13
+Candidate: 9e14539
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`), and ticket 04 (the progress file and the resume note), integrated on local `main`, not pushed; its record is in the ticket's Comments. The user chose 04 first, so that every later `/clear` resumes by itself.

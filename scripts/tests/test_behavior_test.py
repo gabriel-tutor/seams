@@ -451,15 +451,18 @@ class JudgeTest(unittest.TestCase):
         re_read = {"reads": [f"{coupons}/progress.md", f"{coupons}/issues/02-flat5-and-case-insensitive-codes.md",
                              f"{coupons}/spec.md"],
                    "commands": ["git status --short && git log --oneline -5"]}
-        continued = ("Resuming coupons ticket 02: the file, the ticket and git agree, and HEAD is the candidate. "
-                     "The review found FLAT5's minimum checked against the tier-discounted total, so the failing "
-                     "test for 20 units at 102 cents comes first.")
+        # What the live runs said before their first edit: the state checked, then the recorded finding.
+        continued = ("State matches the progress file (main, HEAD = candidate 7847345). Continuing from the fix.\n"
+                     "The finding holds: `applyCoupon` compares `total` (post-tier) to 2000, while spec criterion 2 "
+                     "says the subtotal. Red first:")
         asked = {"ended": "reply", "exit_code": 0, "result_subtype": "success", "result_error": False, "output_tokens": 90}
         code, report = judge(
             record("resume-ticket", 1, skill=implement, text=continued, **re_read),
             record("resume-ticket", 2, skill=implement, text=continued, reads=[f"{coupons}/progress.md"]),
-            # A restart in the ticket's own words: "post-tier" is in the ticket and the spec, not only the finding.
-            record("resume-ticket", 3, skill=implement, text="Starting ticket 02: FLAT5 takes 500 cents off the post-tier total.",
+            # A restart in the ticket's own words, which name the subtotal and the post-tier total too: only a run
+            # that read the progress file knows there is a finding.
+            record("resume-ticket", 3, skill=implement,
+                   text="Starting ticket 02: FLAT5 takes 500 cents off the post-tier total once the subtotal is 2000.",
                    **re_read),
             record("resume-ticket", 4, skill="matt-pocock-workflow:grill", text=continued, **re_read),
             # The state matches, so asking where to build it is stopping, not continuing (decision 20).
@@ -467,7 +470,7 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("1 of 5", report)
         self.assertRegex(report, r"miss\s+run 2: never read a file matching .*issues")
-        self.assertRegex(report, r"miss\s+run 3: the reply does not mention .*tier")
+        self.assertRegex(report, r"miss\s+run 3: the reply does not mention finding")
         self.assertRegex(report, r"miss\s+run 4: first skill matt-pocock-workflow:grill, expected " + implement)
         self.assertRegex(report, r"miss\s+run 5: .*without a change")
 
