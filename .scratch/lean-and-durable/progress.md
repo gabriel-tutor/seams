@@ -2,9 +2,10 @@
 
 Status: active
 Stage: integrated
-Next: Review ticket 06's build commit on main against 5949492 (code-review, then fixes), then the live headless pr-review run on the final candidate, then the record commit and the definition of done.
+Next: Live headless pr-review of closed PR #7 on main's review-fix commit after bb5a825 (default mode, GitHub writes blocked), then the record commit and the definition of done.
 Updated: 2026-09-25
 Ticket: 06
+Candidate: bb5a825
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell) and ticket 03 (typed skills, the lapse hint, the done-check as feedback), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.

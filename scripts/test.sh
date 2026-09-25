@@ -4,7 +4,7 @@
 #   scripts/test.sh --fast     # skip the sandbox-workspace suite (needs node and the fixture's node_modules)
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# No __pycache__ in the plugin: a directory-marketplace install copies ignored files too.
+# No __pycache__ in the plugin: a marketplace added from a local directory loads the plugin folder in place.
 export PYTHONDONTWRITEBYTECODE=1
 FAST=0; [[ "${1:-}" == "--fast" ]] && FAST=1
 pass=(); failed=(); skipped=()

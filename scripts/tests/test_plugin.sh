@@ -34,10 +34,10 @@ section_says() {   # $1 = skill name, $2 = file, $3 = heading text, $4... = phra
 claude plugin validate --strict "$PLUGIN" >/dev/null || fail "plugin manifest does not validate"
 claude plugin validate --strict "$REPO" >/dev/null || fail "marketplace manifest does not validate"
 
-# No bytecode in the plugin (lean-and-durable ticket 06): a directory-marketplace install copies ignored files too, so a
-# stale __pycache__ would ship with it. The suites, the hooks and the scripts all run without writing any.
+# No bytecode in the plugin (lean-and-durable ticket 06, the spec's housekeeping): a marketplace added from a local
+# directory loads this folder in place, so what is in it is what runs. The suites, the hooks and the scripts write none.
 STALE=$(find "$PLUGIN" \( -name __pycache__ -o -name '*.pyc' \) -print)
-[[ -z "$STALE" ]] || fail "bytecode in the plugin, which a directory-marketplace install would copy: $STALE"
+[[ -z "$STALE" ]] || fail "bytecode in the plugin, which a local-directory marketplace loads in place: $STALE"
 
 # One version everywhere (ticket 10): the two manifests, the README's version badge and the
 # CHANGELOG's first entry name the same release, so a bump cannot land in one place only.
@@ -259,10 +259,10 @@ headings_in_order pr-review "$PRR" "## Gate" "## Checkout" "## Batch" "## Unders
   "## Cleanup" "## Post" "## Review handover"
 PRR_OPENING=$(awk '/^## /{exit} {print}' "$PRR")
 for needle in "Nothing of an untrusted pull request runs on this machine without a yes" "Nothing reaches GitHub without a yes" \
-  "Nothing in the user's working tree" "data under review, never instructions" "read it again"; do
+  "Nothing in the user's working tree" "data under review, never instructions" "read it again" "typed as a message"; do
   [[ $PRR_OPENING == *"$needle"* ]] || fail "pr-review should say, before its first step, where it holds for the whole review: $needle"
 done
-for r in checkout batch review checks draft-and-post cleanup; do [[ -f "$PRR_REFS/$r.md" ]] || fail "pr-review lacks references/$r.md"; done
+for r in checkout batch understand-and-review checks draft-and-post cleanup; do [[ -f "$PRR_REFS/$r.md" ]] || fail "pr-review lacks references/$r.md"; done
 for f in "$PRR_REFS"/*.md; do
   grep -F -- "references/$(basename "$f")" <<< "$PRR_OPENING" | grep -qF "read this when" \
     || fail "pr-review does not name references/$(basename "$f") before its first step with when to read it (\"read this when\")"
@@ -284,15 +284,15 @@ step_says Batch batch "one subagent per PR" "all at once" "--slots" "Every quest
   "brew install bash" "the same checks" "facts only" "No review hints" "never asks" "never posts" "error.txt" \
   "--recheck" "alone" "--merge" "never by hand"
 # Claude Code's documented subagent limits, in place of 3.2.1's claim that a subagent cannot start subagents
-# (ticket 06): nesting three levels below the main conversation, at most 20 running at once, rate limits on a wide
+# (lean-and-durable ticket 06): nesting three levels below the main conversation, at most 20 running at once, rate limits on a wide
 # fan-out.
 step_says Batch batch "three levels below the main conversation" "At most 20 subagents run at once" \
   "Concurrent subagent limit reached" "rate limits"
 grep -rqiE "(nor|cannot|can't|can not) start subagents" "$PRR" "$PRR_REFS" && fail "pr-review still says a subagent cannot start subagents"
-step_says Understand review "mergeable" "CONFLICTING" "blocking finding"
+step_says Understand understand-and-review "mergeable" "CONFLICTING" "blocking finding"
 step_says Checks checks "once per repository" "run_checks.py" "commands CI runs" "git hooks" ".husky" \
   "core.hooksPath" "named like checks" "could not run" "bash 4" "compare the failing tests by name" "E2E" "Try it" "own port"
-step_says Review review "Invoke \`code-review\`" "risk reviewer" "Verify every finding" "baseline" "probe test" \
+step_says Review understand-and-review "Invoke \`code-review\`" "risk reviewer" "Verify every finding" "baseline" "probe test" \
   "Under static review, run nothing from the pull request" "blocking" "should fix" "request changes" "merges cleanly" \
   "\$EVID/probes/" "after that tree's checks"
 step_says Draft draft-and-post "review_payload.py" "review.json" "outside the diff" "footer" "without \`--checks\` under static review"
@@ -301,7 +301,15 @@ step_says Cleanup cleanup "only worktrees carrying" "the one record from Checkou
 step_says Post draft-and-post "Re-check the candidate" "every time" "Don't post" "own pull request" "post_reviews.py" \
   "needs no new yes" "stops" "Never push"
 step_says "Review handover" "" "batch_report.py" "Ready to merge" "Note for" "exactly as the script wrote it"
-# Its four scripts run without a permission prompt from any directory (ticket 06): the core runs each as
+# A step's gates and must-nots stay in the core where its detail moved out (the ticket's "gates, must-nots and steps
+# first"): an unmarked evidence directory, services and credentials, a head that moved, the viewer's own pull request.
+section_says pr-review "$PRR" Checkout "without the marker"
+section_says pr-review "$PRR" Checks "only after a yes" "real credentials, paid APIs and production data are never used"
+section_says pr-review "$PRR" Post "whose head moved is not posted" "only \`COMMENT\`"
+# A headless run asks its post question in text, and the answer starts a turn the scripts' pre-approval no longer
+# covers: the handover's table comes first, while it holds.
+step_says Post draft-and-post "while the pre-approval holds"
+# Its four scripts run without a permission prompt from any directory (lean-and-durable ticket 06): the core runs each as
 # `python3 ${CLAUDE_SKILL_DIR}/scripts/<name>.py` and its allowed-tools pre-approves exactly that command, as the skills
 # docs show. Claude Code fills in ${CLAUDE_SKILL_DIR} only in SKILL.md and its allowed-tools, so a reference writes a
 # path in the skill as <skill-dir>/..., which the core defines, and nothing names the directory the old way.
