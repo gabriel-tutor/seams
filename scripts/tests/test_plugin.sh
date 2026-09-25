@@ -322,7 +322,7 @@ root = pathlib.Path(sys.argv[1])
 want = {"scout": {"tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"], "omitClaudeMd": "true",
                   "cites": ["file:line", "URL", "couldn't confirm"]},
         "reviewer": {"tools": ["Read", "Glob", "Grep", "Bash"], "disallowedTools": ["Edit", "Write", "NotebookEdit"],
-                     "cites": ["file:line", "couldn't confirm"]}}
+                     "cites": ["file:line", "couldn't confirm", "runs only reads", "in any shape give each finding"]}}
 files = {p.stem: p for p in sorted(root.glob("agents/**/*.md"))}
 if sorted(files) != sorted(want):
     print(f"the agents are {sorted(files)}, expected {sorted(want)}")
@@ -352,14 +352,16 @@ for name, spec in want.items():
 PY
 }
 AGENT_FIX=$(mktemp -d); mkdir -p "$AGENT_FIX/agents"
-printf -- '---\nname: scout\ndescription: x\ntools: Read, Glob, Grep, WebFetch, WebSearch, Bash\npermissionMode: plan\n---\n\nReport facts.\n' \
+printf -- '---\nname: scouting\ndescription: x\ntools: Read, Glob, Grep, WebFetch, WebSearch, Bash\npermissionMode: plan\n---\n\nReport facts.\n' \
   > "$AGENT_FIX/agents/scout.md"
-printf -- '---\nname: reviewer\ndescription: x\ntools: Read, Glob, Grep, Bash, Edit\nmaxTurns: 0\n---\n\nCite file:line; say what you couldn'"'"'t confirm.\n' \
+printf -- '---\nname: reviewer\ndescription: x\ntools: Read, Glob, Grep, Bash, Edit\nmaxTurns: 0\n---\n\nCite file:line.\n' \
   > "$AGENT_FIX/agents/reviewer.md"
+printf -- '---\nname: extra\ndescription: x\n---\n' > "$AGENT_FIX/agents/extra.md"
 AGENT_OUT=$(agent_problems "$AGENT_FIX"); rm -rf "$AGENT_FIX"
-for want in "scout's tools are" "scout has no turn cap" "scout sets permissionMode" "scout's omitClaudeMd is unset" \
-  "scout's prompt does not say: file:line" "reviewer's tools are" "reviewer's disallowedTools are [], expected" \
-  "reviewer has no turn cap"; do
+for want in "the agents are ['extra', 'reviewer', 'scout']" "agents/scout.md is named 'scouting'" "scout's tools are" \
+  "scout has no turn cap" "scout sets permissionMode" "scout's omitClaudeMd is unset" "scout's prompt does not say: file:line" \
+  "reviewer's tools are" "reviewer's disallowedTools are [], expected" "reviewer has no turn cap" \
+  "reviewer's prompt does not say: couldn't confirm"; do
   [[ $AGENT_OUT == *"$want"* ]] || fail "the agent check missed: $want (it said: $AGENT_OUT)"
 done
 AGENT_OUT=$(agent_problems "$PLUGIN")

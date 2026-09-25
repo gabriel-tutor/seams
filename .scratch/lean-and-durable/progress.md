@@ -2,9 +2,10 @@
 
 Status: active
 Stage: integrated
-Next: Ticket 09's build (live probe and eval run) is committed on main; next, the review of e38023a...HEAD through code-review, then the fixes and the record.
+Next: The review's fixes for af9b011 (the read list, decision 30) are committed on main; next, the full suite, the record and the definition of done.
 Updated: 2026-09-26
 Ticket: 09
+Candidate: af9b011
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost) and ticket 07 (a pr-review batch resumes), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
@@ -73,6 +74,10 @@ Ticket: 09
 28. A batch's progress file sits at the evidence root under the temp directory, not in the repository (ADR 0003 names the exception), one per batch: named after the session's repository and the batch's pull requests, so the same pull requests typed again continue it and another batch keeps its own. Each pull request's step is read from its evidence; the scripts that end a step bring the file up to date, and `batch_report.py --close` closes it at the final handover once every review in it is drafted or posted. `evidence.py` names every evidence directory and writes its marker, so that each run names them alike. (Made while building ticket 07, reworked after its review; not the user's choice.)
 29. The resume note turns `#` into a space and shows 200 characters of a field, so a batch's next step names its pull requests by number and repository ("pull requests 5, 6 and 7 of gabriel-tutor/seams"), and the exact command, by URL, sits under Continue in its file. (Made while building ticket 07; the live run showed three URLs of this repository overflow the field.)
 
+30. The read-only agents only read. Whatever the request has declared, the gate holds `scout` and `reviewer` to a list of reads, not to the classifier's best-effort mesh of writes. Every command in a shell line must be one of git's read subcommands (no `-c`, `--output`, `--ext-diff` or `grep -O`), `gh`'s views, or a short list of file readers (`find` without its write and exec actions, `sort` without `-o` or `--compress-program`). Each is named plainly, with no variable, substitution or assignment, and no glob or brace in a git, gh, find or sort command. Redirects go only into the temp directory or the scratchpad, never into a git directory; an editor tool writes only there too, and PowerShell keeps its read-only list. So the reviewer reviews by reading: a finding that needs a check or a probe names it, and the main conversation runs it. (The user's choice while building ticket 09, 2026-09-26, after the reviews showed the reviewer's shell getting past the mesh: `npm version`, formatters, build and test scripts, `gh pr merge`, `git diff --output`.)
+31. `reviewer` takes the axis its task names: correctness or security, as the spec says, and also the repository's standards or the spec, so that `implement` runs `code-review`'s two sub-agents as reviewers. Its `file:line` citations hold in whatever shape the task asks for. (Made while building ticket 09, beyond the spec's "correctness or security"; the Spec review flagged it; not the user's choice.)
+32. The grill finds its facts through scouts however small the codebase. The spec lists the grill's fact-finding among the delegated reads, and the first eval, on softer wording that only named the agent, saw all three Opus 5.5 runs read the code themselves ("The codebase is small, so I'll read it directly"). A fact already in view needs no scout, and neither do the reads of a resumed grill. (Made while building ticket 09; the Spec review flagged it against the spec's rejection of delegating almost everything; not the user's choice.)
+
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.
 - Security: the progress file is committed, so it holds decisions and pointers only, never secrets or personal data. The resume note is built from its fields, length-capped and stripped of markup, and framed as the repository's record, so a planted file can't pass as instructions.
@@ -114,6 +119,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 ## Open questions
 
 - Nothing open in the design. The grill's frontier is empty and confirmed, and the spec and tickets are published.
+- From ticket 09's Spec review: `pr-review`'s risk reviewer still starts as `general-purpose` (`references/understand-and-review.md`), though decision 10 names every review. No ticket covers it; the `reviewer` agent could take it, since it only reads.
 - For the user, from ticket 07's live run: both sessions started a batch's reviewers in the foreground, in parallel, and the resumed one stayed in one turn, so the scripts' pre-approval held through the handover. `batch.md` still says the fan-out runs in the background and ends the turn (ticket 06's design, held by the static test). Should it say foreground? See ticket 07's Comments.
 
 ## Later phases: facts already verified (2026-09-25, official sources)

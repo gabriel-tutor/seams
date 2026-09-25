@@ -17,7 +17,7 @@ A Skill invocation of a process skill, by Claude or typed by the user, that open
 _Avoid_: unlock, override
 
 **Gate**:
-The hook that refuses any change to the project until the current request has a declaration. In a flow skill, also the question that must get a yes before the skill starts or publishes.
+The hook that refuses any change to the project until the current request has a declaration, and holds a read-only agent to reads whatever is declared. In a flow skill, also the question that must get a yes before the skill starts or publishes.
 _Avoid_: guard, blocker, permission
 
 **Ledger**:
@@ -29,7 +29,7 @@ The facts the prompt hook gives Claude when a typed message starts a new request
 _Avoid_: warning, reminder
 
 **Read-only agent**:
-One of the two agents Seams ships for delegated reading: `scout` finds facts in the code and docs, `reviewer` reviews a named diff. Each returns its conclusions with their citations and what it couldn't confirm. Neither can change the project: the gate refuses a change from either, whatever the request has declared.
+One of the two agents Seams ships for delegated reading: `scout` finds facts in the code and docs, `reviewer` reviews a named diff. Each returns its conclusions with their citations and what it couldn't confirm. Neither writes: the gate holds both to a short list of reads, whatever the request has declared, so a check or a probe a finding needs is run by the main conversation.
 _Avoid_: helper, worker (a subagent is any agent Claude starts)
 
 **Trivial change**:

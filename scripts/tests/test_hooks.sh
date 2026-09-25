@@ -143,7 +143,14 @@ OUT=$(agent scout Write "{\"file_path\":\"$PROJ/src/c.ts\",\"content\":\"x\"}");
 grep -q '`matt-pocock-workflow:scout` is a read-only agent' <<< "$OUT" || fail "the refusal should name the scout: $OUT"
 grep -q 'src/c.ts\|"git commit"' "$LEDGER" && fail "a read-only agent's refused change must not reach the ledger"
 OUT=$(agent reviewer Bash '{"command":"git diff HEAD~1"}'); [[ -z "$OUT" ]] || fail "a reviewer's read should pass: $OUT"
-OUT=$(agent reviewer Bash "{\"command\":\"echo x > $TMPDIR/probe.txt\"}"); [[ -z "$OUT" ]] || fail "a reviewer's scratch write should pass: $OUT"
+OUT=$(agent reviewer Bash "{\"command\":\"git diff HEAD~1 > $TMPDIR/d.patch\"}"); [[ -z "$OUT" ]] || fail "a read redirected into the temp dir should pass: $OUT"
+# Its shell is held to reads, not to the classifier's mesh of writes: what the review of af9b011 got past the mesh.
+for C in "npm version patch" "git diff HEAD~1 --output=src/a.ts" "npm test -- -u" "gh pr merge 12" "python3 $TMPDIR/p.py"; do
+  OUT=$(agent reviewer Bash "{\"command\":\"$C\"}"); denied "$OUT" || fail "a reviewer's '$C' should be denied: $OUT"
+done
+grep -q "git's read subcommands" <<< "$OUT" || fail "the refusal should name the reads a read-only agent may run: $OUT"
+OUT=$(agent scout Write "{\"file_path\":\"$CLAUDE_CONFIG_DIR/settings.json\",\"content\":\"{}\"}")
+denied "$OUT" || fail "a read-only agent's write to the config dir should be denied: $OUT"
 
 # 8. Session start: clear and startup reset the ledger; compact and resume keep it; a fork is a new
 # session, which starts with an empty ledger and leaves its parent's alone.

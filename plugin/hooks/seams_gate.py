@@ -1,7 +1,8 @@
 """The gate: the rules the matt-pocock-workflow hooks share.
 
 A change to the project is refused until the current request has a declaration: a Skill
-invocation of a process skill, or a slash command the user typed for one. This module holds
+invocation of a process skill, or a slash command the user typed for one. A read-only agent's call is
+held to a list of reads, declared or not. This module holds
 the pure parts (what counts as a change, what counts as a declaration, what a continuation
 is, the ledger's shape and the decisions) so the hooks stay thin. The routing harness scores a
 shell write with the same classifier: it counts every write, where the gate also lets through
@@ -1213,6 +1214,14 @@ def _powershell_label(command: str) -> str:
     return "PowerShell"
 
 
+def _editor_path(event: dict) -> str:
+    """The file an editor tool writes, absolute (a relative one lies under the session's cwd), or ""."""
+    path = (event.get("tool_input") or {}).get(EDITOR_TOOLS[event.get("tool_name")]) or ""
+    if path and not os.path.isabs(path):
+        path = os.path.join(event.get("cwd") or os.getcwd(), path)
+    return os.path.normpath(path) if path else ""
+
+
 def change_for_event(event: dict, config_dir: Optional[str] = None) -> Optional[dict]:
     """The project change a PreToolUse event would make, or None when it makes none.
 
@@ -1225,12 +1234,9 @@ def change_for_event(event: dict, config_dir: Optional[str] = None) -> Optional[
     tool = event.get("tool_name") or ""
     tool_input = event.get("tool_input") or {}
     if tool in EDITOR_TOOLS:
-        path = tool_input.get(EDITOR_TOOLS[tool]) or ""
+        path = _editor_path(event)
         if not path:
             return None
-        if not os.path.isabs(path):
-            path = os.path.join(event.get("cwd") or os.getcwd(), path)
-        path = os.path.normpath(path)
         if is_exempt_path(path, config_dir, event.get("cwd"), event.get("scratchpad_dir")):
             return None
         return {"tool": tool, "path": path, "doc": path.lower().endswith(DOC_SUFFIXES)}
@@ -1285,26 +1291,176 @@ def deny_reason(change: dict) -> str:
             f"invoked for it. {ROUTES} {rule}")
 
 
-# Seams' read-only agents (plugin/agents/), as the hook input's `agent_type` names a plugin's agent: by its
-# plugin-scoped name. They never change the project, whatever the request has declared.
+# --- Read-only agents ------------------------------------------------------------------------
+# Seams' read-only agents (plugin/agents/) read and never write, whatever the request has declared
+# (lean-and-durable decision 30). The classifier above is a best-effort mesh of writes; a read-only
+# agent's shell is held to the opposite, a list of reads: every simple command in the line is one of
+# them, named plainly, with no variable, substitution, assignment or wrapper, and its redirects land in
+# the temp directory or the session's scratchpad. The hook input names a plugin's agent by its
+# plugin-scoped name in `agent_type`.
+
 READ_ONLY_AGENTS = {PLUGIN_PREFIX + "scout", PLUGIN_PREFIX + "reviewer"}
+READ_COMMANDS = {"cat", "head", "tail", "wc", "ls", "pwd", "grep", "egrep", "fgrep", "diff", "cmp", "comm", "cut",
+                 "tr", "nl", "paste", "sort", "basename", "dirname", "realpath", "readlink", "echo", "printf", "test",
+                 "[", "true", "false", "which", "jq", "stat", "du", "find", "cd", "shasum", "sha256sum", "md5",
+                 "md5sum", "od", "hexdump", "strings", "git", "gh"}
+GIT_READS = {"status", "diff", "log", "show", "blame", "grep", "ls-files", "ls-tree", "rev-parse", "merge-base",
+             "cat-file", "rev-list", "describe", "shortlog", "diff-tree", "name-rev", "show-ref", "for-each-ref"}
+GIT_READ_OPTIONS = {"--no-pager", "-P", "--no-optional-locks"}       # git's own options a read may take, and -C DIR
+GIT_WRITES_OR_RUNS = ("--output", "--ext-diff", "--open-files-in-pager")      # a file written, a program run
+GH_READS = {(group, verb) for group in ("pr", "issue", "repo", "run", "release", "workflow")
+            for verb in ("view", "list", "diff", "checks", "status")}
+FIND_WRITES = {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"}
+EXPANDS_INTO_OPTIONS = {"git", "gh", "find", "sort"}      # a glob here could name a planted `--output=x` file
+READ_ONLY_RULE = (
+    "A read-only agent reads: its shell runs git's read subcommands (" + ", ".join(sorted(GIT_READS)) + "; no -c, "
+    "--output, --ext-diff or grep -O), gh's view, list, diff, checks and status (no --web), and "
+    + ", ".join(sorted(READ_COMMANDS - {"git", "gh"})) + " (find with no -exec, -ok, -delete or -fprint; sort "
+    "with no -o or --compress-program), each by its plain name, with no variable, substitution, or glob in a git, gh, find or sort "
+    "command, joined by pipes, &&, || or ;, and redirected only into the temp directory or the session's "
+    "scratchpad, where its editor tools may also write, never into a git directory.")
 
 
-def read_only_reason(agent: str, change: dict) -> str:
-    what = (f"editing {describe(change)}" if change.get("path") else describe(change)) + " changes the project"
-    return (f"{REFUSAL_PREFIX}`{agent}` is a read-only agent, and {what}: a read-only agent never changes the "
-            "project, whatever the request has declared. Report the change instead, and the main conversation "
-            f"makes it. {SCRATCH}")
+def _in_git_dir(path: str) -> bool:
+    """Whether a path lies in a git directory (or is a worktree's `.git` file), whose config names
+    programs git runs: `core.fsmonitor` on `git status`, a diff driver on `git diff`."""
+    return ".git" in path.split(os.sep)
+
+
+def _unquoted_text(token: str) -> str:
+    """The characters of a shell word that stand outside its quotes, where a glob or a brace expands."""
+    out, quote, i = [], None, 0
+    while i < len(token):
+        char = token[i]
+        if quote == "'":
+            quote = None if char == "'" else quote
+        elif quote == '"':
+            if char == "\\":
+                i += 1
+            elif char == '"':
+                quote = None
+        elif char == "\\":
+            i += 1
+        elif char in "'\"":
+            quote = char
+        else:
+            out.append(char)
+        i += 1
+    return "".join(out)
+
+
+def _git_read_problem(args: list) -> Optional[str]:
+    i = 0
+    while i < len(args) and args[i].startswith("-"):
+        if args[i] == "-C" and i + 1 < len(args):
+            i += 2
+        elif args[i] in GIT_READ_OPTIONS:
+            i += 1
+        else:
+            return "passes git one of its own options, which a read does not take"
+    if i >= len(args) or args[i] not in GIT_READS:
+        return "runs a git subcommand that is not a read"
+    rest = args[i + 1:]
+    pager = args[i] == "grep" and any(a.startswith("-") and not a.startswith("--") and "O" in a for a in rest)
+    if pager or any(a.startswith(GIT_WRITES_OR_RUNS) for a in rest):
+        return "passes git an option that writes a file or runs a program"
+    return None
+
+
+def _read_problem(words: list, env: dict) -> Optional[str]:
+    """Why one simple command, its redirections removed, is not a read, as fixed text; None when it is."""
+    if ASSIGNMENT.match(words[0]):
+        return "sets a variable"
+    plain = [_expand(word, env) for word in words]
+    if None in plain:
+        return "has a word that cannot be read before it runs"
+    name, args = plain[0], plain[1:]
+    if name not in READ_COMMANDS:
+        return "runs a command that is not a read"
+    if name in EXPANDS_INTO_OPTIONS and any(set(_unquoted_text(w)) & set("*?[{") for w in words[1:]):
+        return "leaves a glob or a brace to expand into an option"
+    if name == "git":
+        return _git_read_problem(args)
+    if name == "gh" and (len(args) < 2 or (args[0], args[1]) not in GH_READS):
+        return "runs a gh command that is not a read"
+    if name == "gh" and ("-w" in args or "--web" in args):
+        return "opens a browser"
+    if name == "find" and FIND_WRITES & set(args):
+        return "gives find an action that writes or runs a command"
+    if name == "sort" and any(a.startswith("--output") or (a.startswith("-") and not a.startswith("--") and "o" in a)
+                              for a in args):
+        return "writes the sort to a file"
+    if name == "sort" and any(a.startswith("--compress-program") for a in args):
+        return "gives sort a program to run"
+    return None
+
+
+def shell_read_problem(command: str, is_scratch: Callable[[str], bool]) -> Optional[str]:
+    """Why a read-only agent may not run this shell command, as fixed text, or None when every simple
+    command in it is a read and every redirect lands where `is_scratch` says scratch lies."""
+    if not command.strip():
+        return None
+    text, heredocs = _without_heredoc_text(command)
+    tokens = _tokens(text)
+    try:
+        runs = [run for body in heredocs for run in _runs(body)] + [run for t in tokens for run in _word_runs(t)]
+    except (_TooDeep, RecursionError):
+        runs = [TOO_DEEP]
+    if runs:
+        return "runs a command substitution"
+    env = _initial_env()
+    for segment in _segments(tokens):
+        words, targets = _split_redirects(segment)
+        if targets and not _all_exempt(targets, env, is_scratch):
+            return "redirects outside the temp directory and the session's scratchpad"
+        if any(_in_git_dir(_placed_path(target, env)) for target in targets):
+            return "redirects into a git directory"
+        problem = _read_problem(words, env) if words else None
+        if problem:
+            return problem
+    return None
+
+
+def read_only_problem(event: dict) -> Optional[str]:
+    """Why a read-only agent may not make this call, as text for its refusal, or None when it only reads,
+    or writes scratch. Editor tools: only under the temp directory or the session's scratchpad (not the
+    config directory, which a declared request may write). Bash and a Monitor watch: the list of reads.
+    PowerShell: its read-only list."""
+    tool, tool_input = event.get("tool_name") or "", event.get("tool_input") or {}
+    cwd, scratchpad = event.get("cwd"), event.get("scratchpad_dir")
+    if tool in EDITOR_TOOLS:
+        path = _editor_path(event)
+        if not path:
+            return None
+        if not is_scratch_path(path, cwd, scratchpad):
+            return f"writes `{path}`, outside the temp directory and the session's scratchpad"
+        return f"writes `{path}`, inside a git directory" if _in_git_dir(path) else None
+    if tool in ("Bash", "Monitor"):
+        return shell_read_problem(tool_input.get("command") or "", lambda path: is_scratch_path(path, cwd, scratchpad))
+    if tool == "PowerShell":
+        command = tool_input.get("command") or ""
+        return None if not command.strip() or powershell_reads(command) else "runs PowerShell outside its read-only list"
+    return None
+
+
+def read_only_reason(agent: str, problem: str) -> str:
+    return (f"{REFUSAL_PREFIX}`{agent}` is a read-only agent, and this call {problem}: a read-only agent never "
+            f"writes, whatever the request has declared. {READ_ONLY_RULE} Report what you would change or run "
+            "instead, and the main conversation does it.")
 
 
 def decide_pre_tool_use(event: dict, ledger: dict, config_dir: Optional[str] = None) -> dict:
-    """Allow, or deny with a reason. The change to record travels with an allow."""
+    """Allow, or deny with a reason. The change to record travels with an allow. A read-only agent's call
+    is held to the list of reads, whatever the ledger says, and never records a change."""
+    agent = event.get("agent_type")
+    if isinstance(agent, str) and agent in READ_ONLY_AGENTS:
+        problem = read_only_problem(event)
+        if problem:
+            return {"decision": "deny", "reason": read_only_reason(agent, problem), "change": None}
+        return {"decision": "allow", "reason": None, "change": None}
     change = change_for_event(event, config_dir)
     if change is None:
         return {"decision": "allow", "reason": None, "change": None}
-    agent = event.get("agent_type")
-    if isinstance(agent, str) and agent in READ_ONLY_AGENTS:
-        return {"decision": "deny", "reason": read_only_reason(agent, change), "change": None}
     if not ledger.get("declarations"):
         return {"decision": "deny", "reason": deny_reason(change), "change": None}
     return {"decision": "allow", "reason": None, "change": change}

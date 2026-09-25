@@ -973,9 +973,12 @@ class PreToolUseDecision(unittest.TestCase):
 
 
 class ReadOnlyAgents(unittest.TestCase):
-    """Seams' two read-only agents, `scout` and `reviewer`, never change the project: the gate refuses a
-    change from either, whatever the ledger says (lean-and-durable ticket 09). The hook input names a
-    plugin's agent by its plugin-scoped name in `agent_type` (the hooks reference, SubagentStart)."""
+    """Seams' two read-only agents, `scout` and `reviewer`, read and never write, whatever the ledger says
+    (lean-and-durable ticket 09, decision 30). A shell command passes only when every part of it is a read the
+    gate can name (git's read subcommands, gh's views, the file readers) and its redirects land in the temp
+    directory or the session's scratchpad; an editor tool writes only there; PowerShell keeps its read-only
+    list. The hook input names a plugin's agent by its plugin-scoped name in `agent_type` (the hooks
+    reference, SubagentStart)."""
 
     SCOUT, REVIEWER = "matt-pocock-workflow:scout", "matt-pocock-workflow:reviewer"
 
@@ -984,58 +987,125 @@ class ReadOnlyAgents(unittest.TestCase):
         self.ledger = gate.empty_ledger("s1")
         gate.add_declaration(self.ledger, "matt-pocock-workflow:implement")      # the request is declared
 
-    def decide(self, ev):
+    def decide(self, tool="Bash", agent=None, scratchpad=None, **tool_input):
+        ev = event(tool, agent_id="a1", agent_type=agent or self.REVIEWER, **tool_input)
+        if scratchpad:
+            ev["scratchpad_dir"] = scratchpad
         return gate.decide_pre_tool_use(ev, self.ledger, config_dir=self.config)
 
     def test_a_reviewer_committing_is_refused_even_with_a_declaration(self):
-        decision = self.decide(event("Bash", agent_id="a1", agent_type=self.REVIEWER, command="git commit -m fix"))
+        decision = self.decide(command="git commit -m fix")
         self.assertEqual(decision["decision"], "deny")
         self.assertIsNone(decision["change"])
 
-    def test_the_refusal_names_the_agent_and_sends_the_change_back_rather_than_to_a_route(self):
-        # A subagent has no Skill tool to route with (its tools are its own), so the routes would mislead.
-        reason = self.decide(event("Bash", agent_id="a1", agent_type=self.REVIEWER, command="git commit -m fix"))["reason"]
+    def test_the_refusal_names_the_agent_and_the_reads_and_sends_the_change_back(self):
+        # A subagent has no Skill tool to route with, so the routes would mislead; the rule says what passes.
+        reason = self.decide(command="git commit -m fix")["reason"]
         self.assertTrue(reason.startswith("Seams gate: "), reason)      # the harness counts refusals by it
-        for needle in ("`matt-pocock-workflow:reviewer` is a read-only agent", "`git commit`",
-                       "whatever the request has declared", "Report the change instead"):
+        for needle in ("`matt-pocock-workflow:reviewer` is a read-only agent", "a git subcommand that is not a read",
+                       "whatever the request has declared", "git's read subcommands", "the temp directory",
+                       "Report what you would change or run instead"):
             self.assertIn(needle, reason)
         self.assertNotIn("Route it first", reason)
-        self.assertIn("/proj/src/a.ts", self.decide(event("Edit", agent_type=self.SCOUT, file_path="/proj/src/a.ts"))["reason"])
+        self.assertIn("/proj/src/a.ts", self.decide("Edit", agent=self.SCOUT, file_path="/proj/src/a.ts")["reason"])
 
-    def test_either_agent_is_refused_whichever_tool_it_writes_through(self):
-        # Their tool lists leave out every tool that writes; the gate holds even if a list is not applied.
-        writes = [("Edit", {"file_path": "/proj/src/a.ts", "old_string": "a", "new_string": "b"}),
-                  ("Write", {"file_path": "/proj/src/new.ts", "content": "x"}),
-                  ("MultiEdit", {"file_path": "/proj/src/a.ts", "edits": []}),
-                  ("NotebookEdit", {"notebook_path": "/proj/n.ipynb", "new_source": "x"}),
-                  ("Bash", {"command": "rm -rf src"}), ("Bash", {"command": "echo x > src/a.ts"}),
-                  ("Bash", {"command": "npm install left-pad"}),
-                  ("Monitor", {"command": "tail -f server.log | tee src/copy.txt", "description": "copy"}),
-                  ("PowerShell", {"command": "Remove-Item src -Recurse"})]
-        for agent in (self.SCOUT, self.REVIEWER):
-            for tool, tool_input in writes:
-                with self.subTest(agent=agent, tool=tool, tool_input=tool_input):
-                    decision = self.decide(event(tool, agent_id="a1", agent_type=agent, **tool_input))
-                    self.assertEqual(decision["decision"], "deny")
-                    self.assertIsNone(decision["change"])        # nothing reaches the ledger
-
-    def test_reading_checking_and_scratch_work_go_through(self):
+    def test_the_shell_runs_the_reads_a_review_needs(self):
         t = tempfile.gettempdir()
-        for tool, tool_input in [("Read", {"file_path": "/proj/src/a.ts"}), ("Grep", {"pattern": "reserve"}),
-                                 ("Bash", {"command": "git diff e38023a...HEAD"}), ("Bash", {"command": "npm test"}),
-                                 ("Bash", {"command": f"mkdir -p {t}/probes && echo x > {t}/probes/p.test.ts"}),
-                                 ("Write", {"file_path": f"{t}/notes.md", "content": "x"})]:
-            with self.subTest(tool=tool, tool_input=tool_input):
-                self.assertEqual(self.decide(event(tool, agent_id="a1", agent_type=self.REVIEWER, **tool_input))["decision"],
-                                 "allow")
+        for command in ["git diff e38023a...HEAD", "git -C /proj log --oneline -5", "git show HEAD:src/a.ts",
+                        "git blame -L 1,20 src/a.ts", "git status --short", "git grep -n 'reserve(' -- src",
+                        "git merge-base main HEAD", "git ls-files src", "git log --format='%h %s' -3",
+                        "git --no-pager diff --stat", "cat src/a.ts", "head -50 src/a.ts | tail -10",
+                        "grep -rn 'total$' src", "find src -name '*.ts' -newer package.json", "ls -la src",
+                        "wc -l src/*.ts", "cd src && git diff -- a.ts", "diff -u src/a.ts src/b.ts",
+                        "sort -u words.txt", "jq .scripts package.json", "gh pr view 12 --json title,body",
+                        "gh issue view 45", "gh pr diff 12", "echo done", f"git diff HEAD~1 > {t}/d.patch",
+                        f"cat src/a.ts > {t}/a.ts 2>/dev/null", "git log -1 2>&1 | head -3",
+                        "git diff --quiet || echo changed", "git log --author='A B' --grep=fix"]:
+            with self.subTest(command=command):
+                decision = self.decide(command=command)
+                self.assertEqual(decision["decision"], "allow", decision["reason"])
+                self.assertIsNone(decision["change"])                    # a read reaches no ledger
+
+    def test_every_other_shell_command_is_refused_declared_or_not(self):
+        t = tempfile.gettempdir()
+        for command in [
+            # What the reviews of af9b011 ran past the classifier, and scratch work a read-only agent doesn't do.
+            "npm version patch", "npm test -- -u", "npm run build", "npm publish", "make", "black .", "ruff format .",
+            "cargo fmt", "go fmt ./...", f"python3 {t}/probe.py", f"bash {t}/p.sh", "gh pr merge 12",
+            "gh pr review 12 --approve", "gh api repos/o/r/pulls/1/merge -X PUT", "git diff HEAD~1 --output=src/a.ts",
+            "git diff HEAD~1 '--output=src/a.ts'", 'git diff HEAD~1 --out""put=src/a.ts', f"cp src/a.ts {t}/a.ts",
+            f"git init -q {t}/probe",
+            # git beyond its reads, or told to run a program.
+            "git commit -m x", "git stash", "git checkout -- src", "git branch x", "git tag v1",
+            "git config user.name x", "git reflog expire --all", "git -c core.pager=cat log",
+            "git --exec-path=/tmp log", "git diff --ext-diff", "git grep -O reserve",
+            "git grep --open-files-in-pager=vi x", "gh pr view 12 --web",
+            # A glob or a brace can expand into an option: a planted file named --output=x.
+            "git diff *", "git diff --out{put,x}=f", "find *", "sort *",
+            # What runs another command, or a command the gate can't name before it runs.
+            "sh -c 'git diff'", "eval git log", "exec git log", "env git log", "sudo cat x", "xargs cat < list.txt",
+            "time git log", "./git log", "/usr/bin/git log", '"$GIT" log', "$(echo git) log", "git status $(touch x)",
+            "cat `touch x`", "cat <<EOF\n$(rm -rf src)\nEOF", "A=1; git log", "GIT_EXTERNAL_DIFF=x git diff",
+            "for f in a b; do cat $f; done", 'git log "$BASE"', "git log 'unterminated", "(rm -rf src)",
+            "cat <(rm -rf src)",
+            # Writes through a read's own options or its output, and a write after a read.
+            "echo x > src/a.ts", "git diff > d.patch", "git log >> ~/notes.txt", "cat src/a.ts | tee copy.txt",
+            "find . -name '*.log' -delete", "find . -exec cat {} \\;", "find . -fprint list.txt",
+            "sort -o out.txt in.txt", "sort --output=out.txt in.txt", "awk '{print > \"f\"}' a", "sed -n 1p a",
+            # A read that runs a program: sort compresses its temporary files with one.
+            "sort --compress-program=sh big.txt",
+            # A repository under the temp directory runs its config's programs (core.fsmonitor on git status),
+            # so a redirect never writes into a git directory, scratch or not.
+            f"echo '[core]' > {t}/repo/.git/config", f"cat x >> {t}/wt/.git",
+            "git diff; rm -rf src", "git diff && npm install", "git diff | sh", "git log\nrm -rf src",
+        ]:
+            for agent in (self.SCOUT, self.REVIEWER):
+                with self.subTest(command=command, agent=agent):
+                    decision = self.decide(agent=agent, command=command)
+                    self.assertEqual(decision["decision"], "deny")
+                    self.assertIsNone(decision["change"])                # nothing reaches the ledger
+
+    def test_an_editor_tool_writes_only_under_the_temp_directory_or_the_scratchpad(self):
+        # Their tool lists hold no editor; the gate holds if one arrives. The Claude config directory, which a
+        # declared main conversation may write, is not scratch for a read-only agent.
+        t, pad = tempfile.gettempdir(), "/seams-test-scratchpad/s1/scratchpad"
+        self.assertEqual(self.decide("Write", agent=self.SCOUT, file_path=f"{t}/notes.md", content="x")["decision"], "allow")
+        self.assertEqual(self.decide("Write", agent=self.SCOUT, scratchpad=pad, file_path=f"{pad}/n.md",
+                                     content="x")["decision"], "allow")
+        # The config directory as it lies, outside the temp directory (the tests' own config dir is a mkdtemp).
+        for path in ("/proj/src/a.ts", "README.md", "/home/u/.claude/settings.json", "/home/u/.claude/CLAUDE.md",
+                     "/etc/hosts"):
+            for tool in ("Edit", "Write", "MultiEdit"):
+                with self.subTest(path=path, tool=tool):
+                    decision = self.decide(tool, agent=self.SCOUT, file_path=path, content="x")
+                    self.assertEqual(decision["decision"], "deny")
+                    self.assertIsNone(decision["change"])
+        self.assertEqual(self.decide("NotebookEdit", notebook_path="/proj/n.ipynb", new_source="x")["decision"], "deny")
+        # Nor into a git directory, even under the temp directory: its config names programs git runs.
+        reason = self.decide("Write", agent=self.SCOUT, file_path=f"{t}/repo/.git/config", content="x")["reason"]
+        self.assertIn("inside a git directory", reason)
+
+    def test_powershell_and_a_monitor_watch_keep_to_the_same_reads(self):
+        for command, expected in (("Get-Content README.md", "allow"), ("git log", "allow"),
+                                  ("Remove-Item src -Recurse", "deny"), ("npm version patch", "deny")):
+            with self.subTest(command=command):
+                self.assertEqual(self.decide("PowerShell", command=command, description="x")["decision"], expected)
+        t = tempfile.gettempdir()
+        for tool_input, expected in (({"command": f"tail -f {t}/server.log"}, "allow"),
+                                     ({"command": "tail -f server.log | tee src/copy.txt"}, "deny"),
+                                     ({"command": "npm run dev"}, "deny"),
+                                     ({"ws": {"url": "wss://events.example.com/stream"}}, "allow")):
+            with self.subTest(tool_input=tool_input):
+                self.assertEqual(self.decide("Monitor", description="watch", **tool_input)["decision"], expected)
 
     def test_other_agents_keep_the_ledgers_rule(self):
         # A built-in agent, and an agent of the user's own that happens to share a bare name, are not Seams'.
         for agent in ("general-purpose", "Explore", "reviewer", "scout", "other-plugin:reviewer"):
             with self.subTest(agent=agent):
-                decision = self.decide(event("Edit", agent_id="a1", agent_type=agent, file_path="/proj/src/a.ts"))
+                decision = self.decide("Edit", agent=agent, file_path="/proj/src/a.ts")
                 self.assertEqual(decision["decision"], "allow")
                 self.assertEqual(decision["change"]["path"], "/proj/src/a.ts")
+                self.assertEqual(self.decide(agent=agent, command="npm version patch")["decision"], "allow")
         undeclared = gate.decide_pre_tool_use(event("Edit", agent_id="a1", agent_type="general-purpose",
                                                     file_path="/proj/src/a.ts"),
                                               gate.empty_ledger("s1"), config_dir=self.config)
@@ -1048,7 +1118,10 @@ class ReadOnlyAgents(unittest.TestCase):
             with self.subTest(agent=agent):
                 ev = event("Edit", agent_id="a1", file_path="/proj/src/a.ts")
                 ev["agent_type"] = agent
-                self.assertEqual(self.decide(ev)["decision"], "allow")
+                self.assertEqual(self.decide_event(ev)["decision"], "allow")
+
+    def decide_event(self, ev):
+        return gate.decide_pre_tool_use(ev, self.ledger, config_dir=self.config)
 
 
 class MonitorCommands(unittest.TestCase):

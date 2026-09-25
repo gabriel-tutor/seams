@@ -628,7 +628,7 @@ class ScenarioFilesTest(unittest.TestCase):
     def test_a_scenario_that_expects_an_agent_has_an_agent_grader_that_agrees(self):
         # The eval's grader on Agent and the harness's `agents` expectation name the same agents the plugin ships.
         # A plugin's agent cannot run without the plugin, so its grader is an indicator (arm: with-only), as the
-        # Skill grader is, and never pushes the baseline's score down.
+        # Skill grader is, and never pushes the no-plugin arm's score down.
         harness = load_harness()
         shipped = {f"matt-pocock-workflow:{p.stem}" for p in (harness.PLUGIN / "agents").glob("*.md")}
         expecting = []
