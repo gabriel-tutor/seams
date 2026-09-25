@@ -936,9 +936,12 @@ class PostReviewsTest(unittest.TestCase):
         self.assertEqual(self.calls(), [])
 
     def test_a_limit_that_resets_far_off_is_not_waited_for(self):
-        # The primary limit, run dry: its reset can be most of an hour away.
+        # The primary limit, run dry: its reset can be most of an hour away. The run names the minute
+        # GitHub's reset falls in. The reset is put at a minute's 59th second on purpose: the wait runs
+        # a second past it, and a lift time taken from the wait's end named the next minute there, so
+        # this test failed whenever it started in a minute's last second.
         self.evidence(1)
-        reset = int(time.time()) + 3600
+        reset = int(time.time()) // 60 * 60 + 3600 + 59
         self.state["posts"]["o/r#1"] = [{"status": 403, "message": "API rate limit exceeded",
                                          "headers": {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(reset)}}]
         self.save()

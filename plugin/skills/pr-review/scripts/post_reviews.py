@@ -84,19 +84,24 @@ def rate_limited(status: int, headers: dict, body) -> bool:
                                      or headers.get("x-ratelimit-remaining") == "0")
 
 
-def delay(headers: dict, backoff: float, blocks: int) -> float:
-    """What GitHub asks: retry-after's seconds, or until the primary limit resets; otherwise a
-    backoff that doubles with each block of this review."""
+def delay(headers: dict, backoff: float, blocks: int) -> "tuple[float, float]":
+    """What GitHub asks, as the seconds to wait and the time its limit lifts: retry-after's seconds,
+    or until the primary limit resets (the wait runs a second past the reset, which is the lift
+    time); otherwise a backoff that doubles with each block of this review."""
+    now = time.time()
     try:
-        return max(0.0, float(headers["retry-after"]))
+        wait = max(0.0, float(headers["retry-after"]))
+        return wait, now + wait
     except (KeyError, ValueError):
         pass
     if headers.get("x-ratelimit-remaining") == "0":
         try:
-            return max(0.0, float(headers["x-ratelimit-reset"]) - time.time()) + 1
+            reset = float(headers["x-ratelimit-reset"])
+            return max(0.0, reset - now) + 1, reset
         except (KeyError, ValueError):
             pass
-    return backoff * 2 ** (blocks - 1)
+    wait = backoff * 2 ** (blocks - 1)
+    return wait, now + wait
 
 
 def submit(review: dict) -> "tuple[int, dict, object]":
@@ -228,9 +233,9 @@ def post_one(review: dict, viewer: str, pace: Pace, args) -> "tuple[bool, str | 
             print(f"not posted: {review['name']}: GitHub still blocks it after {blocks} tries "
                   f"(HTTP {status}: {message(body)})")
             return False, "since GitHub is still blocking posts: run this again later"
-        wait = delay(headers, args.backoff, blocks)
+        wait, lifts = delay(headers, args.backoff, blocks)
         if wait > args.backoff * 2 ** (args.tries - 1):
-            at = time.strftime("%H:%M", time.localtime(time.time() + wait))
+            at = time.strftime("%H:%M", time.localtime(lifts))
             print(f"not posted: {review['name']}: GitHub's rate limit lifts at {at} "
                   f"(HTTP {status}: {message(body)}); run this again then")
             return False, f"since GitHub's rate limit lifts at {at}"
