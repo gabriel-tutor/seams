@@ -23,7 +23,8 @@ The issue tracker and the triage labels should already be in context (`docs/agen
    - **Rollout and migration:** what changes shape (data, config, a public interface), how it's rolled out (expand–contract, a flag, a cutover), and how it's reversed.
    - **Observability:** how a person will know it's broken in use, and what gets logged at the boundaries.
    - **Release** (only when the work has a deployment target: a host, a store, a registry, a marketplace): the target, the environments it passes through, and what the first deploy is; for a new app, the walking skeleton's. The last ticket from `matt-pocock-workflow:to-tickets` takes the integrated candidate through `matt-pocock-workflow:release` on this basis.
-4. **Publish.** Show the user the spec's title and where it will go (the path or tracker location the issue-tracker config names), and wait for a yes. Then publish it there and apply the `ready-for-agent` triage label; no further triage is needed.
+4. **Publish.** Show the user the spec's title and where it will go (the path or tracker location the issue-tracker config names), and name the commit that follows: the spec when it is a file, the progress file, and the grill's `CONTEXT.md` and ADR changes. Wait for a yes. Then publish it there and apply the `ready-for-agent` triage label; no further triage is needed.
+5. **Progress file.** Update the feature's progress file, `.scratch/<feature>/progress.md`, in the format of `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md`, creating it if the grill didn't: `Stage: designed`, the spec's path or URL under `## Spec`, `Next` the split into tickets through `matt-pocock-workflow:to-tickets`, `Updated` today. Decisions and pointers only: never a secret, a token or personal data. Then commit the files the question named, by name, with a message that names the spec.
 
 ## Spec template
 

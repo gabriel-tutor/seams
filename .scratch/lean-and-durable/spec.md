@@ -151,7 +151,7 @@ Seams 3.3 keeps the workflow exactly as it is, and makes it lean and durable.
   - `to-spec` sets the stage to designed and points to the spec.
   - `to-tickets` records the ticket list and the next unblocked ticket.
   - `implement` records the ticket in progress, the candidate and the stage reached. After the last ticket it sets `done`, unless the spec has a Release section, in which case `release` sets `done` at its operations handover.
-  - `finishing-a-development-branch` records integration.
+  - `finishing-a-development-branch` records integration. For that, Seams adapts it from its Superpowers copy; the other three copies stay byte-identical (decision 19, settled while building ticket 05).
 - **When it's committed:** with the work it describes, by name. The spec commit covers the grill's record and the spec, and each ticket's commit covers that ticket's progress. `to-spec` and `to-tickets` commit their own files after the publish yes, and the question names the commit.
 - **A `pr-review` batch** keeps a progress file of the same shape in the batch's evidence root: which pull requests are pinned, and each one's step (checked, reviewed, drafted, posted). Re-invoking `/pr-review` on the same pull requests continues the batch.
   - It reuses every pull request whose head hasn't moved and whose review finished.
@@ -159,12 +159,12 @@ Seams 3.3 keeps the workflow exactly as it is, and makes it lean and durable.
   - A pull request whose head moved is reviewed afresh, as today.
 - **The resume note:**
   - The session-start hook runs at `startup`, `resume`, `clear`, `compact` and `fork`. After the bootstrap, it adds a resume note built from the `active` progress files of the session's repository and the repository's unfinished `pr-review` batch.
-  - It lists three entries at most, newest `Updated` first. Each entry has the feature, its stage, its next step and the file's path.
+  - It lists three entries at most, newest `Updated` first. Each entry has the feature, its stage, the ticket in progress when there is one, its next step and the file's path.
   - It stays under 1,500 characters, and the whole injection stays well under Claude Code's 10,000-character hook cap.
-  - It is framed as data from files in the repository. Every field is capped at 200 characters, flattened to one line and stripped of markup.
+  - It is framed as data from files in the repository. Every field is capped at 200 characters (a ticket, named by its number or id, at 60), flattened to one line and stripped of markup.
   - A file that doesn't parse is skipped.
   - When at least one entry exists, the hook also returns a one-line `systemMessage` for the user: "Seams: resuming <feature> (<stage>): <next>".
-- **The resume note is a pointer, not the truth.** Every flow skill re-reads the spec, the tickets and the git state before acting on it, and reports a mismatch instead of acting on the note.
+- **The resume note is a pointer, not the truth.** Every flow skill re-reads the spec, the tickets and the git state before acting on it, and reports a mismatch instead of acting on the note. When they agree, a ticket in progress continues without `implement`'s gate question, because the yes given when it started still covers it (decision 20, settled while building ticket 05).
 - The ledger keeps today's rules: reset at `startup` and `clear`, kept at `compact` and `resume`. A fork is a new session, so it starts with an empty ledger.
 
 ### Leaner skills

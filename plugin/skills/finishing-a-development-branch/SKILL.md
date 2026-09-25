@@ -103,8 +103,13 @@ If tests fail on the merged result: stop, leave the worktree and branch in
 place, and investigate — nothing has been pushed, so the merge is local
 and recoverable.
 
-Once the merged result is green: clean up the worktree (Step 6), then
-delete the branch:
+Once the merged result is green, record integration in the feature's
+progress file when the work has one (`.scratch/<feature>/progress.md`, in
+the format of `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md`):
+set `Stage: integrated`, `Next` to the next unblocked ticket or the
+release, and `Updated` to today, then commit it by name on <base-branch>.
+Decisions and pointers only: never a secret, a token or personal data.
+Then clean up the worktree (Step 6), and delete the branch:
 
 ```bash
 git branch -d <feature-branch>
@@ -223,3 +228,5 @@ place. If your platform provides a workspace-exit tool, use it.
 | "The merged-result failure is probably flaky" | A failing merged result stops everything. Branch and worktree stay put while you investigate. |
 | "The base branch is obviously main" | Confirm the fork point or ask. Merging into the wrong base is expensive to undo. |
 | "The push was rejected — force-push will fix it" | A rejected push means the remote moved. Investigate; force-push only on your human partner's explicit request. |
+
+Adapted from Superpowers' `finishing-a-development-branch` skill (github.com/obra/superpowers, version 6.3.0), MIT License, Copyright (c) 2025 Jesse Vincent; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.

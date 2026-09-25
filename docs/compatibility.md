@@ -16,7 +16,7 @@ The plugin under test is this repository at the commit that last changed this fi
 | Shell | bash 3.2.57 at `/bin/bash` (the shell suites run under the system bash; nothing in them needs bash 4) |
 | Claude Code | 2.1.272 (`claude plugin validate --strict`, `claude plugin` install, update, enable and disable against a throwaway `CLAUDE_CONFIG_DIR`, the headless runs; the model those runs reported is `claude-opus-5[1m]`, recorded per run in `results.jsonl`) and, on 2026-09-18, 2.1.276 (the suite, and the fresh install below); on 2026-09-19, 2.1.278 (the suite, and the eval passes) |
 | Matt Pocock's skills | github.com/mattpocock/skills at commit `3cca18b368ae95cdbdebbff572ccafa662551015` (2026-09-04), every skill at that one commit; installed through skills-manager as symlinks from `~/.claude/skills/<name>` to its store (the installer's own path, skills.sh 1.5.26, lays them out the same way); file hashes below |
-| Superpowers alongside | 6.3.0, enabled, from the `claude-plugins-official` marketplace; the four copied skills are byte-identical to its cache (`scripts/tests/test_plugin.sh` checks) |
+| Superpowers alongside | 6.3.0, enabled, from the `claude-plugins-official` marketplace; three of the four skills taken from it are byte-identical to its cache, and the adapted `finishing-a-development-branch` records the original's checksum, which the cache confirms (`scripts/tests/test_plugin.sh` checks both) |
 
 The nine Matt Pocock skills the plugin invokes with the Skill tool, as installed (SHA-256 of each `SKILL.md`; the hook and the installer check that every one of them exists, not their hashes):
 

@@ -445,6 +445,25 @@ class JudgeTest(unittest.TestCase):
                                     commands=["cat .scratch/gift-cards/progress.md; git status --short"], result=asked))
         self.assertEqual(code, 0, report)
 
+    def test_a_resumed_ticket_must_read_its_progress_file_and_take_up_the_recorded_finding(self):
+        implement = "matt-pocock-workflow:implement"
+        progress = "/runs/1/workspace/.scratch/coupons/progress.md"
+        continued = ("Resuming coupons ticket 02: the file, the ticket and git agree, and HEAD is the candidate. "
+                     "The review found FLAT5's minimum checked against the tier-discounted total, so the failing "
+                     "test for 20 units at 102 cents comes first.")
+        code, report = judge(record("resume-ticket", 1, skill=implement, reads=[progress], text=continued),
+                             record("resume-ticket", 2, skill=implement,
+                                    reads=["/runs/2/workspace/.scratch/gift-cards/progress.md"], text=continued),
+                             record("resume-ticket", 3, skill=implement, reads=[progress],
+                                    text="Starting ticket 02: FLAT5 takes 500 cents off from a 2000-cent subtotal."),
+                             record("resume-ticket", 4, skill="matt-pocock-workflow:grill", reads=[progress],
+                                    text=continued))
+        self.assertEqual(code, 1)
+        self.assertIn("1 of 4", report)
+        self.assertRegex(report, r"miss\s+run 2: never read a file matching .*coupons")
+        self.assertRegex(report, r"miss\s+run 3: the reply does not mention .*tier")
+        self.assertRegex(report, r"miss\s+run 4: first skill matt-pocock-workflow:grill, expected " + implement)
+
     def test_a_scenario_without_an_expectation_file_fails_loudly(self):
         code, report = judge(record("no-such-scenario", 1, skill=self.TRIVIAL))
         self.assertEqual(code, 1)

@@ -2,8 +2,9 @@
 
 Status: active
 Stage: integrated
-Next: Implement ticket 05 (specs, tickets and builds keep the progress file) in a fresh session; tickets 02, 03 and 06 are also unblocked.
+Next: Review ticket 05's commit against the fixed point f9c0050, then its fixes, the approved paid live runs and the ticket's record.
 Updated: 2026-09-25
+Ticket: 05
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`), and ticket 04 (the progress file and the resume note), integrated on local `main`, not pushed; its record is in the ticket's Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
@@ -59,6 +60,8 @@ Updated: 2026-09-25
     Paid eval runs are asked before each run.
 17. Release: 3.2.1 is released first, through `release` and the user's yes. Phase 1 ships as 3.3.0, and later phases as 3.4, 3.5 and 3.6.
 18. A bounded change's grill (the next step is `tdd`: no spec, no `implement`) closes its own progress file: its `Next` says to set `Status: done` in the commit that ships the change. Every grill keeps the file. (The user's choice while building ticket 04, 2026-09-25.)
+19. `finishing-a-development-branch` becomes a Seams adaptation of the Superpowers copy, so the skill that merges also records integration. The other three Superpowers copies stay byte-identical. (The user's choice while building ticket 05, 2026-09-25.)
+20. A ticket resumed in a fresh session continues without `implement`'s gate question when the progress file's ticket, branch and candidate match the git state: the yes given when the ticket started still covers it. A mismatch is reported and asked about instead. (The user's choice while building ticket 05, 2026-09-25.)
 
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.

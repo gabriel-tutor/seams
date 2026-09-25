@@ -90,17 +90,20 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    I{which ticket,<br/>which branch?} --> WT["using-git-<br/>worktrees"]
+    I{which ticket,<br/>which branch?<br/>a ticket in progress resumes<br/>at its recorded step} --> WT["using-git-<br/>worktrees"]
     WT --> RG["tdd: red → green,<br/>one slice at a time"]
     RG --> CHK["typecheck<br/>full suite"]
     CHK --> CM["commit the ticket's files by name<br/>(unrelated dirty files: listed as excluded)"]
     CM --> CR["code-review of the candidate<br/>merge-base…HEAD · Standards ‖ Spec<br/>(an empty diff is reported, not reviewed)"]
     CR -->|findings| FX["verify each finding against the code<br/>fix → commit → re-run the affected checks"] --> CR
-    CR -->|clean| DOD["Definition of done, with evidence<br/>candidate SHA · seam + suite · typecheck · lint<br/>every criterion · no debug leftovers · docs · commit message"]
+    CR -->|clean| REC["record commit<br/>the progress file: stage reached,<br/>next ticket"] --> DOD["Definition of done, with evidence<br/>candidate SHA · seam + suite · typecheck · lint<br/>every criterion · no debug leftovers · docs · commit message"]
+    CM -.ticket · candidate · next step.-> PF[(progress file<br/>.scratch/feature/progress.md)]
+    FX -.findings to fix.-> PF
     DOD --> V["verification-<br/>before-completion"]
     V --> H["Handover<br/>1 run it · 2 try it · 3 what changed<br/>4 next, with the stage: built or integrated"]
     H -->|next ticket| N{continue<br/>or /clear?} --> I
     H -->|on a branch| F{merge · PR<br/>· keep?} --> M([integrated])
+    F -.merged: stage integrated.-> PF
     H -->|on the base branch| M
     M -->|ship it| REL["release, part 4"]
 ```
@@ -158,7 +161,7 @@ The same flow, as a table:
 | Review a pull request, or several at once | you type `/pr-review <number or URL> [...]`, `/pr-review open` or `/pr-review requested`: checks on head and baseline, a proven review per PR, posted on your yes, and a ready-to-merge answer per PR (see [Reviewing pull requests](#reviewing-pull-requests)) |
 | Foggy effort, issues someone else wrote, upkeep | Claude suggests `/wayfinder`, `/triage`, `/improve-codebase-architecture` |
 
-Matt Pocock's skills own design, tests, bugs, review and the domain model; the plugin invokes them by name. Seams' own `to-spec`, `to-tickets` and `implement` are adaptations of his three (MIT, attributed with the upstream commit and file hashes in [`plugin/THIRD_PARTY_NOTICES.md`](plugin/THIRD_PARTY_NOTICES.md); [ADR-0002](docs/adr/0002-seams-owned-flow-skills.md)), so nothing reads his user-only files at runtime. Four Superpowers skills cover what neither collection had: `using-git-worktrees`, `verification-before-completion` (verify), `finishing-a-development-branch` (finish) and `receiving-code-review`; they ship inside this plugin as unmodified copies, so the Superpowers plugin itself is optional. Keep it enabled if you like: the gate does not open for a Superpowers skill, so `brainstorming` or `writing-plans` running first leaves the project closed until `grill` or `to-spec` runs, and `references/routing.md` names which of Matt Pocock's skills wins each overlap.
+Matt Pocock's skills own design, tests, bugs, review and the domain model; the plugin invokes them by name. Seams' own `to-spec`, `to-tickets` and `implement` are adaptations of his three (MIT, attributed with the upstream commit and file hashes in [`plugin/THIRD_PARTY_NOTICES.md`](plugin/THIRD_PARTY_NOTICES.md); [ADR-0002](docs/adr/0002-seams-owned-flow-skills.md)), so nothing reads his user-only files at runtime. Four Superpowers skills cover what neither collection had: `using-git-worktrees`, `verification-before-completion` (verify), `finishing-a-development-branch` (finish) and `receiving-code-review`; they ship inside this plugin, three as unmodified copies and `finishing-a-development-branch` as an adaptation that also records integration in the feature's progress file (attributed in the notices), so the Superpowers plugin itself is optional. Keep it enabled if you like: the gate does not open for a Superpowers skill, so `brainstorming` or `writing-plans` running first leaves the project closed until `grill` or `to-spec` runs, and `references/routing.md` names which of Matt Pocock's skills wins each overlap.
 
 Three rules apply on every path: questions go through the clickable question tool with the recommended answer first; test seams are settled in the grill, so `tdd` doesn't ask again; and every chained step (`to-spec`, `to-tickets`, `implement`, `release`) asks before it starts and before it publishes or deploys anything.
 
@@ -305,7 +308,7 @@ The platform itself refuses to let the model start the skill. What those runs di
 
 ## Layout
 
-- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_gate.py`, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptSubmit and Stop hooks), `skills/` (the bootstrap with `references/routing.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, `pr-review` (typed by hand only, with its three scripts), the four Superpowers copies), `evals/` (below), `THIRD_PARTY_NOTICES.md`
+- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_gate.py`, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptSubmit and Stop hooks), `skills/` (the bootstrap with `references/routing.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, `pr-review` (typed by hand only, with its three scripts), the four skills from Superpowers: three copies and one adaptation), `evals/` (below), `THIRD_PARTY_NOTICES.md`
 - `.claude-plugin/marketplace.json` — makes this repo a single-plugin marketplace
 - `scripts/install.sh` — the one-command installer; `scripts/behavior_test.py` — the routing-test harness; `scripts/test.sh` and `scripts/tests/` — the test suites
 - `docs/plugin-behavior-tests.md` — the routing evidence and its method; `docs/compatibility.md` — what it was tested with; `docs/adr/` — the decisions; `docs/case-study-web-downloader.md` — one feature end to end on a real repo; `docs/carousel/` — the workflow as five slides for sharing

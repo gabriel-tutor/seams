@@ -46,20 +46,24 @@ SOFTWARE.
 
 ## Superpowers
 
-The four skills below are unmodified copies from Superpowers 6.3.0 (https://github.com/obra/superpowers). They were copied from the Claude Code plugin cache at `claude-plugins-official/superpowers/6.3.0/skills/`.
+Four skills in this plugin come from Superpowers 6.3.0 (https://github.com/obra/superpowers). They were copied from the Claude Code plugin cache at `claude-plugins-official/superpowers/6.3.0/skills/`.
 
-This plugin never edits them. To check that they are still identical, run `shasum -a 256 -c` from `plugin/`, using the checksums below.
+Three of them are unmodified copies, and this plugin never edits them. To check that they are still identical, run `shasum -a 256 -c` from `plugin/`, using the checksums below.
 
 - `skills/using-git-worktrees/SKILL.md`
 - `skills/verification-before-completion/SKILL.md`
-- `skills/finishing-a-development-branch/SKILL.md`
 - `skills/receiving-code-review/SKILL.md`
 
 ```text
 8cfb86f121269e8f7f12361e6795c4f6738828340e28964c9229d365666c9edd  skills/using-git-worktrees/SKILL.md
 2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3  skills/verification-before-completion/SKILL.md
-8db5a922b242dd4e1bf824cb91c13b3e8d8e8a86d6ceaf7f0774eb9cce909d65  skills/finishing-a-development-branch/SKILL.md
 091df1629510af1b92fc4abd6f96732ebedb4cb2c0f3457e8f2740b0504a2438  skills/receiving-code-review/SKILL.md
+```
+
+The fourth, `skills/finishing-a-development-branch/SKILL.md`, is an adaptation, not a copy. It keeps the original's process and adds one step: after a local merge, it records integration in the feature's progress file (ADR 0003, `docs/adr/0003-committed-progress-file.md`). Its last line attributes the original. The original's SHA-256 at 6.3.0 is below; `scripts/tests/test_plugin.sh` compares it with the plugin cache when the cache is present.
+
+```text
+8db5a922b242dd4e1bf824cb91c13b3e8d8e8a86d6ceaf7f0774eb9cce909d65  original: skills/finishing-a-development-branch/SKILL.md
 ```
 
 Superpowers is released under the MIT License:

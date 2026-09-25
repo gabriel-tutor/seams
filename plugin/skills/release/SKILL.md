@@ -53,6 +53,8 @@ Against the environment just deployed, with the output shown:
 
 ## Operations handover
 
+First record the release in the feature's progress file, when the work has one (`.scratch/<feature>/progress.md`, in the format of `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md`): `Stage` the stage reached below and `Updated` today; `Status: done` once the candidate is verified in the last environment the spec's Release section names, and until then `Next` says what is left (an unmet row, the production deploy). Commit it by name. Decisions and pointers only: never a secret, a token or personal data.
+
 The closing message, in this order:
 
 1. **Monitoring and alert owner.** Where errors and health are watched, and the person an alert reaches.

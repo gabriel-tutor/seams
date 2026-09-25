@@ -39,6 +39,7 @@ The issue tracker and the triage labels should already be in context (`docs/agen
    Every ticket gets a **How to verify** line after its acceptance criteria: the command, or the short manual steps, that prove those criteria are met (`npm test -- coupons`, or "run `npm start`, add two items, apply SAVE10, the total drops 10%"). Reuse the repo's real scripts; if the repo has no test or run command yet, say so in the line instead of inventing one.
 
    Work the **frontier**: any ticket whose blockers are all done. For a purely linear chain that means top to bottom. Do NOT close or modify any parent issue.
+6. **Progress file.** Record the tickets in the feature's progress file, `.scratch/<feature>/progress.md`, in the format of `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md`: the ticket list under `## Tickets` (number, title, blocked by), and `Next` the first unblocked ticket, through `matt-pocock-workflow:implement`, with `Updated` today. Decisions and pointers only: never a secret, a token or personal data. Then commit the tickets (when they are files) and the progress file by name; the approval covers that commit.
 
 ## Ticket templates
 

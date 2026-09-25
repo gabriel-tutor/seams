@@ -9,9 +9,25 @@ Build the work a spec, a ticket or an agreed design describes: tests first at th
 
 ## Gate
 
-Before reading anything, confirm which spec, ticket or agreed design you're building, and where. Offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch. Wait for a yes. Skip this only when the user's last message already names both, or when a yes earlier in this request covered this ticket and where it goes ("build all three on main").
+Before reading anything, confirm which spec, ticket or agreed design you're building, and where. Offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch. Wait for a yes. Skip this only when the user's last message already names both, when a yes earlier in this request covered this ticket and where it goes ("build all three on main"), or when you resume a ticket in progress whose state matches its progress file (Resuming, below).
 
 Then note the starting point, which the review's fixed point needs: the current branch, its base branch, and `git rev-parse HEAD`.
+
+## Progress file
+
+The feature's progress file, `.scratch/<feature>/progress.md` beside its spec, is how a fresh context continues this ticket after `/clear` or compaction. Read its format in `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` before the first write, and create the file if the feature has none. Keep it current at each step below, with `Updated` set to today, and stage it by name with each of the ticket's commits. Decisions and pointers only: never a secret, a token or personal data.
+
+- **After the gate's yes:** `Ticket` is this ticket's number, and `Next` names the branch and the starting commit.
+- **After each commit:** `Candidate` is its short SHA, and `Next` is the step that follows, with the SHAs it needs: the review against the fixed point, the fixes, or the definition of done. After the review, list the findings you act on under `## Review`, one line each with its file and line, until they are fixed.
+- **The record:** just before the definition of done, commit the file with `Stage` set to the stage reached (built on a branch, integrated on the base branch), this ticket marked done in its ticket list, `Ticket`, `Candidate` and `## Review` removed, and `Next` naming the next unblocked ticket and whether to `/clear` before it. When nothing is left to build (the last ticket, or a design built in one go), set `Status: done` instead, unless the spec has a Release section; then `Next` is the release, through `matt-pocock-workflow:release`.
+
+## Resuming
+
+When the resume note or the user points at a ticket that its progress file records in progress (`Ticket` set), continue it instead of starting over:
+
+1. Read the progress file, then the ticket and the spec, and the git state: the branch, `git status --short`, `git log --oneline -5`.
+2. Where they disagree with the file (another branch, a `Candidate` not in the history, commits after it that the file doesn't mention, a ticket already done), report the mismatch and ask how to go on. Never act on the file instead.
+3. Where they agree, the yes given when the ticket started still covers it: don't ask the gate question again. Take the starting point and the fixed point from `Next` and the history, and continue from the step `Next` names.
 
 ## Build
 
@@ -37,15 +53,15 @@ Then note the starting point, which the review's fixed point needs: the current 
 
 1. Judge each finding through `matt-pocock-workflow:receiving-code-review`: verify it against the code before acting, and say which findings you are not acting on and why.
 2. For the findings you act on: fix, then commit the fix by the same rules as above (by name, exclusions listed), and re-run the checks the fix affects: the test file at that seam for a change in one place, the full suite and the typecheck when more than one file changed.
-3. The new HEAD is the candidate. Note its SHA; everything below refers to it.
+3. The new HEAD is the candidate; note its SHA.
 
 ## Definition of done
 
-Before claiming the work is done, run `matt-pocock-workflow:verification-before-completion` and confirm each item below, with the command output as evidence. Present the result as a table: the first row names the candidate SHA the evidence was gathered on, then one row per item with the command run and the line of its output that proves it.
+Before claiming the work is done, commit the ticket's record (Progress file, above), so that HEAD is the candidate everything below refers to. Then run `matt-pocock-workflow:verification-before-completion` and confirm each item below, with the command output as evidence. Present the result as a table: the first row names the candidate SHA the evidence was gathered on, then one row per item with the command run and the line of its output that proves it.
 
 | Item | What counts |
 | --- | --- |
-| Candidate | `git rev-parse --short HEAD`, after the last fix commit |
+| Candidate | `git rev-parse --short HEAD`, after the record commit |
 | Tests | the tests at the agreed seams pass, and the full suite passes |
 | Typecheck and lint | typecheck passes; lint passes if the repo has one |
 | Acceptance criteria | every criterion on the ticket or spec is met, checked one by one |

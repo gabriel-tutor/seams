@@ -79,6 +79,34 @@ grep -q 'recieve' "$WS/src/format.ts" && fail "gate-commit: the typo should alre
 [[ "$(porcelain "$WS")" == " M src/format.ts" ]] || fail "gate-commit: exactly one unstaged edit, src/format.ts, expected"
 [[ "$(cd "$WS" && git rev-list --count HEAD)" == "1" ]] || fail "gate-commit should sit on the baseline commit"
 
+# The resume-ticket scenario (ticket 05): coupons ticket 02 stopped after its review. Its commit is HEAD
+# and the progress file's candidate; only the progress file is dirty, as implement leaves it after a
+# commit; the checks are green, and the finding the file records is real (a probe fails at baseline).
+# The resume note lists coupons first, naming ticket 02, then the older gift-cards grill.
+WS=$(prep resume-ticket)
+PF="$WS/.scratch/coupons/progress.md"
+[[ "$(porcelain "$WS")" == " M .scratch/coupons/progress.md" ]] || fail "resume-ticket: only the progress file should be dirty: $(porcelain "$WS")"
+grep -qx "Candidate: $(cd "$WS" && git rev-parse --short HEAD)" "$PF" || fail "resume-ticket: the recorded candidate should be HEAD"
+grep -qx "Ticket: 02" "$PF" || fail "resume-ticket: ticket 02 should be in progress"
+grep -q "tier-discounted total instead of the subtotal" "$PF" || fail "resume-ticket: the review finding should be recorded"
+(cd "$WS" && git show HEAD:.scratch/coupons/progress.md | grep -q "tier-discounted") && fail "resume-ticket: the finding should be in no commit"
+green "$WS" || fail "resume-ticket: tests should pass"
+typecheck "$WS" || fail "resume-ticket: typecheck should pass"
+cat > "$WS/tests/_finding.test.ts" <<'EOF'
+import { expect, it } from "vitest";
+import { addLine, createCart } from "../src/cart";
+import { applyCoupon } from "../src/pricing";
+it("FLAT5 goes by the subtotal: 20 units at 102 cents", () => {
+  expect(applyCoupon(addLine(createCart(), { sku: "W", name: "Widget", unitPriceCents: 102, qty: 20 }), "FLAT5")).toBe(1438);
+});
+EOF
+if (cd "$WS" && npx vitest run tests/_finding.test.ts >/dev/null 2>&1); then fail "resume-ticket: the recorded finding should be real at baseline"; fi
+rm "$WS/tests/_finding.test.ts"
+NOTE=$(printf '{"source":"clear","cwd":"%s","session_id":"prep-resume-ticket"}' "$WS" | "$REPO/plugin/hooks/session-start" \
+  | python3 -c 'import json, sys; c = json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"]; print(c[c.index("## Work in progress"):])')
+[[ $(grep '^- ' <<< "$NOTE" | sed 's/; next:.*//') == $'- coupons: stage integrated, ticket 02 in progress, updated 2026-09-24\n- gift-cards: stage designing, updated 2026-09-20' ]] \
+  || fail "resume-ticket: the note should list coupons (ticket 02) first, then gift-cards: $NOTE"
+
 # Every scenario carries the files the harness reads.
 for dir in "$REPO"/plugin/evals/*/; do
   name="$(basename "$dir")"

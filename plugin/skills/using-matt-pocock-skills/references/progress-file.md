@@ -36,12 +36,23 @@ The header is the `Key: value` lines before the first `##` heading, one line eac
 | `Stage` | `designing` while the grill runs, then the stage reached: designed, built, integrated, release-ready, deployed or operated |
 | `Next` | the next step, in one sentence |
 | `Updated` | the date of the last change, `YYYY-MM-DD`; the note lists the newest three |
-| `Ticket` | optional: the ticket in progress |
-| `Candidate` | optional: the candidate's short SHA |
+| `Ticket` | optional: the ticket in progress, by its number or id (`05`, `#123`) |
+| `Candidate` | optional: while a ticket is in progress, the short SHA of its last commit |
 
-A file without a `Status`, a `Stage`, a `Next` and a dated `Updated` is skipped. The note shows each field as one line of plain text of at most 200 characters, with markup removed, so keep the header plain.
+A file without a `Status`, a `Stage`, a `Next` and a dated `Updated` is skipped. The note shows each field as one line of plain text of at most 200 characters (a ticket in at most 60 characters), with markup removed, so keep the header plain.
 
-After the header come the sections: `## Decisions`, each settled decision with its reason when it isn't obvious; `## Open questions`, the questions still to ask; `## Facts`, what was found that is worth keeping, with a file and line or a URL. A skill may add a section for its own step, such as the ticket list.
+After the header come the sections: `## Decisions`, each settled decision with its reason when it isn't obvious; `## Open questions`, the questions still to ask; `## Facts`, what was found that is worth keeping, with a file and line or a URL. A skill adds a section for its own step, as below.
+
+## Who keeps it
+
+Each flow skill updates the file at its own step and commits it by name with the work it describes:
+
+- `grill`: creates it at the first settled decision (`Stage: designing`) and records each answered round.
+- `to-spec`: `Stage: designed`, the spec's path or URL under `## Spec`, and `Next` the split into tickets; committed with the spec after the publish yes.
+- `to-tickets`: the ticket list under `## Tickets` and `Next` the first unblocked ticket; committed with the tickets after the approval.
+- `implement`: `Ticket` from the gate's yes, `Candidate` after each commit, and the review's findings to fix under `## Review`. Its record commit, just before the definition of done, sets the stage reached, marks the ticket done and removes those three; after the last ticket it sets `Status: done`, unless the spec has a Release section.
+- `finishing-a-development-branch`: `Stage: integrated` after a local merge, committed on the base branch.
+- `release`: the stage reached at its operations handover, and `Status: done` once the last environment the spec's Release section names is verified.
 
 ## Rules
 

@@ -165,7 +165,10 @@ PF="$PLUGIN/skills/using-matt-pocock-skills/references/progress-file.md"
 [[ -f "$PF" ]] || fail "progress-file.md missing"
 must_say progress-file.md "$PF" "\`.scratch/<feature>/progress.md\`" "Status: active" "Stage: designing" "Next: " "Updated: " \
   "\`Ticket\`" "\`Candidate\`" "## Decisions" "## Open questions" "## Facts" "\`done\`" "is skipped" "200 characters" \
-  "Decisions and pointers only" "never a secret" "personal data" "committed" "a pointer, not the truth" "report the mismatch"
+  "Decisions and pointers only" "never a secret" "personal data" "committed" "a pointer, not the truth" "report the mismatch" \
+  "60 characters"
+section_says progress-file.md "$PF" "Who keeps it" "\`grill\`" "\`to-spec\`" "\`## Spec\`" "\`to-tickets\`" "\`## Tickets\`" \
+  "\`implement\`" "\`## Review\`" "record commit" "\`finishing-a-development-branch\`" "\`release\`"
 GRILL="$PLUGIN/skills/grill/SKILL.md"
 section_says grill "$GRILL" Presentation "up to four in one AskUserQuestion call" "A gate, security or destructive question is asked alone"
 section_says grill "$GRILL" "Progress file" "\`.scratch/<feature>/progress.md\`" "references/progress-file.md" \
@@ -175,6 +178,41 @@ section_says grill "$GRILL" Resuming "resume note" "the spec, the tickets" "git 
   "Settled decisions are not asked again" "recorded open questions"
 section_says grill "$GRILL" Done "\`Next\`" "set \`Status: done\` in the commit that ships the change"
 must_say routing.md "$PLUGIN/skills/using-matt-pocock-skills/references/routing.md" "\`.scratch/<feature>/progress.md\`" "progress-file.md"
+
+# The flow skills keep the progress file too (ticket 05). implement records the ticket in progress, each
+# candidate and the review's findings, commits the file with the ticket's commits, and closes the ticket
+# with a record commit that the definition of done then runs on. It resumes a ticket in progress without
+# its gate question when the file and git agree, and reports a mismatch instead of acting on the file.
+IMPL="$PLUGIN/skills/implement/SKILL.md"
+headings_in_order implement "$IMPL" "## Gate" "## Progress file" "## Resuming" "## Build"
+section_says implement "$IMPL" Gate "resume a ticket in progress whose state matches its progress file"
+section_says implement "$IMPL" "Progress file" "\`.scratch/<feature>/progress.md\`" "references/progress-file.md" \
+  "stage it by name with each of the ticket's commits" "\`Ticket\`" "\`Candidate\`" "\`## Review\`" "the stage reached" \
+  "\`Status: done\`" "Release section" "\`matt-pocock-workflow:release\`" "never a secret"
+section_says implement "$IMPL" Resuming "resume note" "the ticket and the spec" "git state" "report the mismatch" \
+  "don't ask the gate question again"
+section_says implement "$IMPL" "Definition of done" "after the record commit"
+# to-spec sets the stage to designed and points to the spec; its publish question names the commit that
+# follows (the spec, the progress file, the grill's glossary and ADR changes), made by name after the yes.
+section_says to-spec "$PLUGIN/skills/to-spec/SKILL.md" Process "name the commit that follows" "the progress file" \
+  "\`CONTEXT.md\`" "ADR" "references/progress-file.md" "\`Stage: designed\`" "\`## Spec\`" \
+  "\`matt-pocock-workflow:to-tickets\`" "never a secret" "commit the files the question named, by name"
+# to-tickets records the ticket list and the first unblocked ticket, and after the approval commits the
+# tickets and the progress file by name.
+section_says to-tickets "$PLUGIN/skills/to-tickets/SKILL.md" Process "references/progress-file.md" "\`## Tickets\`" \
+  "first unblocked ticket" "\`matt-pocock-workflow:implement\`" "never a secret" \
+  "commit the tickets (when they are files) and the progress file by name" "the approval covers that commit"
+# release records the stage it reached in the progress file at its operations handover, and sets it done
+# once the candidate is verified in the last environment the spec's Release section names.
+section_says release "$PLUGIN/skills/release/SKILL.md" "Operations handover" "references/progress-file.md" \
+  "\`Status: done\`" "last environment the spec's Release section names" "what is left" "by name" "never a secret"
+# Each skill that keeps the progress file stays whole in what compaction keeps of an invoked skill: at most
+# 11,000 bytes, about 4,000 tokens (the spec's bound, calibrated from `claude plugin details`). Ticket 08
+# extends the bound to every skill.
+for s in grill to-spec to-tickets implement finishing-a-development-branch release; do
+  size=$(wc -c < "$PLUGIN/skills/$s/SKILL.md" | tr -d ' ')
+  (( size <= 11000 )) || fail "$s/SKILL.md is $size bytes, over the 11,000-byte bound"
+done
 
 # The grill's design lens: present, and referenced from the grill.
 [[ -f "$PLUGIN/skills/grill/references/design-lens.md" ]] || fail "design-lens.md missing"
@@ -256,20 +294,36 @@ must_say design-lens "$PLUGIN/skills/grill/references/design-lens.md" "**A sensi
 for s in to-spec to-tickets implement release; do must_say "$s" "$PLUGIN/skills/$s/SKILL.md" "a yes earlier in this request covered"; done
 must_say release "$PLUGIN/skills/release/SKILL.md" "never skipped"
 
-# The four kept Superpowers skills: present, and matching the checksums recorded in the notices.
-KEPT="using-git-worktrees verification-before-completion finishing-a-development-branch receiving-code-review"
+# The three kept Superpowers skills: present, and matching the checksums recorded in the notices.
+KEPT="using-git-worktrees verification-before-completion receiving-code-review"
 for s in $KEPT; do [[ -f "$PLUGIN/skills/$s/SKILL.md" ]] || fail "missing copied skill: $s"; done
-SP_SUMS=$(grep -E '^[0-9a-f]{64}  skills/[a-z-]+/SKILL\.md$' <<< "$(section Superpowers "$NOTICES")") \
+SP_SECTION=$(section Superpowers "$NOTICES")
+SP_SUMS=$(grep -E '^[0-9a-f]{64}  skills/[a-z-]+/SKILL\.md$' <<< "$SP_SECTION") \
   || fail "no checksums in the Superpowers section of THIRD_PARTY_NOTICES.md"
-[[ $(wc -l <<< "$SP_SUMS") -eq 4 ]] || fail "expected 4 recorded checksums, got: $SP_SUMS"
+[[ $(wc -l <<< "$SP_SUMS") -eq 3 ]] || fail "expected 3 recorded checksums, got: $SP_SUMS"
 (cd "$PLUGIN" && shasum -a 256 -c <<< "$SP_SUMS" >/dev/null) || fail "a copied skill differs from its recorded checksum"
 
-# ...and identical to the Superpowers 6.3.0 originals whenever that cache is present.
+# finishing-a-development-branch is Seams' adaptation of the Superpowers original (ticket 05): after a local
+# merge it records integration in the feature's progress file. Its last line attributes the original, and
+# the notices record the original's checksum.
+FIN="$PLUGIN/skills/finishing-a-development-branch/SKILL.md"
+section_says finishing-a-development-branch "$FIN" "Step 5: Execute Choice" "record integration" "\`Stage: integrated\`" \
+  "references/progress-file.md" "commit it by name on <base-branch>" "never a secret"
+last=$(grep -v '^[[:space:]]*$' "$FIN" | tail -1)
+[[ $last == *"Superpowers"* && $last == *"6.3.0"* && $last == *"MIT"* && $last == *"Jesse Vincent"* && $last == *"THIRD_PARTY_NOTICES.md"* ]] \
+  || fail "finishing-a-development-branch: the last line does not attribute the Superpowers original: $last"
+FIN_SUM=$(grep -E '^[0-9a-f]{64}  original: skills/finishing-a-development-branch/SKILL\.md$' <<< "$SP_SECTION" | cut -d' ' -f1) \
+  || fail "the notices do not record the checksum of finishing-a-development-branch's original"
+
+# ...and the copies identical to the Superpowers 6.3.0 originals whenever that cache is present, which also
+# confirms the adapted skill's recorded original.
 SP="$HOME/.claude/plugins/cache/claude-plugins-official/superpowers/6.3.0/skills"
 if [[ -d "$SP" ]]; then
   for s in $KEPT; do
     cmp -s "$SP/$s/SKILL.md" "$PLUGIN/skills/$s/SKILL.md" || fail "$s differs from Superpowers 6.3.0"
   done
+  [[ $(shasum -a 256 "$SP/finishing-a-development-branch/SKILL.md" | cut -d' ' -f1) == "$FIN_SUM" ]] \
+    || fail "the recorded original of finishing-a-development-branch is not Superpowers 6.3.0's"
 fi
 
 echo "test_plugin: OK"
