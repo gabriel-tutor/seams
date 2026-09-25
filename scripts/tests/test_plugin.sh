@@ -330,14 +330,12 @@ done
 [[ $INJ_OUT != *skills/prose/* ]] || fail "the injected-command guard flagged prose that only names the syntax: $INJ_OUT"
 INJ_OUT=$(injected_commands "$PLUGIN")
 [[ -z $INJ_OUT ]] || fail "$INJ_OUT"
-# The skills the Skill hooks give the repository facts to are the three that say so, and each says to look up
-# itself any fact the hook did not give (hooks off, or a fact git could not give).
-FACT_SKILLS=$(PYTHONDONTWRITEBYTECODE=1 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import seams_facts
-print(" ".join(sorted(s.split(":", 1)[1] for s in seams_facts.FACT_SKILLS)))' "$PLUGIN/hooks")
-[[ $FACT_SKILLS == "grill implement release" ]] || fail "the hooks give the repository facts to: $FACT_SKILLS"
-for s in $FACT_SKILLS; do
+# implement, the grill and release name the repository facts the Skill hooks give them (the hook suite, section 15,
+# holds the hooks to exactly the skills that name them), say they are a snapshot, and say to look up any fact the hook
+# did not give (hooks off, or a fact git could not give).
+for s in implement grill release; do
   must_say "$s" "$PLUGIN/skills/$s/SKILL.md" "**Repository facts.** As this skill starts, the Seams hook adds the branch" \
-    "Look up yourself any the hook did not give."
+    "They are a snapshot: once git may have moved" "look up yourself any fact the hook did not give."
 done
 # What every session pays for the plugin before any skill fires (lean-and-durable ticket 08): its listing, each skill's
 # and agent's name and description, at most 875 tokens by `claude plugin details` (3.2.1 paid about 1,165). That tool

@@ -42,7 +42,7 @@ Seams 3.3 keeps the workflow exactly as it is, and makes it lean and durable.
   - No skill pins a model or effort level; skills pass the session's level on.
 - **Faster.**
   - The grill asks up to four independent questions at once.
-  - Skills start with read-only facts the hooks add, which cannot stop them, and bundled scripts run without permission prompts.
+  - `implement`, the grill and `release` start with read-only facts the hooks add, which cannot stop them, and bundled scripts run without permission prompts.
   - Reading and research go to read-only subagents that Seams ships.
   - Tickets with no open blockers can be built in parallel worktrees.
 - **Higher quality.**
@@ -210,10 +210,10 @@ Seams 3.3 keeps the workflow exactly as it is, and makes it lean and durable.
 
   Independent reads start in parallel. The main context keeps decisions and edits.
 - **Pre-loading** (changed while building ticket 10, decision 33):
-  - As `implement`, the grill or `release` starts, the Seams hooks add the repository facts as context: the branch, the short HEAD, the first lines of `git status --short`, and the progress files. The Skill hook covers Claude's invocations, and the prompt-expansion hook covers typed ones.
+  - As `implement`, the grill or `release` starts, the Seams hooks add the repository facts as context: the branch, the short HEAD, the first lines of the status (`git status --porcelain`), and the progress files. The Skill hook covers Claude's invocations, and the prompt-expansion hook covers typed ones.
   - No skill injects a shell command (`` !`cmd` ``). Claude Code runs those through the Bash tool, and a session without it aborts the skill. New output on each invocation would also make a re-invocation append the whole skill again.
   - Each git call is fixed and read-only, has a timeout and fails open. No user argument reaches one.
-  - Every skill says to look up a fact the hook did not give.
+  - Each of the three says the facts are a snapshot to re-read once git may have moved, and to look up a fact the hook did not give.
 - **Scripts:** bundled scripts are referenced through `${CLAUDE_SKILL_DIR}` in both the body and an `allowed-tools` rule, so `pr-review`'s scripts run without prompts from any working directory.
 - **Parallel tickets:**
   - When two or more tickets have no open blockers, `implement` offers to build them at once. The user picks the tickets in one multi-select question.

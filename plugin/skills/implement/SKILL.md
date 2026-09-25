@@ -11,13 +11,13 @@ Build the work a spec, a ticket or an agreed design describes: tests first at th
 
 **Delegation.** Reading beyond a few files goes to `matt-pocock-workflow:scout` agents; a review's subagents, `code-review`'s two included, are `matt-pocock-workflow:reviewer` agents. Independent ones start together, in one message, and this context keeps the decisions and the edits.
 
-**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of `git status --short` and the progress files, as git reported them then. Look up yourself any the hook did not give.
+**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of the status and the progress files. They are a snapshot: once git may have moved (a commit, a checkout, a new worktree, a resumed session), run git again, and look up yourself any fact the hook did not give.
 
 ## Gate
 
 Before reading anything, confirm which spec, ticket or agreed design you're building, and where. Offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch. Wait for a yes. Skip this only when the user's last message already names both, when a yes earlier in this request covered this ticket and where it goes ("build all three on main"), or when you resume a ticket in progress whose state matches its progress file (Resuming, below).
 
-Then note the starting point, which the review's fixed point needs: the branch and HEAD from the repository facts (in a new worktree, its branch), and the base branch.
+Then note the starting point, which the review's fixed point needs: the branch and HEAD from the repository facts (in a new worktree, its own branch and HEAD), and the base branch.
 
 An answer typed as a message, rather than picked in AskUserQuestion, starts a new request, and the Seams gate refuses changes until a process skill is invoked for it: when the answer continues this ticket (after a mismatch or an unmet row, say), invoke `matt-pocock-workflow:implement` again before the next change.
 

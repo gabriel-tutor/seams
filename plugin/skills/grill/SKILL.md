@@ -9,7 +9,7 @@ This is Matt Pocock's grilling, presented as clickable questions, every independ
 
 **Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the count of decisions left.
 
-**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of `git status --short` and the progress files, as git reported them then. Look up yourself any the hook did not give.
+**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of the status and the progress files. They are a snapshot: once git may have moved (a commit, a checkout, a new worktree, a resumed session), run git again, and look up yourself any fact the hook did not give.
 
 ## Method
 

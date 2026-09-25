@@ -18,7 +18,8 @@
           {
             "type": "command",
             "command": "python3",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-expansion"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-expansion"],
+            "timeout": 20
           }
         ]
       }
@@ -53,7 +54,8 @@
           {
             "type": "command",
             "command": "python3",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use"],
+            "timeout": 20
           }
         ]
       }

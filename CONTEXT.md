@@ -74,7 +74,7 @@ A feature's durable record of work in progress, kept beside its spec: the grill'
 _Avoid_: state file, work log, notes
 
 **Repository facts**:
-The branch, the short HEAD, the first lines of `git status --short` and the progress files, which the Seams hooks add as context when `implement`, the grill or `release` starts, as git reported them then. Data, like the resume note; a fact the hook did not give is looked up.
+The branch, the short HEAD, the first lines of the status and the progress files, which the Seams hooks add as context when `implement`, the grill or `release` starts. A snapshot, framed as data, with any name holding `<` or `>` left out: a skill re-reads git once it may have moved, and looks up a fact the hook did not give.
 _Avoid_: pre-loaded context, git context
 
 **Resume note**:

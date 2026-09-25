@@ -12,8 +12,11 @@ import sys
 
 sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-import seams_facts as facts  # noqa: E402
 import seams_gate as gate  # noqa: E402
+try:
+    import seams_facts as facts            # the repository facts; a declaration is recorded without them
+except Exception:                          # noqa: BLE001
+    facts = None
 
 
 def handle(event: dict):
@@ -23,7 +26,7 @@ def handle(event: dict):
         gate.save_ledger(session, ledger)
     if event.get("expansion_type") != "slash_command":
         return None
-    return facts.hook_output("UserPromptExpansion", event.get("command_name") or "", event.get("cwd"))
+    return facts and facts.hook_output("UserPromptExpansion", event.get("command_name") or "", event.get("cwd"))
 
 if __name__ == "__main__":
     sys.exit(gate.run_hook(handle))
