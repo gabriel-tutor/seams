@@ -70,10 +70,10 @@ Built 2026-09-25 on local `main`, not pushed. The commits:
 **Decisions made in the build, not settled by the ticket.**
 - **Expansions wait for their prompt,** keyed by `prompt_id`, because Claude Code runs them before the prompt hook that starts the request. An expansion after its prompt hook declares that request directly, since the reference lists that order.
 - **The prompt's parse decides only when no expansion arrived.**
-- **No hint for a message that types its own route** (decision 22): its request is already declared, and the hint would say the next change is refused. Not the user's choice; the user may revert it.
+- **No hint for a message that types its own route** (decision 22): its request is already declared, and the hint would say the next change is refused. The user left it to Claude on 2026-09-25, and it stands.
 - **Skills only the user can type** are read from their SKILL.md frontmatter: the plugin's own file, or the copy in the config directory or the project's `.claude/skills`.
 - **The hint names at most five, plain names only.**
-- **The unit suite's intermittent failure was fixed here,** in `f3a83bb`, though it lies in `pr-review`: the definition of done needs the full suite green, and its run on `c57768e` caught the failure by name for the first time since ticket 04 saw it.
+- **The unit suite's intermittent failure was fixed here,** in `f3a83bb`, though it lies in `pr-review`: the definition of done needs the full suite green, and its run on `c57768e` caught the failure by name for the first time since ticket 04 saw it. The user left this call to Claude too, and it stands.
 
 **Open.**
 - Not exercised live: a stacked command through Seams' hooks in an interactive session, a skill only the user can type lapsing, and an expansion after its prompt hook.
