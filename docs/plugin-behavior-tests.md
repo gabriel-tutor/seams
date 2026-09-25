@@ -844,3 +844,55 @@ Neither run named a model, and the two reported different defaults. No step need
 - A stacked command through Seams' hooks in an interactive session: the capture used only a logging hook.
 - A skill only the user can type, lapsing.
 - An expansion arriving after its prompt hook, which 2.1.282 never does.
+
+## 3.3, ticket 06: pr-review under the cap, scripts without prompts, 2026-09-25
+
+**What changed.** `pr-review`'s SKILL.md went from 26,046 bytes (about 8.8k tokens by `claude plugin details`) to a core of 10,850 bytes (about 3.4k). The core carries:
+- the rules that hold for the whole review;
+- a list naming each of six references with when to read it;
+- the four scripts;
+- the Gate, every step's heading with its gates and must-nots, severity, the verdict and the handover.
+
+140 of 3.2.1's 154 body sentences appear word for word in the core or a reference. The ticket's comments account for the other 14, item by item.
+
+**The deterministic suites.** `scripts/test.sh` passes 9 of 9 with 0 skipped, on Python 3.14.6 and 3.9.6. The static test's new checks each failed first:
+- **The size bound:** failed on 3.2.1's 26,046-byte file.
+- **The limits check:** failed on 3.2.1's claim that a subagent cannot start subagents.
+- **The bytecode guard:** failed on a planted `.pyc`.
+- **The other new checks:** failed before the text they require existed.
+
+**The live runs.** Both ran headless from a fresh clone of `gabriel-tutor/seams` at `3a234bd`:
+- **The command:** `claude -p "/matt-pocock-workflow:pr-review 7"`. PR #7 is the viewer's own closed one-line README change from 3.2's second round.
+- **The plugin:** `--plugin-dir` pointed at the candidate's plugin folder (a `git archive` export), with the installed copy and Superpowers switched off.
+- **Permissions:** `--permission-mode default`, because the user's own settings default to auto. `--settings` allowed git, `gh api`, a few read-only commands and writes under the run's temp directory, and nothing for `python3`, so only the skill's own `allowed-tools` could let its scripts through.
+- **GitHub:** `gh` and `git` shims came first on `PATH` through `CLAUDE_ENV_FILE`, which Claude Code runs before every Bash command. They refused every write to GitHub and logged every call.
+- **The version:** Claude Code 2.1.282; the runtime reported `claude-opus-5-5[1m]`.
+
+The records are under `tests/runs/lean-06/`.
+
+- **Run 1, on `8fbdca2`** ($2.39; 13:17:15 to 13:21:13 UTC):
+  - In the turn that invoked the skill, `run_checks.py` ran twice with no denial: `--help`, then the check run with every path written out.
+  - The model put that run and the risk reviewer in the background, and their notifications began two more turns. In the last one, `review_payload.py` and `gh pr view … --json headRefOid,state` were both refused ("This command requires approval"); the skill pre-approves both. So the `allowed-tools` grant ends with the turn that invoked the skill, and waiting on background work ends that turn, not only a typed message. That is `65c1388`'s fix.
+  - The model never called `batch_report.py`, but its handover said the session had asked for approval to run it.
+  - The review itself: `test` passed on both trees (26 s each). There were two should-fix findings on README line 218: "entirely" leaves the marketplace behind, and the uninstall path drops the step that re-enables Superpowers. There was also a nit. The verdict was comment, the only event on the viewer's own pull request.
+  - Nothing reached GitHub: 36 shim calls, none refused, and #7 has no review. The clone's status and worktree list were the same after the run as before it.
+- **Run 2, on `65c1388`:** ($2.30; 13:30:18 to 13:37:18 UTC):
+  - The whole review stayed in the turn that invoked the skill: one init, one result, 47 model turns.
+  - `run_checks.py` ran in the foreground (`test` passed on both trees, 27 s and 25 s), then `review_payload.py` twice, then `batch_report.py`. None was denied.
+  - The handover opened with the batch report exactly as the script wrote it.
+  - The risk reviewer ran in the foreground, beside `code-review`'s Standards and Spec reviewers.
+  - All six denials came from the harness's settings, on other commands:
+    - the model's two `${TMPDIR:-/tmp}` probes;
+    - `printenv`;
+    - its own `python3 -c` one-liner;
+    - a compound `git config` read;
+    - `claude plugin --help` while trying the change.
+  - The review: comment (the only event on the viewer's own pull request), with 0 blocking, 2 should-fix, 1 nit and 1 question, the same two README gaps as run 1. The run then re-checked the head and asked in text whether to post: `COMMENT` or don't post.
+  - It also found a bug in `review_payload.py` from 3.2.1: a suggestion is always wrapped in a three-backtick fence (lines 185–186 and 216), so a suggestion that holds its own fenced block ends early on GitHub. The run rewrote its own suggestion as one line. The bug is recorded as open in the ticket.
+  - Nothing reached GitHub (39 shim calls, none refused; #7 still has no review), and the clone was the same afterwards.
+
+**Not exercised live.**
+- Posting, which after a typed answer (the headless form of the question) is outside the grant by design, as the core says.
+- A batch, which ticket 07 runs live.
+- An interactive session, where AskUserQuestion keeps the answer inside the turn.
+- The `${TMPDIR:-/tmp}` expansions in 3.2.1's own Checkout wording, which default mode refuses ("Contains expansion"). Both runs worked around them with absolute paths. Ticket 10's pre-loaded facts are the place for the temp directory.

@@ -2,13 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: Rerun the live headless pr-review of closed PR #7 (paid: ask first) on main's commit after 8fbdca2, then the record commit and the definition of done.
+Next: Implement ticket 08 in a fresh session, then 07: both are unblocked now. 08 first, since 09 to 14 wait on it and its shorter descriptions give 07 room in pr-review's core.
 Updated: 2026-09-25
-Ticket: 06
-Candidate: bb5a825
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell) and ticket 03 (typed skills, the lapse hint, the done-check as feedback), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback) and ticket 06 (pr-review under the cap, scripts without prompts), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -95,7 +93,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 03 | Typed skills, the lapse hint, a calmer done-check (sensitive; done, on local `main`) | 01 |
 | 04 | Progress file and resume note, end to end through the grill (done, on local `main`) | 01 |
 | 05 | Specs, tickets and builds keep the progress file (done, on local `main`) | 04 |
-| 06 | pr-review under the cap, scripts without prompts | 01 |
+| 06 | pr-review under the cap, scripts without prompts (done, on local `main`) | 01 |
 | 07 | A pr-review batch resumes | 04, 06 |
 | 08 | Every skill under the bound, lighter always-on cost | 06 |
 | 09 | Read-only agents and explicit delegation | 08 |
@@ -151,6 +149,6 @@ All from the Claude Code docs mirror at `/Users/gabrieltutor/claude-docs/code.cl
 - Hook `additionalContext` is capped at 10,000 characters and should be written as facts. `SessionStart` sources are `startup`, `resume`, `clear`, `compact` and `fork`. `PreCompact` can only block. `PostCompact` has no decision control. (`hooks`)
 - Skill frontmatter includes `model`, `effort`, `context: fork`, `agent`, `background`, `paths`, `hooks` and `when_to_use`. Descriptions are capped at 1,536 characters, and the skill listing gets 1% of the context window. `/skill-doctor` needs v2.1.252 or later. (`skills`)
 - A plugin output style with `force-for-plugin: true` overrides the user's style. A plugin-root CLAUDE.md is not loaded. `claude plugin details` shows each component's token cost. `claude plugin eval` needs v2.1.269 or later. (`output-styles`, `plugins-reference`, `plugin-evals`)
-- `${CLAUDE_SKILL_DIR}` is filled in only in SKILL.md and its `allowed-tools` Bash rules, never in a file the skill reads later. An `allowed-tools` grant lasts for the turn that invoked the skill and clears at the user's next message. An allow rule doesn't match past a leading assignment of a variable outside a known-safe set, and each part of a compound command must match on its own. (`skills` §Available string substitutions and §Pre-approve tools; `permissions` §Compound commands and §Wrappers; checked while building ticket 06)
+- `${CLAUDE_SKILL_DIR}` is filled in only in SKILL.md and its `allowed-tools` Bash rules, never in a file the skill reads later. An `allowed-tools` grant lasts for the turn that invoked the skill: it clears at the user's next message, and, as ticket 06's live run 1 showed, when the session waits on background work and a notification starts a new turn. An allow rule doesn't match past a leading assignment of a variable outside a known-safe set, and each part of a compound command must match on its own. (`skills` §Available string substitutions and §Pre-approve tools; `permissions` §Compound commands and §Wrappers; checked while building ticket 06)
 - Subagents nest up to three levels below the main conversation by default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`); at most 20 run at once (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, "Concurrent subagent limit reached"); AskUserQuestion is never among a subagent's tools. (`sub-agents`)
 - Ten parallel readers covered all 276 files, 276 of 276 read in full: parts 1–10 read 16, 23, 19, 50, 21, 37, 29, 40, 1 and 40 files. Their key facts are folded into the decisions above.
