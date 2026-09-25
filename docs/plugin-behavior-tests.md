@@ -768,3 +768,72 @@ Also:
 - A `Monitor` or `PowerShell` call: the hook suite feeds synthetic events, and the PowerShell tool is opt-in on macOS.
 - A write under a real `scratchpad_dir`.
 - Windows, where exec form needs `python3` to resolve to a real `python3.exe`.
+
+## 3.3, ticket 03: typed skills from their expansion, the lapse hint, the done-check as feedback, 2026-09-25
+
+Ticket 03 changed three things:
+- **Typed skills declare from their expansion.** Claude Code's `UserPromptExpansion` event names the skill each typed command expanded to. The expansion hook keeps it under the prompt's `prompt_id`, and the prompt hook adopts it when that prompt starts its request; an expansion that arrives after the prompt hook declares that request directly. The prompt's own parse of its leading command decides only when no expansion arrived.
+- **The lapse hint.** A typed message that starts a new request after a declared one gets context naming the declarations that lapsed: invoking one again continues that work (a skill only the user can type, the user types again), and new work needs its own route. The hint restores nothing. A message that types its own route gets none (decision 22).
+- **The done-check** asks through `hookSpecificOutput.additionalContext` instead of `decision: block`.
+
+**What Claude Code sends.** Captured on 2.1.282 by a hook that logged both prompt events' input. It cost nothing: the API endpoint pointed at a closed local port, so every run stopped before a model call. The interactive run was driven through `expect`.
+
+| Typed | Mode | `UserPromptExpansion` events |
+| --- | --- | --- |
+| `/matt-pocock-workflow:grill add a coupon field` | `-p` | `matt-pocock-workflow:grill` (source `plugin`) |
+| `/grill add coupons` | `-p` | `matt-pocock-workflow:grill` (`plugin`), the resolved name |
+| `/pr-review 42` | `-p` | `matt-pocock-workflow:pr-review` (`plugin`); the event's own `prompt` reads `/matt-pocock-workflow:pr-review 42` |
+| `/tdd add a test` | `-p` | `tdd` (`userSettings`) |
+| `/grill /tdd fix the coupon` | `-p` | one, `matt-pocock-workflow:grill`, whose arguments are `/tdd fix the coupon` |
+| `/grill /tdd fix the coupon` | interactive | two, `matt-pocock-workflow:grill` then `tdd`, each with the arguments `fix the coupon` |
+| `/pdf /tdd fix the coupon` | `-p` | one, `pdf` (`userSettings`), whose arguments are `/tdd fix the coupon` |
+| `/compact` | `-p` | none, and no `UserPromptSubmit` either |
+
+- Every expansion ran before `UserPromptSubmit`, one after another about 35 ms apart, and a prompt's events all carried the same `prompt_id`. The submit's `prompt` is the text as typed. The hooks reference lists the two events the other way round, so the gate handles either order.
+- In the installed copies, Matt Pocock's `implement`, `to-spec`, `to-tickets`, `grill-me`, `grill-with-docs`, `wayfinder`, `triage`, `handoff`, `ask-matt`, `improve-codebase-architecture`, `setup-matt-pocock-skills` and `setup-ts-deep-modules` carry `disable-model-invocation: true`, as Seams' `pr-review` does. Claude Code refuses a Skill call for them, so the hint names such a skill as one only the user can type.
+
+**The two-step run** from the ticket's "How to verify" ran twice, each in a fresh `cosmetic-edit` fixture copy with the harness's settings, `--permission-mode acceptEdits`, `--plugin-dir plugin`, and the installed copy and Superpowers switched off. The first was on the build, `f32ec75`; the second on `0024a6c`, whose review fixes rewrote the prompt logic the run exercises. The streams are under `tests/runs/ticket-03/`.
+1. **`claude -p '/trivial Fix the typo "recieve" in the comment in src/format.ts.'`**
+   - The prompt's parse cannot read a bare model-invocable Seams name, so only the expansion could declare this request.
+   - In both runs the first edit passed before any Skill call, with no refusal.
+   - The ledger holds `matt-pocock-workflow:trivial` as the request's first declaration, ahead of the change.
+2. **`claude -p --resume <id> 'The README title should be "OrderKit" too, one word; fix that as part of the same cleanup.'`**
+   - The same session id, SessionStart with source `resume`, and the ledger kept.
+   - The prompt hook's context, shown by `--include-hook-events`: "Seams: this message started a new request, so the previous request's declarations lapsed: `matt-pocock-workflow:trivial`, `matt-pocock-workflow:verification-before-completion`. The gate refuses the next change to the project until a process skill is invoked for this request. If this message continues that work, invoking the one it used again with the Skill tool restores the declaration; new work needs its own route."
+   - The first call was `Skill: matt-pocock-workflow:trivial`, and the README edit after it passed.
+
+| Candidate | Step | Model reported | Refused | First Skill call | First edit | Cost |
+| --- | --- | --- | --- | --- | --- | --- |
+| `f32ec75` | 1 | `claude-opus-5[1m]` | 0 | call 5 (verification) | call 4 | $0.52 |
+| `f32ec75` | 2 | `claude-opus-5[1m]` | 0 | call 1 (`trivial`) | call 4 | $0.84 |
+| `0024a6c` | 1 | `claude-opus-5-5[1m]` | 0 | call 4 (verification) | call 3 | $0.32 |
+| `0024a6c` | 2 | `claude-opus-5-5[1m]` | 0 | call 1 (`trivial`) | call 3 | $0.45 |
+
+Neither run named a model, and the two reported different defaults. No step needed the done-check: each verified on its own before finishing.
+
+**The done-check as feedback.** One Haiku session on `f32ec75` in a throwaway repository, shaped like ticket 02's: `claude -p '/trivial Use the Bash tool to run exactly this command, once, and then stop: echo hi > probe.txt'` with `--allowedTools "Bash(echo:*)"`, for $0.068.
+- The gate let the write through, declared by the typed skill. Claude Code's own headless permission prompt then denied it twice, and Claude stopped.
+- The Stop hook answered with `hookSpecificOutput.additionalContext`: "Seams done-check: 2 unverified changes to the project since the last verification …". The turn went on into `verification-before-completion`, and the second stop ended it.
+- The stream has no `stop-hook-error` notification, where ticket 02's had "Stop hook error occurred · ctrl+o to see". No `UserPromptSubmit` ran for the continuation, so the request kept its declarations.
+- In the interactive session that built this ticket, which ran the working tree's hooks, the same request reached the model as "Stop hook additional context: Seams done-check: …".
+- The stop hook and `decide_stop`'s logic are unchanged since `f32ec75`.
+
+**The deterministic suites.** `scripts/test.sh` on `0024a6c`: 9 of 9 with 0 skipped on Python 3.14.6 and 3.9.6, 181 unit tests each. The unit and hook suites also pass on 3.12.13, CI's version. The unit tests feed the captured event shapes, in both hook orders. The hook suite drives the real executables through stacked and bare typed skills, the lapse hint, a skill only the user can type, a project's own `pr-review`, a late expansion and the done-check's feedback form, and runs the new `UserPromptExpansion` entry in exec form.
+
+**The review, and what it changed.** Matt Pocock's `code-review` (Standards and Spec) ran beside a correctness and security review that drove the hooks with crafted events. On `f32ec75` they found:
+- the hint sent Claude to a Skill call Claude Code refuses, for a skill only the user can type (Seams' `pr-review`, Matt Pocock's own `implement` and the rest);
+- the prompt's parse declared a skill after an expansion had named something else: a project's own `pr-review`, another plugin's `code-review`, an MCP prompt;
+- an expansion arriving after its prompt hook, the order the reference lists, declared nothing;
+- a damaged list in the ledger made the prompt hook raise and keep the old request;
+- the name filter let a trailing newline through;
+- stale text on the ledger's contents and the done-check.
+
+`0024a6c` fixes each, with the reviewers' cases as tests. The review's fuzz, re-run on `0024a6c`:
+- 1,500 random sequences without expansions differ from `b40f571` only by the hint, with no crash;
+- 2,000 with expansions crash nothing on Python 3.9.6;
+- 4,000 more, 2,000 on each interpreter, match a restatement of the rules at every step (the declarations and the gate's decision). The same check finds 279 mismatches in 1,000 sequences on `f32ec75`.
+
+**Not exercised live.**
+- A stacked command through Seams' hooks in an interactive session: the capture used only a logging hook.
+- A skill only the user can type, lapsing.
+- An expansion arriving after its prompt hook, which 2.1.282 never does.

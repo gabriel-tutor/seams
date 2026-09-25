@@ -2,23 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: Ticket 03's review fixes are committed on main after the reviewed f32ec75; commit the ticket's record (the live evidence, the review notes), then run the definition of done on it.
+Next: Implement ticket 06 (pr-review under the cap, scripts without prompts) in a fresh session: it is the only unblocked ticket, and it unblocks 07 and 08.
 Updated: 2026-09-25
-Ticket: 03
-Candidate: f32ec75
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file) and ticket 02 (the gate sees every shell), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
-
-## Review
-
-The review of f32ec75 (code-review's Standards and Spec, and a correctness and security review that drove the hooks). Findings acted on, each fixed in the commit after it:
-- The hint sent Claude to a Skill call Claude Code refuses, for a skill only the user can type: Seams' `pr-review`, Matt Pocock's own `implement`, `to-spec`, `to-tickets` and his other user-only skills (plugin/hooks/seams_gate.py:872, 1106).
-- The prompt's own parse overrode an expansion that named what really ran: a project's own `pr-review`, another plugin's `code-review`, an MCP prompt (plugin/hooks/seams_gate.py:1078).
-- An expansion arriving after its prompt hook, the order the hooks reference lists, declared nothing (plugin/hooks/seams_gate.py:1055).
-- A damaged list in the ledger made the prompt hook raise and keep the old request (plugin/hooks/seams_gate.py:1048).
-- The name filter let a trailing newline through (plugin/hooks/seams_gate.py:817).
-- Stale text: the README's and CONTEXT.md's account of the ledger, the done-check's docstring (plugin/hooks/seams_gate.py:1326) and two test messages; the hint's cap and its rules recorded in the spec.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell) and ticket 03 (typed skills, the lapse hint, the done-check as feedback), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -101,7 +89,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | --- | --- | --- |
 | 01 | Release 3.2.1 (done: `3a234bd`, deployed 2026-09-25) | none |
 | 02 | The gate sees every shell and stops tripping on quotes (sensitive; done, on local `main`) | 01 |
-| 03 | Typed skills, the lapse hint, a calmer done-check (sensitive) | 01 |
+| 03 | Typed skills, the lapse hint, a calmer done-check (sensitive; done, on local `main`) | 01 |
 | 04 | Progress file and resume note, end to end through the grill (done, on local `main`) | 01 |
 | 05 | Specs, tickets and builds keep the progress file (done, on local `main`) | 04 |
 | 06 | pr-review under the cap, scripts without prompts | 01 |
