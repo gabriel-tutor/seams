@@ -309,6 +309,13 @@ section_says pr-review "$PRR" Post "whose head moved is not posted" "only \`COMM
 # A headless run asks its post question in text, and the answer starts a turn the scripts' pre-approval no longer
 # covers: the handover's table comes first, while it holds.
 step_says Post draft-and-post "while the pre-approval holds"
+# The pre-approval also ends when the session waits on background work: the live run on 8fbdca2 put run_checks.py
+# and the risk reviewer in the background, and review_payload.py was refused in the turn their notifications began.
+# So a single review runs its scripts and its reviewers in the foreground, and a batch says its fan-out ends the turn.
+[[ $PRR_OPENING == *"in the foreground"* ]] || fail "pr-review's opening does not say to keep its scripts and subagents in the foreground"
+step_says Checks checks "in the foreground"
+step_says Review understand-and-review "in the foreground, in the same message as"
+step_says Batch batch "The fan-out ends this turn"
 # Its four scripts run without a permission prompt from any directory (lean-and-durable ticket 06): the core runs each as
 # `python3 ${CLAUDE_SKILL_DIR}/scripts/<name>.py` and its allowed-tools pre-approves exactly that command, as the skills
 # docs show. Claude Code fills in ${CLAUDE_SKILL_DIR} only in SKILL.md and its allowed-tools, so a reference writes a

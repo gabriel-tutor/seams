@@ -43,7 +43,7 @@ References:
 - `${CLAUDE_SKILL_DIR}/references/draft-and-post.md`: read this when the review reaches Draft.
 - `${CLAUDE_SKILL_DIR}/references/cleanup.md`: read this when the review reaches Cleanup.
 
-Scripts: `python3 ${CLAUDE_SKILL_DIR}/scripts/run_checks.py`, `python3 ${CLAUDE_SKILL_DIR}/scripts/review_payload.py`, `python3 ${CLAUDE_SKILL_DIR}/scripts/post_reviews.py` and `python3 ${CLAUDE_SKILL_DIR}/scripts/batch_report.py`. `allowed-tools` pre-approves each for the turn that invoked this skill, in a call that is only that command, starting exactly so, every path written out (`$EVID` too): a variable set in the call, or a command chained to it, is not covered. After an answer typed as a message, the user's own permission settings decide; a script they refuse leaves the review drafted in `$EVID`, and the handover says so.
+Scripts: `python3 ${CLAUDE_SKILL_DIR}/scripts/run_checks.py`, `python3 ${CLAUDE_SKILL_DIR}/scripts/review_payload.py`, `python3 ${CLAUDE_SKILL_DIR}/scripts/post_reviews.py` and `python3 ${CLAUDE_SKILL_DIR}/scripts/batch_report.py`. `allowed-tools` pre-approves each, and its `gh` reads, in a call that is only that command, starting exactly so, every path written out (`$EVID` too), until this turn ends. The turn ends when the session waits on background work or on an answer typed as a message, so run the scripts and the review's subagents in the foreground. After that the user's own permission settings decide; a script they refuse leaves the review drafted in `$EVID`, and the handover says so.
 
 ## Gate
 

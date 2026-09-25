@@ -2,7 +2,7 @@
 
 Status: active
 Stage: integrated
-Next: Live headless pr-review of closed PR #7 on main's review-fix commit after bb5a825 (default mode, GitHub writes blocked), then the record commit and the definition of done.
+Next: Rerun the live headless pr-review of closed PR #7 (paid: ask first) on main's commit after 8fbdca2, then the record commit and the definition of done.
 Updated: 2026-09-25
 Ticket: 06
 Candidate: bb5a825

@@ -7,7 +7,7 @@ With several pull requests, Understand, Checks, Review and Draft run in parallel
 - At most 20 subagents run at once in a session by default (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` changes it). Past that, the Agent tool fails with `Concurrent subagent limit reached`, and another starts only when one finishes.
 - A wide fan-out can hit the API's rate limits. Claude Code retries a throttled request; a background subagent that still ends on one is marked failed, with its last output.
 
-So each pull request gets one subagent, which walks every review axis itself instead of starting reviewers of its own: a batch of fifteen runs fifteen subagents, not forty-five.
+So each pull request gets one subagent, which walks every review axis itself instead of starting reviewers of its own: a batch of fifteen runs fifteen subagents, not forty-five. The fan-out ends this turn: what the main session runs after a reviewer's notification wakes it (the rechecks, a rebuilt payload, the handover's table, a post) is outside the skill's pre-approval, and the user's own permission settings decide.
 
 1. **Find the checks once per repository,** as `checks.md` says, from the base branch, and show the list: the same checks run on every pull request of that repository.
 2. **Every question first,** in one round in this session after every checkout (four per call): the trust questions from the Gate; for each pull request whose head worktree defines services (a compose file) that its end-to-end suite needs, whether to start them; and, when a check needs bash 4 or newer (`shopt -s globstar`, `mapfile`, associative arrays) while the newest bash here is older (macOS ships 3.2), whether to `brew install bash` first (recommended: without it those checks read could not run).
