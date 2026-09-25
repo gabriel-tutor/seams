@@ -896,3 +896,71 @@ The records are under `tests/runs/lean-06/`.
 - A batch, which ticket 07 runs live.
 - An interactive session, where AskUserQuestion keeps the answer inside the turn.
 - The `${TMPDIR:-/tmp}` expansions in 3.2.1's own Checkout wording, which default mode refuses ("Contains expansion"). Both runs worked around them with absolute paths. Ticket 10's pre-loaded facts are the place for the temp directory.
+
+## 3.3, ticket 08: every skill under the bound, lighter always-on cost, 2026-09-25
+
+**What changed.**
+- **The static guard,** in `test_plugin.sh`, now checks five things:
+  - every SKILL.md is at most 11,000 bytes;
+  - no skill's or agent's frontmatter has `model` or `effort`;
+  - the version is in `plugin.json` only;
+  - the listing is at most 2,650 characters;
+  - each Seams skill has its effort line.
+
+  It runs on CI too: only manifest validation needs the `claude` CLI, which CI lacks.
+- **Descriptions** lead with their trigger, and the workflow summaries are gone.
+- **The bootstrap** is stated as the project's facts, with no `<EXTREMELY_IMPORTANT>` wrapper and no preamble, and it states the quality bar.
+- **Effort:** the ten Seams skills read `${CLAUDE_EFFORT}` and say what they skip at `low`, which is never a step, a gate or a check.
+
+**Always-on cost.** Measured with `claude --plugin-dir plugin plugin details matt-pocock-workflow` on Claude Code 2.1.282:
+
+| | `e5f1875` | `72de2a7` |
+| --- | --- | --- |
+| Always-on, by the tool | ~1,073 tokens | ~825 tokens |
+| The listing, every skill | 3,277 characters | 2,496 characters |
+| The listing Claude sees (without `pr-review`, which only the user can type) | 2,852 characters | 2,307 characters |
+
+3.2.1 measured about 1,165 tokens, so the tool's figure is now 29% lower. Two things make it overstate the saving:
+- The tool counts through the `count_tokens` API for the active model.
+- It counts `pr-review`'s description, which Claude Code keeps out of context (`disable-model-invocation`).
+
+The listing Claude sees is 19% shorter since `e5f1875`. About a third of what remains is the three Superpowers copies, which stay byte-identical.
+
+**The bootstrap.** Measured in the hook suite's fixture homes, with a 120-character plugin root, against a 2,900-byte cap:
+- with every skill installed: 2,775 → 2,754 bytes;
+- with two skills missing, the longest case: 2,898 → 2,887 bytes.
+
+**Effort, live.** Two headless sessions ran in a scratch directory, with Seams loaded in place from this clone:
+- `claude -p "/matt-pocock-workflow:trivial …" --model claude-sonnet-5 --effort low`;
+- the same command with `--effort max`.
+
+The transcripts' skill text reads `**Effort** \`low\`` and `**Effort** \`max\`` respectively, so Claude Code fills in `${CLAUDE_EFFORT}`. Each session cost about $0.11.
+
+**The eval.** The run was paid, on the user's yes. The setup:
+- the eight routing and gate cases, three runs per arm, with and without the plugin;
+- `--scaffold --allow-tools Edit Write -j 3`;
+- the candidate `72de2a7` on Claude Code 2.1.282;
+- records under `tests/runs/evals/ticket-08/`, which is gitignored.
+
+| Case | Opus 5, with: 3.1 → now | Opus 5, skill fired | Sonnet 5, with: 3.1 → now | Sonnet 5, skill fired |
+| --- | --- | --- | --- | --- |
+| `approved-spec` | 1.00 → 1.00 | 0 → 1 of 3 | 1.00 → 1.00 | 1 → 1 of 3 |
+| `concurrency-bug` | 1.00 → 1.00 | 3 → 3 of 3 | 1.00 → 1.00 | 3 → 3 of 3 |
+| `cosmetic-edit` | 1.00 → 1.00 | 3 → 3 of 3 | 1.00 → 1.00 | 3 → 3 of 3 |
+| `failing-check-honesty` | 1.00 → 1.00 | 3 → 3 of 3 | 1.00 → 1.00 | 1 → 3 of 3 |
+| `gate-pressured-change` | 0.67 → 1.00 | 1 → 2 of 3 | 1.00 → 1.00 | 2 → 3 of 3 |
+| `gate-typo` | 1.00 → 1.00 | 3 → 3 of 3 | 1.00 → 1.00 | 3 → 3 of 3 |
+| `review-scope` | 1.00 → 1.00 | 3 → 3 of 3 | 1.00 → 1.00 | 3 → 3 of 3 |
+| `small-behavior-change` | 1.00 → 1.00 | 3 → 3 of 3 | 1.00 → 1.00 | 3 → 3 of 3 |
+
+- **Opus 5** cost $20.22 and took 1,614 s. The suite scored 1.00, with 8 of 8 cases at the threshold (3.1: 0.94 and 7 of 8). Mean Δ +0.54 (3.1: +0.44).
+- **Sonnet 5** cost $12.49 and took 1,386 s. The suite scored 1.00, with 8 of 8 cases, as in 3.1. Mean Δ +0.56, as in 3.1.
+- **Runs that ended early** were graded on what they did, and each kept the gate contract:
+  - Opus: one `approved-spec` run at the 15-turn cap, and two `concurrency-bug` runs at the 300-second timeout;
+  - Sonnet: two `concurrency-bug` runs at the turn cap (in 3.1, its two early endings were `approved-spec` runs).
+- **Nothing got worse.** No case's score dropped, and no expected-skill count fell. The scored graders read the gate contract: a Skill call before the first edit, and no refusal. The expected-skill count is the closer reading of routing, and it rose in four cases.
+
+**Not exercised.**
+- The two shell cases, `gate-shell-write` and `gate-commit`, which 3.1 didn't run either.
+- The resume cases, which tickets 04 and 05 cover.
+- Routing in an interactive session.

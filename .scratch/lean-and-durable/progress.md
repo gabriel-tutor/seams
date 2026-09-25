@@ -2,13 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: The fixes for 65988ac's review are committed on main: run the paid eval the user approved (Opus 5 and Sonnet 5, routing and gate) on that commit, then the record and the definition of done.
+Next: Implement ticket 07 (a pr-review batch resumes), /clear first. pr-review's core has 268 bytes left under the bound, and ticket 09's agents about 50 tokens under 875.
 Updated: 2026-09-25
-Ticket: 08
-Candidate: 65988ac
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback) and ticket 06 (pr-review under the cap, scripts without prompts), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts) and ticket 08 (every skill under the bound, lighter always-on cost), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -66,6 +64,8 @@ Candidate: 65988ac
 21. The resume note names a ticket in progress, in at most 60 characters, and says that `implement` continues it, as it says the grill continues a grill in progress. A resumed ticket then routes as reliably as a resumed grill. (Made while building ticket 05, beyond its criteria, and not the user's choice; the review flagged it, and the user may revert it.)
 22. A message that types its own route gets no lapse hint: its request is already declared, so no change would be refused, and a hint would say otherwise. (Made while building ticket 03, beyond the letter of its criteria; the review flagged it, and the user left it to Claude on 2026-09-25, so it stands.)
 23. `pr-review` splits into six references, not four: `checkout.md` and `review.md` (Understand and Review) join `batch.md`, `checks.md`, `draft-and-post.md` and `cleanup.md`. 3.2.1's Gate, Checkout, Understand, Review and handover alone were 11,443 bytes, over the bound before any frontmatter. The core keeps the standing rules, the Gate, every step's heading and must-holds, severity, the verdict and the handover. (Made while building ticket 06, beyond the ticket's list; not the user's choice.)
+24. The effort line is in the ten Seams skills. The bootstrap has none: the session-start hook injects it without Claude Code's substitution, and it runs no steps. Nor do the three Superpowers copies, which stay byte-identical (decision 19). (Made while building ticket 08, not the user's choice.)
+25. The static checks run on CI, which has no `claude` CLI; only manifest validation needs it. The always-on guard is the listing's length, at most 2,650 characters, calibrated from `claude plugin details`. That tool's own figure moves with the active model, so it is recorded as evidence, not tested. (Made while building ticket 08, from its review; not the user's choice.)
 
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.
@@ -97,7 +97,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 05 | Specs, tickets and builds keep the progress file (done, on local `main`) | 04 |
 | 06 | pr-review under the cap, scripts without prompts (done, on local `main`) | 01 |
 | 07 | A pr-review batch resumes | 04, 06 |
-| 08 | Every skill under the bound, lighter always-on cost | 06 |
+| 08 | Every skill under the bound, lighter always-on cost (done, on local `main`) | 06 |
 | 09 | Read-only agents and explicit delegation | 08 |
 | 10 | Pre-loaded facts | 08 |
 | 11 | The quality bar in the definition of done; reviews scaled to risk | 09 |
@@ -153,4 +153,5 @@ All from the Claude Code docs mirror at `/Users/gabrieltutor/claude-docs/code.cl
 - A plugin output style with `force-for-plugin: true` overrides the user's style. A plugin-root CLAUDE.md is not loaded. `claude plugin details` shows each component's token cost. `claude plugin eval` needs v2.1.269 or later. (`output-styles`, `plugins-reference`, `plugin-evals`)
 - `${CLAUDE_SKILL_DIR}` is filled in only in SKILL.md and its `allowed-tools` Bash rules, never in a file the skill reads later. An `allowed-tools` grant lasts for the turn that invoked the skill: it clears at the user's next message, and, as ticket 06's live run 1 showed, when the session waits on background work and a notification starts a new turn. An allow rule doesn't match past a leading assignment of a variable outside a known-safe set, and each part of a compound command must match on its own. (`skills` §Available string substitutions and §Pre-approve tools; `permissions` §Compound commands and §Wrappers; checked while building ticket 06)
 - Subagents nest up to three levels below the main conversation by default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`); at most 20 run at once (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, "Concurrent subagent limit reached"); AskUserQuestion is never among a subagent's tools. (`sub-agents`)
+- `${CLAUDE_EFFORT}` is filled in in a skill's text: a headless `trivial` run at `--effort low` and at `--effort max` loaded the line with `low` and with `max` (2.1.282, while building ticket 08). `claude --plugin-dir <dir> plugin details <name>` measures a plugin from disk. Its always-on figure comes from `count_tokens` for the active model, or an offline estimate, and it counts a `disable-model-invocation` skill's description, which Claude Code keeps out of context (`plugins-reference`, `skills`).
 - Ten parallel readers covered all 276 files, 276 of 276 read in full: parts 1–10 read 16, 23, 19, 50, 21, 37, 29, 40, 1 and 40 files. Their key facts are folded into the decisions above.
