@@ -2,24 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: Ticket 02's review fixes are committed on main after the reviewed 6faea1d; commit the ticket's record, then run the definition of done on it.
+Next: Implement ticket 03 (typed skills, the lapse hint, a calmer done-check; sensitive) in a fresh session; ticket 06 is also unblocked, and 06 unblocks 07 and 08.
 Updated: 2026-09-25
-Ticket: 02
-Candidate: 6faea1d
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note) and ticket 05 (specs, tickets and builds keep the progress file), both integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
-
-## Review
-
-The review of 6faea1d (code-review's Standards and Spec, and a correctness review of the classifier). Findings acted on, each fixed in the commit after it:
-- Missed writes the old gate caught: a comment's apostrophe hid later substitutions, an unquoted heredoc's text was read as commands, and `$'...'` was not a quote (plugin/hooks/seams_gate.py:90, 140, 189, 215).
-- Deep nesting crashed the hook open, in quadratic time (plugin/hooks/seams_gate.py:82, 774).
-- A quoted `--output` passed PowerShell's read-only list (plugin/hooks/seams_gate.py:1076).
-- `"$EVID"/log.txt` under the temp directory was refused (plugin/hooks/seams_gate.py:384).
-- A PowerShell `git commit` after verification asked for it again (plugin/hooks/seams_gate.py:1090).
-- The operator table could drift from the redirect sets (plugin/hooks/seams_gate.py:238).
-- Docs: the hooks no longer "run through env" (README.md:246, docs/compatibility.md:3); the scratch refusal names the scratchpad (plugin/hooks/seams_gate.py:1153); the exec-form test no longer depends on the config's key order (scripts/tests/test_hooks.sh:202).
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file) and ticket 02 (the gate sees every shell), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -100,7 +87,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | # | Ticket | Blocked by |
 | --- | --- | --- |
 | 01 | Release 3.2.1 (done: `3a234bd`, deployed 2026-09-25) | none |
-| 02 | The gate sees every shell and stops tripping on quotes (sensitive) | 01 |
+| 02 | The gate sees every shell and stops tripping on quotes (sensitive; done, on local `main`) | 01 |
 | 03 | Typed skills, the lapse hint, a calmer done-check (sensitive) | 01 |
 | 04 | Progress file and resume note, end to end through the grill (done, on local `main`) | 01 |
 | 05 | Specs, tickets and builds keep the progress file (done, on local `main`) | 04 |

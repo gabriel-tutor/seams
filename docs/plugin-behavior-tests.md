@@ -709,3 +709,62 @@ The four calls cost $0.59, $0.66, $1.03 and $1.37. `efebcf4` acts on what this r
 - The wording `efebcf4` changed in `implement`.
 - The eval with a shell, on a machine whose Bash sandbox starts.
 - Any model but the one above.
+
+## 3.3, ticket 02: every shell tool gated, the hooks in exec form, 2026-09-25
+
+Ticket 02 closed the gate's two shell bypasses and its reproduced false positive:
+- **The classifier reads a command as the shell does.** A hand-written tokenizer replaces `shlex`, whose non-POSIX mode opens no quote in the middle of a word: `x="$(awk '$1>0' f)"` had read as a redirect to a file.
+  - Quotes may now open inside a word, and `$'…'` is a quote.
+  - A command substitution keeps its own quotes and comments.
+  - Operators split one by one. A `#` opens a comment only at a word's start, and a backslash-newline joins the lines.
+  - What a command runs is found in the tokenizer's own words. An unquoted heredoc's text is searched only for what its substitutions run.
+  - A quote that never closes falls back to the old split, which never misses an operator.
+  - A word that joins quoted and bare parts expands part by part.
+  - A command nested past 50 levels is refused as unreadable.
+- **`Monitor`** watches go through the same classifier, scratch rule included. A WebSocket watch runs nothing.
+- **`PowerShell`** is a change before a declaration unless it is `Get-Content`, `Get-ChildItem`, `Select-String`, or `git status`, `diff` or `log`, on its own with plain arguments. The refusal names the list.
+- **`scratchpad_dir`** from the hook input is scratch beside the temp directories. The working directory never is.
+- **Every hook entry is in exec form:** `python3` with the script's path in `args`.
+
+`scripts/test.sh` is the deterministic proof: on `c227c61`, 9 of 9 with 0 skipped on Python 3.14.6 and 3.9.6, 166 unit tests each. The unit and hook suites also pass on 3.12.13, CI's version. The false-positive and bypass tables hold the reproduced case, and seven write shapes the old tokenizer missed: `true;>f`, `echo hi|>f`, `(>f)`, `curl …/a#top > f`, `echo $# > f`, `echo "$(echo ')' ; rm -rf src)"`, and `r\` + newline + `m -rf src`. The hook suite feeds the real hook `Monitor`, `PowerShell` and `scratchpad_dir` events. It also runs each `hooks.json` entry as Claude Code spawns it: no shell, from a plugin root whose path holds a space.
+
+**Speed.** `classify_command` on this Mac, Python 3.14.6, before (`7ba5a98`) and after (`c227c61`), the median of three runs:
+
+| Input | Before | After |
+| --- | --- | --- |
+| a 200 KB unquoted word | 397 ms | 24 ms |
+| a 200 KB double-quoted string | 377 ms | 45 ms |
+| a 1 MB quoted heredoc | 3 ms | 3 ms |
+| a 2,000-line script | 45 ms | 39 ms |
+
+The first cut of the tokenizer built each word a character at a time, which was quadratic: 4.4 s for 800 KB. The build keeps the pieces in a list and takes each run of ordinary characters with one regular expression, and 800 KB now takes 93 ms. Nesting is bounded too: an 84 KB command of 12,000 nested `$((` is refused in 0.9 s, where the build (`6faea1d`) took 17 s for 48 KB in the review's measurement.
+
+**The review, and what it changed.** Matt Pocock's `code-review` (Standards and Spec) ran on the build, `6faea1d`, beside a correctness review that compared the old and new classifiers on a fuzz of 2,142 commands. Each lost verdict was run under bash and zsh to see whether the file was really written. They found writes the old gate had caught and the build missed, because a second scanner disagreed with the tokenizer:
+- an apostrophe in a comment hid every later `$(…)`, as in `# Stash what's there` followed by `STASHED=$(git stash)`;
+- an unquoted heredoc's text was tokenized, so an apostrophe in it swallowed the lines after the heredoc;
+- `$'…'` was not a quote.
+
+Also:
+- a thousand nested `$((` crashed the hook, which then let the call through;
+- a quoted `--output` passed PowerShell's list;
+- `"$EVID"/log.txt` under the temp directory was refused.
+
+`c227c61` fixes each, with the review's cases in the tables. The same fuzz on `c227c61`:
+- no write that bash 5.3, zsh or bash 3.2 performs is missed;
+- 60 verdicts were dropped, all of them syntax errors that none of the three runs;
+- 378 write shapes are newly caught;
+- none of the review's 49 realistic read-only commands is flagged.
+
+**One live session.** In a throwaway git repository, `claude -p "Use the Bash tool to run exactly this command, once, and then stop: echo hi > probe.txt"` ran with `--plugin-dir plugin`, `--settings` switching off the installed copy and Superpowers, `--allowedTools "Bash(echo:*)"` so that only the gate could stop the write, and `--model haiku`. It ran on the working tree committed as `6faea1d`, whose `hooks.json` the review fixes left as they were, on Claude Code 2.1.282, reporting `claude-haiku-4-5-20251001`, for $0.057. The stream is under `tests/runs/ticket-02/headless/`. All five hooks ran in exec form:
+- **SessionStart** exited 0, and its output carried the bootstrap.
+- **PreToolUse** refused the first call: "Seams gate: a shell command (`a redirect to a file`) changes the project, and this request has no declaration yet".
+- **PostToolUse** recorded the model's `matt-pocock-workflow:trivial` in the session's ledger. The second call passed the gate. Claude Code's own prompt for a redirect inside the working directory then stopped it, since nothing approves it headless.
+- **Stop** delivered "Seams done-check: 1 unverified change to the project since the last verification". Claude Code labels a Stop block "Stop hook error", which is the presentation ticket 03 changes.
+- **UserPromptSubmit** printed nothing, as it should, and no hook error was reported for it.
+
+`probe.txt` was never written.
+
+**Not exercised live.**
+- A `Monitor` or `PowerShell` call: the hook suite feeds synthetic events, and the PowerShell tool is opt-in on macOS.
+- A write under a real `scratchpad_dir`.
+- Windows, where exec form needs `python3` to resolve to a real `python3.exe`.
