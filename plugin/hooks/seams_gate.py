@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 import sys
 import tempfile
 import time
@@ -125,9 +124,47 @@ def _without_heredoc_text(command: str) -> str:
     return "\n".join(out)
 
 
+def _end_of(text: str, i: int) -> Optional[int]:
+    """Past the end of the quote, backquote or parenthesis that opens at i (for `$(`, i is the
+    `$`), with whatever it nests, or None when it never ends. Inside single quotes everything is
+    text; elsewhere a backslash escapes the next character. A command substitution's quotes are its
+    own, so the `)` in `"$(printf ')')"` ends nothing, and neither does the `>` in `'$1>0'`."""
+    start = i + 1 if text.startswith("$(", i) else i
+    stack, j = [text[start]], start + 1
+    while stack and j < len(text):
+        char, top = text[j], stack[-1]
+        if top == "'":
+            if char == "'":
+                stack.pop()
+        elif char == "\\":
+            j += 1                                # the escaped character is text
+        elif top == "(":
+            if char == ")":
+                stack.pop()
+            elif char in "'\"`(":
+                stack.append(char)
+        elif char == top:                         # the closing double quote or backquote
+            stack.pop()
+        elif top == '"' and char == "`":
+            stack.append("`")
+        elif top == '"' and text.startswith("$(", j):
+            stack.append("(")
+            j += 1                                # past the `$`
+        j += 1
+    return None if stack else j
+
+
+def _is_arithmetic(text: str, i: int) -> bool:
+    """Whether the `$((` at i is arithmetic: its inner parenthesis closes right before the outer
+    one. `$((echo a); rm x)` is a command substitution holding a subshell, and runs both."""
+    end, inner = _end_of(text, i), _end_of(text, i + 2)
+    return end is not None and inner == end - 1
+
+
 def _substitutions(command: str) -> list:
     """The commands inside `$(...)` and backquotes, which the shell runs wherever they stand but
-    inside single quotes (double quotes included). Arithmetic, `$((...))`, runs nothing."""
+    inside single quotes (double quotes included). Arithmetic, `$((...))`, runs only the
+    substitutions it holds. One that never closes runs to the end of the command."""
     out, i, quote, n = [], 0, None, len(command)
     while i < n:
         char = command[i]
@@ -143,40 +180,68 @@ def _substitutions(command: str) -> list:
             quote = "'"
         elif char == '"':
             quote = None if quote == '"' else '"'
-        elif command.startswith("$(", i) and not command.startswith("$((", i):
-            depth, j = 1, i + 2
-            while j < n and depth:
-                depth += {"(": 1, ")": -1}.get(command[j], 0)
-                j += 1
-            out.append(command[i + 2:j - 1] if depth == 0 else command[i + 2:])
-            i = j
+        elif command.startswith("$((", i) and _is_arithmetic(command, i):
+            i += 3                                # its text is arithmetic: look inside for substitutions
             continue
-        elif char == "`":
-            j = command.find("`", i + 1)
-            out.append(command[i + 1:] if j == -1 else command[i + 1:j])
-            i = n if j == -1 else j + 1
+        elif command.startswith("$(", i) or char == "`":
+            start, end = i + (1 if char == "`" else 2), _end_of(command, i)
+            out.append(command[start:] if end is None else command[start:end - 1])
+            i = n if end is None else end
             continue
         i += 1
     return out
 
 
+OPERATORS = ("&>>", "<<<", "<<-", "&&", "||", ";;", "|&", ">>", "&>", ">&", "<&", ">|", "<>", "<<",
+             ";", "&", "|", "(", ")", "<", ">", "\n")             # longest first
+BLANKS = " \t\r"
+ORDINARY = re.compile(r"[^\\'\"`$ \t\r;&|()<>\n]+")      # a run of characters that are only themselves
+
+
+def _rough_tokens(command: str) -> list:
+    """A split on every operator, quoted or not: for a command whose quotes never close, which the
+    shell would not run as written. It may see an operator in quoted text but never misses one."""
+    return re.findall(r"\n|&&|\|\||[;|&()]|>>|>&|&>|>\||<<|<|>|[^\s;|&()<>]+", command.replace("\\\n", ""))
+
+
 def _tokens(command: str) -> list:
-    """Shell words with quotes kept, so a quoted '>' is not an operator. A newline outside quotes
-    ends a command as `;` does; a backslash-newline continues it."""
-    text = command.replace("\\\n", " ")
-    lexer = shlex.shlex(text, posix=False, punctuation_chars="();<>|&\n")
-    lexer.whitespace = " \t\r"
-    lexer.whitespace_split = True
-    try:
-        tokens = list(lexer)
-    except ValueError:                        # unbalanced quotes: fall back to a rough split
-        tokens = re.findall(r"\n|&&|\|\||[;|&()]|>>|>&|&>|>\||<<|<|>|[^\s;|&()<>]+", text)
-    out = []
-    for token in tokens:                      # shlex runs punctuation together: "\n>" is a newline, then ">"
-        if "\n" in token and set(token) <= PUNCTUATION:
-            out += [piece for piece in re.split(r"(\n)", token) if piece]
+    """Shell words with their quotes kept, so a quoted `>` is not an operator, and the operators
+    between them, each on its own (`;>` is `;` then `>`). A quote may open inside a word
+    (`x="a > b"`), and a command substitution is part of the word it stands in. A newline outside
+    quotes ends a command as `;` does; a backslash-newline joins the lines; a `#` that starts a word
+    opens a comment, and one inside a word (`a#b`, `$#`) is text."""
+    out, word, i, n = [], [], 0, len(command)    # word: the current word's pieces, joined once
+    while i < n:
+        char = command[i]
+        if char == "\\":
+            if command.startswith("\n", i + 1):
+                i += 2                            # a line continuation
+                continue
+            end = i + 2
+        elif char in "'\"`" or command.startswith("$(", i):
+            end = _end_of(command, i)
+            if end is None:
+                return _rough_tokens(command)
+        elif char == "#" and not word:
+            end = command.find("\n", i)
+            i = n if end == -1 else end           # the newline still ends the command
+            continue
+        elif char in BLANKS or char in PUNCTUATION:
+            if word:
+                out.append("".join(word))
+                word = []
+            operator = "" if char in BLANKS else next(o for o in OPERATORS if command.startswith(o, i))
+            if operator:
+                out.append(operator)
+            i += len(operator) or 1
+            continue
         else:
-            out.append(token)
+            run = ORDINARY.match(command, i)
+            end = run.end() if run else i + 1     # a `$` that opens no substitution is itself
+        word.append(command[i:end])
+        i = end
+    if word:
+        out.append("".join(word))
     return out
 
 
@@ -892,6 +957,13 @@ EDITOR_TOOLS = {"Edit": "file_path", "Write": "file_path", "MultiEdit": "file_pa
                 "NotebookEdit": "notebook_path"}
 DOC_SUFFIXES = (".md", ".markdown", ".mdx")
 TEMP_ROOTS = ("/tmp", "/private/tmp")     # plus tempfile.gettempdir(), which honors TMPDIR
+# PowerShell has no classifier here: before a declaration only these run, each on its own with
+# plain arguments. A pipe, a separator, a redirect, a parenthesis (a subexpression or a call), a
+# script block, a backtick (PowerShell's escape and line continuation) or a second line makes a
+# command something else, quoted or not.
+POWERSHELL_READS = {"get-content", "get-childitem", "select-string"}
+POWERSHELL_GIT_READS = {"status", "diff", "log"}
+POWERSHELL_UNSAFE = set(";|&<>(){}`\n\r")
 
 
 def config_dir(explicit: Optional[str] = None) -> str:
@@ -903,8 +975,16 @@ def _under(path: str, root: str) -> bool:
     return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
 
 
-def is_exempt_path(path: str, config: Optional[str] = None, cwd: Optional[str] = None) -> bool:
-    """Temp directories and the Claude config directory are not the project.
+def _scratchpad_roots(scratchpad: object) -> tuple:
+    """The session's scratchpad (the hook input's `scratchpad_dir`, Claude Code 2.1.257 and later) as
+    a scratch root: none when the field is absent or is not an absolute path, so a missing field
+    leaves the temp directories' rules as they were."""
+    return (scratchpad,) if isinstance(scratchpad, str) and os.path.isabs(scratchpad) else ()
+
+
+def is_exempt_path(path: str, config: Optional[str] = None, cwd: Optional[str] = None,
+                   scratchpad: object = None) -> bool:
+    """Temp directories, the session's scratchpad and the Claude config directory are not the project.
 
     A path under the session's working directory is the project wherever that directory
     lives, so a repo checked out under the temp dir is still gated.
@@ -914,28 +994,45 @@ def is_exempt_path(path: str, config: Optional[str] = None, cwd: Optional[str] =
         return True
     if cwd and _under(real, cwd):
         return False
-    roots = (tempfile.gettempdir(), config_dir(config)) + TEMP_ROOTS
+    roots = (tempfile.gettempdir(), config_dir(config)) + TEMP_ROOTS + _scratchpad_roots(scratchpad)
     return any(_under(real, root) for root in roots)
 
 
-def is_scratch_path(path: str, cwd: Optional[str] = None) -> bool:
-    """Where a shell command may write without a declaration: /dev/null, or under a temp directory
-    and outside the session's working directory. Narrower than is_exempt_path: the Claude config
-    directory is not scratch, since a shell command there could delete the user's settings."""
+def is_scratch_path(path: str, cwd: Optional[str] = None, scratchpad: object = None) -> bool:
+    """Where a shell command may write without a declaration: /dev/null, or under a temp directory or
+    the session's scratchpad, and outside the session's working directory. Narrower than
+    is_exempt_path: the Claude config directory is not scratch, since a shell command there could
+    delete the user's settings."""
     real = os.path.realpath(path)
     if real == "/dev/null":
         return True
     if cwd and _under(real, cwd):
         return False
-    return any(_under(real, root) for root in (tempfile.gettempdir(),) + TEMP_ROOTS)
+    roots = (tempfile.gettempdir(),) + TEMP_ROOTS + _scratchpad_roots(scratchpad)
+    return any(_under(real, root) for root in roots)
+
+
+def powershell_reads(command: str) -> bool:
+    """Whether a PowerShell command is on the read-only list, run on its own with plain arguments.
+    `git diff` and `git log` write a file when given --output."""
+    text = (command or "").strip()
+    if not text or POWERSHELL_UNSAFE & set(text):
+        return False
+    words = text.lower().split()
+    if words[0] == "git":
+        return (len(words) > 1 and words[1] in POWERSHELL_GIT_READS
+                and not any(word.startswith("--output") for word in words[2:]))
+    return words[0] in POWERSHELL_READS
 
 
 def change_for_event(event: dict, config_dir: Optional[str] = None) -> Optional[dict]:
     """The project change a PreToolUse event would make, or None when it makes none.
 
-    Editor tools: the file, unless it is under a temp or config directory. Bash: the
+    Editor tools: the file, unless it is under a temp directory, the session's scratchpad or the
+    config directory. Bash, and a Monitor watch, whose command runs in the Bash tool's shell: the
     classifier's label, unless every path the command writes is placed and scratch (a pull-request
-    review writes only its evidence under the temp directory). Anything else: nothing.
+    review writes only its evidence under the temp directory); a WebSocket watch runs no command.
+    PowerShell: every command, unless it is on the read-only list. Anything else: nothing.
     """
     tool = event.get("tool_name") or ""
     tool_input = event.get("tool_input") or {}
@@ -946,14 +1043,19 @@ def change_for_event(event: dict, config_dir: Optional[str] = None) -> Optional[
         if not os.path.isabs(path):
             path = os.path.join(event.get("cwd") or os.getcwd(), path)
         path = os.path.normpath(path)
-        if is_exempt_path(path, config_dir, event.get("cwd")):
+        if is_exempt_path(path, config_dir, event.get("cwd"), event.get("scratchpad_dir")):
             return None
         return {"tool": tool, "path": path, "doc": path.lower().endswith(DOC_SUFFIXES)}
-    if tool == "Bash":
-        cwd = event.get("cwd")
-        label = classify_command(tool_input.get("command") or "", is_exempt=lambda path: is_scratch_path(path, cwd))
+    if tool in ("Bash", "Monitor"):
+        cwd, scratchpad = event.get("cwd"), event.get("scratchpad_dir")
+        label = classify_command(tool_input.get("command") or "",
+                                 is_exempt=lambda path: is_scratch_path(path, cwd, scratchpad))
         if label:
-            return {"tool": "Bash", "label": label, "doc": False}
+            return {"tool": tool, "label": label, "doc": False}
+    if tool == "PowerShell":
+        command = tool_input.get("command") or ""
+        if command.strip() and not powershell_reads(command):
+            return {"tool": "PowerShell", "label": "PowerShell", "doc": False}
     return None
 
 
@@ -961,6 +1063,8 @@ def describe(change: dict) -> str:
     """How a refusal or a block names a change: the file, or the shell label."""
     if change.get("path"):
         return f"`{change['path']}`"
+    if change.get("tool") == "PowerShell":
+        return "a PowerShell command"
     return f"a shell command (`{change.get('label')}`)"
 
 
@@ -978,10 +1082,19 @@ SCRATCH = ("Scratch work is not a change: a write whose every path is an absolut
            "directory needs no declaration, from Edit, Write or a shell command.")
 
 
+POWERSHELL_LIST = ("Before a declaration PowerShell runs only `Get-Content`, `Get-ChildItem`, `Select-String`, "
+                   "`git status`, `git diff` and `git log`, each on its own with plain arguments: no pipe, "
+                   "separator, redirect, parenthesis, script block, backtick or second line.")
+
+
 def deny_reason(change: dict) -> str:
-    what = describe(change) if change["tool"] == "Bash" else f"editing {describe(change)}"
-    return (f"{REFUSAL_PREFIX}{what} changes the project, and this request has no declaration yet: "
-            f"no process skill has been invoked for it. {ROUTES} {SCRATCH}")
+    if change["tool"] == "PowerShell":
+        what, rule = "a PowerShell command outside the read-only list counts as a change", POWERSHELL_LIST
+    else:
+        what = (f"editing {describe(change)}" if change.get("path") else describe(change)) + " changes the project"
+        rule = SCRATCH
+    return (f"{REFUSAL_PREFIX}{what}, and this request has no declaration yet: no process skill has been "
+            f"invoked for it. {ROUTES} {rule}")
 
 
 def decide_pre_tool_use(event: dict, ledger: dict, config_dir: Optional[str] = None) -> dict:

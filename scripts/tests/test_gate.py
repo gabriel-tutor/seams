@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import stat
+import sys
 import tempfile
 import time
 import unittest
@@ -21,6 +22,7 @@ MODULE = REPO / "plugin" / "hooks" / "seams_gate.py"
 
 
 def load():
+    sys.dont_write_bytecode = True             # no __pycache__ in the plugin directory, however this runs
     spec = importlib.util.spec_from_file_location("seams_gate", MODULE)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -173,6 +175,72 @@ class ClassifyCommand(unittest.TestCase):
         for command in self.READS:
             with self.subTest(command=command):
                 self.assertIsNone(gate.classify_command(command))
+
+
+class QuotedOperators(unittest.TestCase):
+    """A `>` the shell reads as text is not a redirect; one it reads as a redirect always is.
+
+    Reproduced: `x="$(awk '$1>0' f)"` was refused as "a redirect to a file", because a quote
+    opening inside a word, or a quoted `>` inside a command substitution nested in double
+    quotes, was read as ending the quote (lean-and-durable ticket 02).
+    """
+
+    FALSE_POSITIVES = [
+        "x=\"$(awk '$1>0' f)\"",                                      # the reproduced case
+        "echo \"$(awk '$1>0' f)\"",
+        "export N=\"$(awk '$1>0' f)\"",
+        "n=\"$(awk -F, '$3 >= 10 {c++} END {print c}' f.csv)\"",
+        "awk '$1>0' f",
+        "awk '{ if ($2 > max) max = $2 } END { print max }' data.txt",
+        "x=\"a > b\"",
+        "git log --format=\"%h > %s\" -5",
+        "grep -e\"a > b\" notes.txt",
+        # An input redirect reads.
+        "sort < in.txt",
+        "x=\"$(awk '$1>0' < f)\"",
+        "while read -r line; do echo \"$line\"; done < list.txt",
+        # A `#` inside a word is text, and one that starts a word opens a comment.
+        "echo a#b",
+        "echo hi # > out.txt",
+        # Arithmetic compares; it redirects nothing.
+        "echo $((n > 5))",
+        "[ $((a >= b)) -eq 1 ] && echo big",
+    ]
+
+    BYPASSES = {
+        "x=\"$(cmd > out)\"": "a redirect to a file",
+        "echo \"$(cat a)\" > b": "a redirect to a file",
+        "x=\"$(awk '$1>0' f > out)\"": "a redirect to a file",
+        "x=\"$(awk '$1>0' f)\" > out": "a redirect to a file",     # an assignment's redirect still creates the file
+        "awk '$1>0' f > out": "a redirect to a file",
+        "echo \"$(awk '$1>0' f)\" >> log.txt": "a redirect to a file",
+        "git log --format=\"%h > %s\" > log.txt": "a redirect to a file",
+        # Operators written against each other are each an operator.
+        "true;>src/a.ts": "a redirect to a file",
+        "echo hi|>src/a.ts": "a redirect to a file",
+        "(>src/a.ts)": "a redirect to a file",
+        # A `#` inside a word opens no comment, so what follows it still runs.
+        "curl https://example.com/a#top > page.html": "a redirect to a file",
+        "echo $# > count.txt": "a redirect to a file",
+        # A `)` inside quotes does not end a command substitution.
+        "echo \"$(echo ')' ; rm -rf src)\"": "rm",
+        "x=$(printf '%s)' a; rm -rf src)": "rm",
+        # A backslash-newline joins the lines, even inside a word.
+        "r\\\nm -rf src": "rm",
+        # `$((` not closed by `))` is a command substitution holding a subshell: every shell runs it.
+        "x=$((echo a); touch made)": "touch",
+        "echo $(( $(rm -rf src) + 1 ))": "rm",
+    }
+
+    def test_text_the_shell_reads_as_text_is_not_a_change(self):
+        for command in self.FALSE_POSITIVES:
+            with self.subTest(command=command):
+                self.assertIsNone(gate.classify_command(command))
+
+    def test_a_real_redirect_or_write_in_the_same_shapes_is_still_caught(self):
+        for command, label in self.BYPASSES.items():
+            with self.subTest(command=command):
+                self.assertEqual(gate.classify_command(command), label)
 
 
 class LabelsAreFixedText(unittest.TestCase):
@@ -516,6 +584,50 @@ class ProjectChanges(unittest.TestCase):
         self.assertIsNone(self.change(event("Grep", pattern="x")))
 
 
+class ScratchpadDir(unittest.TestCase):
+    """The hook input's `scratchpad_dir` (Claude Code 2.1.257 and later) is scratch, alongside the
+    temp directories; the session's working directory never is (ticket 02)."""
+
+    SCRATCHPAD = "/seams-test-scratchpad/proj/s1/scratchpad"   # outside every temp root: only the field
+
+    def setUp(self):
+        self.config = tempfile.mkdtemp()
+
+    def change(self, tool, scratchpad=None, **tool_input):
+        ev = event(tool, **tool_input)
+        if scratchpad is not None:
+            ev["scratchpad_dir"] = scratchpad
+        return gate.change_for_event(ev, config_dir=self.config)
+
+    def test_a_write_under_the_scratchpad_is_scratch(self):
+        s = self.SCRATCHPAD
+        self.assertIsNone(self.change("Write", s, file_path=f"{s}/notes.md", content="x"))
+        self.assertIsNone(self.change("Edit", s, file_path=f"{s}/probe.py"))
+        self.assertIsNone(self.change("Bash", s, command=f"mkdir -p {s}/evid && echo ok > {s}/evid/log.txt"))
+        self.assertIsNone(self.change("Monitor", s, command=f"tail -f /proj/server.log > {s}/copy.log"))
+
+    def test_without_the_field_the_temp_rules_apply_unchanged(self):
+        s, t = self.SCRATCHPAD, tempfile.gettempdir()
+        self.assertEqual(self.change("Write", file_path=f"{s}/notes.md", content="x")["path"], f"{s}/notes.md")
+        self.assertEqual(self.change("Bash", command=f"echo ok > {s}/log.txt")["label"], "a redirect to a file")
+        self.assertIsNone(self.change("Write", file_path=f"{t}/notes.md", content="x"))
+        self.assertIsNone(self.change("Bash", command=f"echo ok > {t}/log.txt"))
+
+    def test_the_working_directory_is_never_scratch(self):
+        for scratchpad in ("/proj", "/", "/proj/.scratch"):          # the cwd itself, above it, inside it
+            with self.subTest(scratchpad=scratchpad):
+                self.assertIsNotNone(self.change("Edit", scratchpad, file_path="/proj/src/a.ts"))
+                self.assertIsNotNone(self.change("Bash", scratchpad, command="echo x > /proj/src/a.ts"))
+        self.assertIsNotNone(self.change("Write", "/proj/.scratch", file_path="/proj/.scratch/n.md", content="x"))
+
+    def test_a_field_that_is_not_an_absolute_path_is_ignored(self):
+        relative = os.path.join(os.getcwd(), "scratchpad", "n.md")   # where a relative field would resolve
+        for scratchpad in ("scratchpad", "", 42, ["/seams-test-scratchpad"]):
+            with self.subTest(scratchpad=scratchpad):
+                self.assertIsNotNone(self.change("Write", scratchpad, file_path=relative, content="x"))
+                self.assertIsNotNone(self.change("Write", scratchpad, file_path=f"{self.SCRATCHPAD}/n.md", content="x"))
+
+
 class PreToolUseDecision(unittest.TestCase):
     """decide_pre_tool_use: refuse a project change until the request has a declaration."""
 
@@ -558,6 +670,108 @@ class PreToolUseDecision(unittest.TestCase):
         self.assertEqual(self.decide(event("Edit", agent_id="a1", file_path="/proj/src/a.ts"))["decision"], "deny")
         gate.add_declaration(self.ledger, "matt-pocock-workflow:implement")
         self.assertEqual(self.decide(event("Edit", agent_id="a1", file_path="/proj/src/a.ts"))["decision"], "allow")
+
+
+class MonitorCommands(unittest.TestCase):
+    """A Monitor watch runs its command in the Bash tool's shell, so the gate judges that command
+    as it judges a Bash command. A WebSocket watch runs nothing on the machine (ticket 02)."""
+
+    def setUp(self):
+        self.config = tempfile.mkdtemp()
+        self.ledger = gate.empty_ledger("s1")
+
+    def decide(self, **tool_input):
+        tool_input = dict({"description": "watch", "timeout_ms": 300000}, **tool_input)
+        return gate.decide_pre_tool_use(event("Monitor", **tool_input), self.ledger, config_dir=self.config)
+
+    def test_a_watch_that_writes_to_the_project_is_refused_before_a_declaration(self):
+        decision = self.decide(command="tail -f server.log | tee src/log-copy.txt")
+        self.assertEqual(decision["decision"], "deny")
+        self.assertIn("a shell command (`tee`) changes the project", decision["reason"])
+        self.assertEqual(self.decide(command="while true; do date >> src/ticks.txt; sleep 1; done")["decision"], "deny")
+
+    def test_a_read_only_watch_and_a_websocket_watch_are_not_changes(self):
+        t = tempfile.gettempdir()
+        for tool_input in ({"command": "tail -f server.log | grep --line-buffered ERROR"},
+                           {"command": "until curl -sf localhost:3000/health; do sleep 1; done"},
+                           {"command": f"tail -f {t}/x.log > {t}/copy.log"},     # scratch, as from Bash
+                           {"ws": {"url": "wss://events.example.com/stream", "protocols": ["v1"]}}):
+            with self.subTest(tool_input=tool_input):
+                self.assertEqual(self.decide(**tool_input)["decision"], "allow")
+
+    def test_after_a_declaration_the_watch_is_allowed_and_recorded_as_a_shell_change(self):
+        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement")
+        decision = self.decide(command="tail -f server.log | tee src/log-copy.txt")
+        self.assertEqual(decision["decision"], "allow")
+        self.assertEqual((decision["change"]["tool"], decision["change"]["label"]), ("Monitor", "tee"))
+
+
+class PowerShellCommands(unittest.TestCase):
+    """Before a declaration a PowerShell command is a change, unless it is one of a short read-only
+    list run on its own with plain arguments (ticket 02). The list grows only with tests."""
+
+    READS = [
+        "Get-Content README.md",
+        "Get-ChildItem -Recurse -Filter *.ts",
+        "Select-String -Path src/*.ts -Pattern TODO",
+        "git status --short",
+        "git diff HEAD~1",
+        "git log --oneline -5",
+        "get-content README.md",                     # PowerShell's names ignore case
+        "  Get-ChildItem src  ",
+        "Get-Content $env:TEMP/notes.txt -Tail 20",
+    ]
+
+    CHANGES = [
+        "Set-Content src/a.txt 'x'",
+        "Remove-Item src -Recurse",
+        "git commit -m x",
+        "New-Item -ItemType File x",
+        "npm install",
+        "Get-Process",                               # outside the list, even a read
+        "git -C sub status",                         # the list is git's own subcommand, first
+        # A listed command made to do more: a redirect, a pipe, a second statement, a subexpression,
+        # a script block, a line continuation, a second line, or an output file.
+        "Get-Content a.txt > b.txt",
+        "Get-Content a.txt | Set-Content b.txt",
+        "Get-ChildItem; Remove-Item x",
+        "Get-Content (Remove-Item x)",
+        "Get-Content $(Remove-Item x)",
+        "& { Remove-Item x }",
+        "Get-Content a.txt `\n; Remove-Item b",
+        "Get-ChildItem\nRemove-Item x",
+        "git diff --output=patch.diff",
+        "git log --output patch.txt",
+        "Select-String -Pattern 'a|b' -Path x",      # strict: a pipe character counts, quoted or not
+    ]
+
+    def setUp(self):
+        self.config = tempfile.mkdtemp()
+        self.ledger = gate.empty_ledger("s1")
+
+    def decide(self, command):
+        return gate.decide_pre_tool_use(event("PowerShell", command=command, description="x"), self.ledger,
+                                        config_dir=self.config)
+
+    def test_the_read_only_list_runs_before_a_declaration(self):
+        for command in self.READS:
+            with self.subTest(command=command):
+                self.assertEqual(self.decide(command)["decision"], "allow")
+
+    def test_every_other_command_is_refused_and_the_refusal_names_the_list(self):
+        for command in self.CHANGES:
+            with self.subTest(command=command):
+                decision = self.decide(command)
+                self.assertEqual(decision["decision"], "deny")
+                for listed in ("Get-Content", "Get-ChildItem", "Select-String", "git status", "git diff", "git log"):
+                    self.assertIn(listed, decision["reason"])
+
+    def test_after_a_declaration_it_is_allowed_and_recorded(self):
+        gate.add_declaration(self.ledger, "tdd")
+        decision = self.decide("Remove-Item src -Recurse")
+        self.assertEqual(decision["decision"], "allow")
+        self.assertEqual(decision["change"]["tool"], "PowerShell")
+        self.assertIsNone(self.decide("git status")["change"])
 
 
 class StopDecision(unittest.TestCase):

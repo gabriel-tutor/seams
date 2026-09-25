@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start\""
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-start"]
           }
         ]
       }
@@ -16,18 +17,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit\""
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit"]
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Monitor",
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use\""
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use"]
           }
         ]
       }
@@ -38,7 +41,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use\""
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use"]
           }
         ]
       }
@@ -48,7 +52,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/stop\""
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/stop"]
           }
         ]
       }
