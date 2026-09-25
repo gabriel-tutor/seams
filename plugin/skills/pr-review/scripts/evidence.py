@@ -320,22 +320,38 @@ def pr_state(evid: Path) -> dict:
     return {"url": marker["url"], "line": line, "step": step}
 
 
+def in_words(items: list) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def described(urls: list) -> str:
+    """The batch's pull requests in words, by number and repository: "pull requests 5, 6 and 7 of owner/repo"."""
+    by_repo: dict = {}
+    for url in urls:
+        match = PR_URL.match(url)
+        by_repo.setdefault(f"{match.group(2)}/{match.group(3)}", []).append(int(match.group(4)))
+    groups = [f"{in_words([str(n) for n in sorted(numbers)])} of {name}" for name, numbers in by_repo.items()]
+    return f"pull request{'s' if len(urls) != 1 else ''} {in_words(groups)}"
+
+
 def render(repo: Path, names: list, status: str, root: Path) -> str:
     states = [pr_state(root / name) for name in names]
     n = len(states)
     counts = [f"{sum(1 for s in states if s['step'] == step)} {step}" for step in STEPS
               if any(s["step"] == step for s in states)]
     unfinished = sum(1 for s in states if s["step"] not in FINISHED)
-    # The command that continues the batch names each pull request by its URL, which /pr-review takes and which the
-    # resume note shows as it is (it drops `#` as markup, so owner/repo#number would not survive it).
-    command = "/pr-review " + " ".join(s["url"] for s in states if s["url"])
+    # The command that continues the batch names each pull request by its URL, which /pr-review takes; the next step
+    # names them by number and repository, which fits the 200 characters the resume note shows of a field (it drops
+    # `#` as markup, so owner/repo#number would not survive it), and points at the command when even that does not.
+    urls = [s["url"] for s in states if s["url"]]
+    command = "/pr-review " + " ".join(urls)
     if status == "done":
         next_step = "Nothing left: the review handover was given."
     else:
         tail = (f"{unfinished} of {n} unfinished." if unfinished
                 else "every review is drafted; Post and the handover remain.")
-        next_step = f"The user types {command} again to continue it: {tail}"
-        if len(next_step) > 200:              # the resume note shows 200 characters of a field
+        next_step = f"The user types /pr-review again with {described(urls)} to continue it: {tail}" if urls else ""
+        if not urls or len(next_step) > 200:
             next_step = f"The user types the /pr-review command under Continue in this file again to continue it: {tail}"
     lines = ["# Progress: pr-review batch", "",
              f"Status: {status}",

@@ -1281,8 +1281,9 @@ class EvidenceTest(unittest.TestCase):
         self.assertIn(str(path), out)
         self.assertEqual(header["Status"], "active")
         self.assertEqual(header["Stage"], "2 pull requests: 1 drafted, 1 pinned")
-        self.assertEqual(header["Next"], "The user types /pr-review https://github.com/acme/shop/pull/12 "
-                                         "https://github.com/acme/shop/pull/13 again to continue it: 1 of 2 unfinished.")
+        self.assertEqual(header["Next"], "The user types /pr-review again with pull requests 12 and 13 of acme/shop to "
+                                         "continue it: 1 of 2 unfinished.")
+        self.assertIn("    /pr-review https://github.com/acme/shop/pull/12 https://github.com/acme/shop/pull/13\n", text)
         self.assertRegex(header["Updated"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d$")
         self.assertEqual(header["Repository"], str(self.repo.resolve()))
         self.assertIn("\n## Pull requests\n", text)
@@ -1348,6 +1349,24 @@ class EvidenceTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         header = self.batch_file()[1]
         self.assertEqual((header["Status"], header["Next"]), ("done", "Nothing left: the review handover was given."))
+
+    def test_the_next_step_names_the_batchs_pull_requests_in_a_line_the_resume_note_shows_whole(self):
+        # The note shows 200 characters of a field and turns `#` into a space. Three URLs of this very repository run past
+        # that (the live run on 7186f58 fell back to pointing at the file), so the next step names the pull requests by
+        # number and repository; the exact command stays under Continue in the file.
+        repo = lambda n, name="gabriel-tutor/seams": f"https://github.com/{name}/pull/{n}"
+        self.pin((repo(5), HEAD, BASE), (repo(6), PUSHED, BASE), (repo(7), MOVED_BASE, BASE),
+                 (repo(9, "acme/a-much-longer-repository-name"), HEAD, BASE))
+        header = self.batch_file()[1]
+        self.assertEqual(header["Next"], "The user types /pr-review again with pull requests 5, 6 and 7 of gabriel-tutor/"
+                                         "seams and 9 of acme/a-much-longer-repository-name to continue it: 4 of 4 "
+                                         "unfinished.")
+        self.assertLessEqual(len(header["Next"]), 200)
+        many = [(repo(n), HEAD, BASE) for n in range(100, 140)]
+        shutil.rmtree(self.root)
+        self.pin(*many)
+        self.assertEqual(self.batch_file()[1]["Next"], "The user types the /pr-review command under Continue in this file "
+                                                       "again to continue it: 40 of 40 unfinished.")
 
     def test_each_batch_keeps_its_own_file_and_the_same_pull_requests_typed_again_continue_theirs(self):
         # A second batch in the same repository must not erase the first: each is its own set of pull requests. The
