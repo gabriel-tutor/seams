@@ -1,6 +1,13 @@
 ---
 name: release
 description: Use when the user says ship, deploy, release, publish or go live, or when an integrated candidate is to reach a host, a store, a registry or a marketplace
+allowed-tools:
+  - Bash(git branch --show-current)
+  - Bash(git rev-parse --short HEAD)
+  - Bash(git status --short)
+  - Bash(head -n 10)
+  - Bash(git ls-files -co ':(top,glob).scratch/*/progress.md')
+  - Bash(true)
 ---
 
 # Release
@@ -8,6 +15,12 @@ description: Use when the user says ship, deploy, release, publish or go live, o
 Take an integrated candidate to its target and prove that exact candidate is what runs. Readiness first; a deploy only after a yes that names what is being deployed where; then verification, then the operations handover. Nothing here deploys, publishes or uploads before the Deploy step's yes.
 
 **Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
+
+**The repository at load** (look up a line that reads `[shell command execution disabled by policy]` yourself, the progress files as `.scratch/*/progress.md`; an empty line means none):
+- Branch: !`git branch --show-current 2>/dev/null || true`
+- HEAD: !`git rev-parse --short HEAD 2>/dev/null || true`
+- Status, first 10 lines: !`git status --short 2>/dev/null | head -n 10 || true`
+- Progress files: !`git ls-files -co ':(top,glob).scratch/*/progress.md' 2>/dev/null || true`
 
 ## Gate
 

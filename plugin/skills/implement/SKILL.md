@@ -1,6 +1,13 @@
 ---
 name: implement
 description: Use when an agreed design, spec or ticket is ready to build
+allowed-tools:
+  - Bash(git branch --show-current)
+  - Bash(git rev-parse --short HEAD)
+  - Bash(git status --short)
+  - Bash(head -n 10)
+  - Bash(git ls-files -co ':(top,glob).scratch/*/progress.md')
+  - Bash(true)
 ---
 
 # Implement
@@ -10,6 +17,12 @@ Build the work a spec, a ticket or an agreed design describes: tests first at th
 **Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the offer to add a run command to the README.
 
 **Delegation.** Reading beyond a few files goes to `matt-pocock-workflow:scout` agents; a review's subagents, `code-review`'s two included, are `matt-pocock-workflow:reviewer` agents. Independent ones start together, in one message, and this context keeps the decisions and the edits.
+
+**The repository at load** (look up a line that reads `[shell command execution disabled by policy]` yourself, the progress files as `.scratch/*/progress.md`; an empty line means none):
+- Branch: !`git branch --show-current 2>/dev/null || true`
+- HEAD: !`git rev-parse --short HEAD 2>/dev/null || true`
+- Status, first 10 lines: !`git status --short 2>/dev/null | head -n 10 || true`
+- Progress files: !`git ls-files -co ':(top,glob).scratch/*/progress.md' 2>/dev/null || true`
 
 ## Gate
 

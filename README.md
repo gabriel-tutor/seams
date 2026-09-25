@@ -179,6 +179,7 @@ Matt Pocock's method plus the rigor around it that neither collection carried:
 - **Handover.** Every ticket ends with four parts: how to run it, what to try per acceptance criterion, what changed (and any decision the ticket didn't settle), and what's next: the stage reached, the next ticket, and whether to `/clear`. Every ticket from `to-tickets` carries a "How to verify" line for the same reason.
 - **Foundations.** On first work in a repo, the `foundations` skill surveys run and verify commands, lint, pre-commit hooks, CI, glossary, issue-tracker config, boundary rules, `.env.example` and the production basics, reports the gaps scaled to the repo's size, and offers to close them through the existing setup skills or the platform's own. It writes nothing without a yes.
 - **Durable state.** The spec, the tickets, `CONTEXT.md` and the ADRs are what a ticket resumed in a fresh context reads; what a phase decided and did not write there is lost by design, so the skills write it there.
+- **Facts at load.** `implement`, the grill and `release` start with the branch, the short HEAD, the first ten lines of `git status --short` and the list of progress files already in their text: four fixed, read-only git commands that Claude Code runs as the skill loads. Each ends in `|| true` and is pre-approved in the skill's `allowed-tools`, so no exit status and no missing approval aborts the skill; a `deny` rule of yours that matches one still does, as does an `ask` rule outside auto mode, because both outrank a skill's `allowed-tools`. Outside a repository the lines are empty; with `disableSkillShellExecution` on, each reads as that setting's placeholder, and Claude looks the fact up itself.
 
 ## How to use it
 
@@ -323,7 +324,7 @@ The platform itself refuses to let the model start the skill. What those runs di
 
 ```bash
 scripts/test.sh                       # every suite below that this machine can run (--fast skips the sandbox one)
-scripts/tests/test_plugin.sh          # manifests validate, the version in plugin.json only, skills well-formed and within the size bound, the read-only agents' tool lists, always-on cost, copies and upstream hashes checked
+scripts/tests/test_plugin.sh          # manifests validate, the version in plugin.json only, skills well-formed and within the size bound, injected commands read-only, unable to fail and pre-approved, the read-only agents' tool lists, always-on cost, copies and upstream hashes checked
 scripts/tests/test_plugin_hook.sh     # the bootstrap hook against fixture homes and repos
 scripts/tests/test_hooks.sh           # the gate hooks fed JSON on stdin (PYTHON=/usr/bin/python3 for the system 3.9)
 scripts/tests/test_install.sh         # the installer in fixture homes, against a stub claude CLI

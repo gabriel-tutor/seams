@@ -1,6 +1,13 @@
 ---
 name: grill
 description: Use before building a feature or changing behavior, when a plan or design needs stress-testing, or when another skill says to call grilling
+allowed-tools:
+  - Bash(git branch --show-current)
+  - Bash(git rev-parse --short HEAD)
+  - Bash(git status --short)
+  - Bash(head -n 10)
+  - Bash(git ls-files -co ':(top,glob).scratch/*/progress.md')
+  - Bash(true)
 ---
 
 # Grill
@@ -8,6 +15,12 @@ description: Use before building a feature or changing behavior, when a plan or 
 This is Matt Pocock's grilling, presented as clickable questions, every independent one at once, with its record kept in the feature's progress file so that `/clear` or compaction loses nothing.
 
 **Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the count of decisions left.
+
+**The repository at load** (look up a line that reads `[shell command execution disabled by policy]` yourself, the progress files as `.scratch/*/progress.md`; an empty line means none):
+- Branch: !`git branch --show-current 2>/dev/null || true`
+- HEAD: !`git rev-parse --short HEAD 2>/dev/null || true`
+- Status, first 10 lines: !`git status --short 2>/dev/null | head -n 10 || true`
+- Progress files: !`git ls-files -co ':(top,glob).scratch/*/progress.md' 2>/dev/null || true`
 
 ## Method
 
