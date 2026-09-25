@@ -1110,3 +1110,80 @@ The transcripts' skill text reads `**Effort** \`low\`` and `**Effort** \`max\`` 
 - **The routing harness** on `grill-fact-finding`: only its scan was run, on the probe's stream.
 - **Baseline and models:** a no-plugin baseline for the case, and any model but Haiku 4.5 (the probe) and Opus 5.5 (the eval).
 - **An interactive session,** where subagents run in the background and AskUserQuestion is available.
+
+## 3.3, ticket 10: repository facts, 2026-09-26
+
+**What changed.** As `implement`, the grill or `release` starts, Seams' hooks add the repository facts as context framed as data:
+- the branch;
+- the short HEAD;
+- the first ten lines of `git status --porcelain`, with paths from the root;
+- the progress files, last modified first, ten at most.
+
+The Skill hook adds them for Claude's invocations, and the prompt-expansion hook for typed ones. The ticket asked for `` !`cmd` `` lines in the skills, and `93fd081` built those. Its review showed they abort the skill in a session without the Bash tool, so the user moved the facts into the hooks (decision 33). No skill injects a shell command now.
+
+**The deterministic suites.** `scripts/test.sh` passes 9 of 9 with 0 skipped on `a9d1d03`, on Python 3.14.6 and 3.9.6. Each new check failed first:
+- **The static guard,** which fails any SKILL.md that injects a shell command. It reported four injected commands in each of `93fd081`'s three skills, and every fixture form was caught.
+- **The hook suite's section 15,** before `seams_facts` existed. It covers:
+  - the three skills' facts, and nothing for any other skill or an MCP prompt;
+  - the ten-line and ten-file caps, and the 200-character line cap;
+  - names holding `<` or `>`;
+  - symlinks and FIFOs;
+  - a clean detached tree with the user's status config;
+  - a repository with no commit, no repository, and git refusing the repository;
+  - a failing status, no git, a hanging git, and a child that escapes git's process group;
+  - a broken facts module.
+- **Against `f74fe84`'s hooks,** before the second review's fixes:
+  - an escaping child held the hook 20 s, where the fixed hook takes one 3 s timeout;
+  - a broken facts module exited 1 and lost the declaration, where the fixed hook exits 0 and records it.
+
+**The probes.** Headless Haiku 4.5, Claude Code 2.1.282, `--permission-mode default`. Each used a throwaway plugin through `--plugin-dir`, with the installed copy and both Superpowers copies switched off. The account's `superpowers@synced` loads in place of `superpowers@claude-plugins-official` when only that one is off. A run that aborts while its skill renders never reaches the model and costs nothing. $0.14 in all:
+- **`allowed-tools` matching.** A rule matches a command part with its redirect stripped. `Bash(python3 -V)` let `` !`python3 -V 2>/dev/null || true` `` render ($0.033). The same line aborted with `Bash(python3 -V 2>/dev/null)`, and with no rule: "Shell command permission check failed … The following part requires approval: python3 -V".
+- **`true` passes as read-only** ($0.025).
+- **A rule may hold parentheses in quotes** ($0.025).
+- **Read-only fact commands pass** Claude Code's read-only check with no rule at all ($0.025).
+- **Empty output.** Outside a repository, `93fd081`'s block rendered each fact as "(Bash completed with no output)" ($0.036).
+- **Without the Bash tool** (`--tools "Read,Glob,Grep,Skill"`), that block aborted: "Permission to use Bash has been denied" ($0).
+
+**The runs.** Haiku 4.5, `--permission-mode default`, the plugin from the working tree. Each ran in a fresh copy of the `approved-spec` fixture, with the gift-cards progress file committed and the README modified.
+- **On `93fd081`** ($0.46; streams under `tests/runs/lean-10/`): each skill's first message showed the four facts. With `disableSkillShellExecution` on, each fact read as the setting's placeholder and each skill completed. No run aborted.
+- **On `a9d1d03`** ($1.14; streams under `tests/runs/lean-10b/`): the facts reached the transcript as a `hook_additional_context` attachment before the model's next request. For a typed skill it came right after the skill's text; for the Skill tool, after the tool result and before the skill's text. Every run ended in success with 0 denials, and none aborted.
+
+| Run on `a9d1d03` | Prompt | Facts from | First stop | Shell the model ran | Cost |
+| --- | --- | --- | --- | --- | --- |
+| implement, as is | `/matt-pocock-workflow:implement the coupon spec in docs/spec-coupons.md` | the prompt-expansion hook | asked where to build | `git status --short && git log --oneline -5` | $0.061 |
+| grill, as is | "Let's continue where we left off." | the Skill hook | resumed gift-cards, three scouts, the open questions | none | $0.168 |
+| release, as is | `/matt-pocock-workflow:release` | the prompt-expansion hook | the dirty tree has no candidate | `git status --short`, `git log --oneline -5` | $0.065 |
+| implement, no Bash | as above, with `--tools "Read,Glob,Grep,Skill"` and `disableSkillShellExecution` | the prompt-expansion hook | asked where to build | none (no shell tool) | $0.516 |
+| grill, no Bash | as above | the Skill hook | resumed, the two open questions | none (no shell tool) | $0.230 |
+| release, no Bash | as above | the prompt-expansion hook | the dirty tree has no candidate | none (no shell tool) | $0.102 |
+
+With the facts in hand, the grill ran no git. Haiku still ran `git status` in `implement` and `release`, beside the log that the facts don't hold.
+
+**The eval.** Paid, on the user's yes: `claude plugin eval plugin --case resume-grill --scaffold --runs 1 --ablation none --trust-plugin --no-publish --model haiku --max-cost-usd 0.30` ($0.04, 10 s). The session had no Bash tool, since the case lists Read, Glob, Grep and Skill. The score was 0.8. Haiku read the progress file and asked both open questions without invoking the grill, so the skill-fired grader failed and the eval path's skill load was not exercised. The runs without Bash above show the same tool set loading the grill with its facts.
+
+**The reviews, and what they changed.** Matt Pocock's `code-review` (Standards and Spec) and a correctness and security reviewer ran on `93fd081` and again on `f74fe84`. Each finding was checked against the code or the docs first.
+- **The first round** found:
+  - the abort without Bash (blocking);
+  - the re-invocation cost against decision 15;
+  - git failures hidden behind "an empty line means none";
+  - the uncapped list;
+  - steps that still looked up the facts.
+
+  The user chose the hooks (decision 33), built in `f74fe84`.
+- **The second round** found, all fixed in `a9d1d03`:
+  - the unbounded wait after a timeout's kill;
+  - an import that could lose a declaration;
+  - tags in names;
+  - the user's status config;
+  - progress files the resume note would refuse;
+  - the snapshot read where git may have moved;
+  - a ledger check that could not fail.
+- **Left as they were,** per decision 12: the naming and duplication smells.
+
+**Always-on cost.** Unchanged. No name or description changed, and the hooks add context only when one of the three skills starts.
+
+**Not exercised live.**
+- **The eval path's skill load:** an Opus run of the case would show it.
+- **A `deny` rule for Bash,** and the `--restricted` flag, which remove the same tool as the runs above.
+- **Hooks switched off** (`disableAllHooks`), where the skills look the facts up themselves.
+- **An interactive session,** and any model but Haiku 4.5.

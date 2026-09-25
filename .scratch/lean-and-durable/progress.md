@@ -2,13 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: Ticket 10's second-review fixes are committed on main; next, the approved paid runs (six Haiku runs, one eval case) on that commit, then the record.
+Next: Implement ticket 11 (the quality bar and reviews), /clear first; it is the only unblocked ticket. implement has 388 bytes left under the bound.
 Updated: 2026-09-26
-Ticket: 10
-Candidate: f74fe84
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes) and ticket 09 (read-only agents and explicit delegation), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation) and ticket 10 (the repository facts, from the Seams hooks: decision 33), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -112,7 +110,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 07 | A pr-review batch resumes (done, on local `main`) | 04, 06 |
 | 08 | Every skill under the bound, lighter always-on cost (done, on local `main`) | 06 |
 | 09 | Read-only agents and explicit delegation (done, on local `main`) | 08 |
-| 10 | Pre-loaded facts | 08 |
+| 10 | Pre-loaded facts, as the repository facts from the Seams hooks (decision 33; done, on local `main`) | 08 |
 | 11 | The quality bar in the definition of done; reviews scaled to risk | 09 |
 | 12 | Unblocked tickets built in parallel | 05, 11 |
 | 13 | Docs: resuming, surfaces, off switches, measuring, versions | 02, 03, 07, 10, 12 |
@@ -122,6 +120,10 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 
 - Nothing open in the design. The grill's frontier is empty and confirmed, and the spec and tickets are published.
 - From ticket 09's Spec review: `pr-review`'s risk reviewer still starts as `general-purpose` (`references/understand-and-review.md`), though decision 10 names every review. No ticket covers it; the `reviewer` agent could take it, since it only reads.
+- From ticket 10: the routing harness (`scripts/behavior_test.py`) switches off `superpowers@claude-plugins-official` only. On this account the synced `superpowers@synced` then loads in its place (seen 2026-09-26 on 2.1.282), so harness runs may not be Superpowers-free. Switching off both is a one-line change in `settings()`.
+- From ticket 10: `claude plugin eval` publishes its HTML report to claude.ai by default when the account supports it. The eval commands in tickets 04, 05 and 09's records pass no `--no-publish`, so those reports may be on the account as private pages.
+- From ticket 10: the resume-grill eval case, one Haiku run with no baseline, scored 0.8 because Haiku answered from the progress file without invoking the grill. So the eval path's skill load has not been seen live. The headless runs without Bash show the same tool set loading the grill with its facts. An Opus run of the case would show it on the eval path.
+- From ticket 06, still open after ticket 10: `pr-review`'s temp directory. The repository facts go to implement, the grill and release only. `pr-review`'s core has 15 bytes left, and an expansion like `${TMPDIR:-/tmp}` in an injected command would abort the skill.
 - For the user, from ticket 07's live run: both sessions started a batch's reviewers in the foreground, in parallel, and the resumed one stayed in one turn, so the scripts' pre-approval held through the handover. `batch.md` still says the fan-out runs in the background and ends the turn (ticket 06's design, held by the static test). Should it say foreground? See ticket 07's Comments.
 
 ## Later phases: facts already verified (2026-09-25, official sources)
@@ -170,3 +172,9 @@ All from the Claude Code docs mirror at `/Users/gabrieltutor/claude-docs/code.cl
 - Subagents nest up to three levels below the main conversation by default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`); at most 20 run at once (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, "Concurrent subagent limit reached"); AskUserQuestion is never among a subagent's tools. (`sub-agents`)
 - `${CLAUDE_EFFORT}` is filled in in a skill's text: a headless `trivial` run at `--effort low` and at `--effort max` loaded the line with `low` and with `max` (2.1.282, while building ticket 08). `claude --plugin-dir <dir> plugin details <name>` measures a plugin from disk. Its always-on figure comes from `count_tokens` for the active model, or an offline estimate, and it counts a `disable-model-invocation` skill's description, which Claude Code keeps out of context (`plugins-reference`, `skills`).
 - Ten parallel readers covered all 276 files, 276 of 276 read in full: parts 1–10 read 16, 23, 19, 50, 21, 37, 29, 40, 1 and 40 files. Their key facts are folded into the decisions above.
+- From ticket 10's probes (Claude Code 2.1.282, Haiku 4.5, `--permission-mode default`):
+  - A skill's `` !`cmd` `` runs through the Bash tool. In a session without it (`--tools` lacking Bash, as `claude plugin eval` gives every case not granted Bash), the invocation aborts with "Permission to use Bash has been denied", before the model is called.
+  - An `allowed-tools` rule matches a command part with its redirect stripped: `Bash(python3 -V)` matched `python3 -V 2>/dev/null || true`, and `Bash(python3 -V 2>/dev/null)` matched nothing. `true` passes as read-only, and a rule may hold parentheses in quotes.
+  - An injected command with no output renders as "(Bash completed with no output)", not as an empty line.
+  - Hook context reaches the transcript as a `hook_additional_context` attachment. For a typed skill, the prompt-expansion hook's comes right after the skill's text; for the Skill tool, `PostToolUse:Skill`'s comes after the tool result and before the skill's text. Either way it lands before the model's next request. The stream shows only SessionStart hook events.
+  - git takes `</system-reminder>` as a branch name, and a status path may hold `<` and `>`.
