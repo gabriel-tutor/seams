@@ -2,13 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: On main, the commit after 8573c3b fixes its review's findings; run the live batch on it (asked first: it is paid), then the record and the definition of done.
+Next: Implement ticket 09 (read-only agents and explicit delegation), /clear first; 10 is unblocked too. pr-review's core has 15 bytes left under the bound.
 Updated: 2026-09-26
-Ticket: 07
-Candidate: 8573c3b
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts) and ticket 08 (every skill under the bound, lighter always-on cost), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost) and ticket 07 (a pr-review batch resumes), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -72,7 +70,7 @@ Candidate: 8573c3b
 
 27. A review finished at the same head and baseline is reused for a single review too, not only in a batch: `evidence.py pin` pins every pull request the same way, so `/pr-review` typed again after a `/clear` continues one pull request as it continues a batch. `afresh` in the request (`/pr-review 5 afresh`) reuses nothing, for when an earlier review should not stand (after `brew install bash`, say). (The user's choice while building ticket 07, 2026-09-26, after the Spec review flagged the reuse as beyond the ticket.)
 28. A batch's progress file sits at the evidence root under the temp directory, not in the repository (ADR 0003 names the exception), one per batch: named after the session's repository and the batch's pull requests, so the same pull requests typed again continue it and another batch keeps its own. Each pull request's step is read from its evidence; the scripts that end a step bring the file up to date, and `batch_report.py --close` closes it at the final handover once every review in it is drafted or posted. `evidence.py` names every evidence directory and writes its marker, so that each run names them alike. (Made while building ticket 07, reworked after its review; not the user's choice.)
-29. The command that continues a batch names each pull request by its URL: the resume note turns `#` into a space, so `owner/repo#number` would not survive it. (Made while building ticket 07.)
+29. The resume note turns `#` into a space and shows 200 characters of a field, so a batch's next step names its pull requests by number and repository ("pull requests 5, 6 and 7 of gabriel-tutor/seams"), and the exact command, by URL, sits under Continue in its file. (Made while building ticket 07; the live run showed three URLs of this repository overflow the field.)
 
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.
@@ -103,7 +101,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 04 | Progress file and resume note, end to end through the grill (done, on local `main`) | 01 |
 | 05 | Specs, tickets and builds keep the progress file (done, on local `main`) | 04 |
 | 06 | pr-review under the cap, scripts without prompts (done, on local `main`) | 01 |
-| 07 | A pr-review batch resumes | 04, 06 |
+| 07 | A pr-review batch resumes (done, on local `main`) | 04, 06 |
 | 08 | Every skill under the bound, lighter always-on cost (done, on local `main`) | 06 |
 | 09 | Read-only agents and explicit delegation | 08 |
 | 10 | Pre-loaded facts | 08 |
@@ -115,6 +113,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 ## Open questions
 
 - Nothing open in the design. The grill's frontier is empty and confirmed, and the spec and tickets are published.
+- For the user, from ticket 07's live run: both sessions started a batch's reviewers in the foreground, in parallel, and the resumed one stayed in one turn, so the scripts' pre-approval held through the handover. `batch.md` still says the fan-out runs in the background and ends the turn (ticket 06's design, held by the static test). Should it say foreground? See ticket 07's Comments.
 
 ## Later phases: facts already verified (2026-09-25, official sources)
 

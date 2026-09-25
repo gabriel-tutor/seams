@@ -964,3 +964,78 @@ The transcripts' skill text reads `**Effort** \`low\`` and `**Effort** \`max\`` 
 - The two shell cases, `gate-shell-write` and `gate-commit`, which 3.1 didn't run either.
 - The resume cases, which tickets 04 and 05 cover.
 - Routing in an interactive session.
+
+## 3.3, ticket 07: a pr-review batch resumes, 2026-09-26
+
+**What changed.**
+- **A fifth script, `evidence.py`,** pins every pull request at checkout. It names each evidence directory the same way on every run and writes its marker, then says where each review starts from what an earlier run left:
+  - **new** or **afresh**: every step runs;
+  - **continue with its checks**: the checks are kept, and every other step runs;
+  - **continue at Draft**: `review.json` is kept;
+  - **reuse**: the draft goes to Post.
+
+  Nothing else an earlier run left is kept, a moved head gets a directory of its own, and `afresh` in the request reuses nothing.
+- **A batch keeps a progress file** beside its evidence, under the temp directory. The scripts bring it up to date as each pull request is checked, reviewed, drafted and posted, and the final handover's `batch_report.py --close` closes it.
+- **The resume note** lists the newest open batch of the session's repository among its entries.
+
+**The deterministic suites.** `scripts/test.sh` passes 9 of 9 with 0 skipped on Python 3.14.6 and 3.9.6. The unit and hook suites also pass on 3.12.13, CI's version.
+- `EvidenceTest` covers the resume choices through the scripts' command lines.
+- The hook suite covers the batch entry at every source: another repository's batch, a finished one, links, an open root, planted and malformed files, and the cap.
+
+**The review, and what it changed.** Matt Pocock's `code-review` (Standards and Spec) ran on the build, `8573c3b`, beside a correctness and security reviewer that ran its experiments in a scratch directory. It found:
+- **Parsing:** a tree a check had changed read as unusable, since the porcelain lost its first column;
+- **The diff:** an empty diff from a failed command was kept;
+- **Batch identity:** a second batch in one repository erased the first;
+- **Closing:** the headless table before the post question closed the batch;
+- **Resuming:** a resumed review skipped Understand, Try it and Security;
+- **Robustness:** a NUL in a batch file cost the whole resume note;
+- **Posted reviews:** a posted review lost `posted.json` when its preview was missing;
+- **Permissions:** evidence came out group-writable under umask 002.
+
+`7186f58` fixes each, test first. The Spec review also flagged the reuse of a single review's evidence as beyond the ticket. The user kept it, and chose `afresh` as the way out.
+
+**The live run.** The run was on `7186f58`, on the user's yes. Setup:
+- **Pull requests:** closed PRs #5, #6 and #7 of this repository. #5 and #7 are the one-line README change of 3.2's rounds, and #6 is the gate change that breaks `scripts/test.sh`.
+- **Sessions:** headless `claude -p` from a fresh clone, with `--plugin-dir` at a `git archive` export of the candidate and the installed copy and Superpowers switched off.
+- **Permissions:** `--permission-mode default`, with settings allowing git, `gh` reads and `pr-review`'s own scripts.
+- **GitHub:** `gh` and `git` shims first on `PATH` refused every write, and `TMPDIR` was the run's own for the hooks and the shell alike.
+- **Versions:** Claude Code 2.1.282, the runtime reporting `claude-opus-5-5[1m]`.
+
+1. **Session 1:** `/matt-pocock-workflow:pr-review 5 6 7`. A driver killed it once the batch's progress file counted a drafted review, after 312 s.
+   - `evidence.py pin` had answered "new: every step runs" for all three.
+   - Three reviewers started in one message.
+   - #5 was drafted, its `test` check ok on both trees (27 s and 26 s). #6's and #7's checks were cut off mid-run.
+   - The progress file read "3 pull requests: 1 drafted, 2 pinned". Six worktrees were left in the clone.
+2. **Session 2:** a fresh session, as `/clear` leaves one.
+   - Its session-start hook listed the batch in the resume note: "- pr-review batch: stage 3 pull requests: 1 drafted, 2 pinned, updated 2026-09-26; next: … 2 of 3 unfinished. File: …". The notice read "Seams: resuming pr-review batch (3 pull requests: 1 drafted, 2 pinned): …".
+   - The prompt was the command under Continue in the batch's file, `/pr-review` with the three URLs.
+   - Claude read the file and pinned the three:
+     - #5: "reuse: drafted at this head and baseline; it goes to Post", keeping its worktrees until Cleanup;
+     - #6 and #7: "every step runs", removing their worktrees and making them again.
+   - **Only two reviewers started,** for #6 and #7, in one message. Checks ran for those two only: #6's `test` was broken by the PR, and still broken when rechecked alone; #7's was ok.
+   - The handover's table came first, without `--close`, then the post question in text. #5's draft was presented as reused.
+   - One turn, 596 s, $2.72.
+
+**Checked after the run.**
+- **Reuse:** #5's `review.json`, `payload.json` and `review.md` were byte-identical before and after session 2.
+- **The batch file:** it read `Status: active`, "3 pull requests: 3 drafted", and "every review is drafted; Post and the handover remain". That is the state of a batch whose post question is unanswered.
+- **GitHub:** 363 shim calls, with no write attempted. Nothing was posted.
+- **The clone:** its status and worktree list were identical to the record taken before session 1. All six worktrees were gone, including those session 1 left behind.
+
+**What the run found.**
+- **The next step overflowed.** Three URLs of this repository run past the 200 characters the resume note shows of a field, so the next step fell back to pointing at the file, and it would take Claude one more read to tell the user what to type. `c069cf3` names the pull requests by number and repository instead ("pull requests 5, 6 and 7 of gabriel-tutor/seams"). That is unit-tested, and not run live.
+- **Foreground reviewers.** Both sessions started the batch's reviewers in the foreground, in parallel, and session 2 stayed in one turn. The core says to keep subagents in the foreground; `batch.md` says the fan-out runs in the background and ends the turn. That is recorded as open in the ticket.
+- **Permission denials.** Session 2 had 12, all from the run's narrow settings:
+  - inline `python3` probes, so #6's probe was written but not run, and the review said so under not verified;
+  - the `claude` CLI;
+  - compound commands with a part the settings lacked.
+
+  Session 1's cost is not in its stream: it was killed before its result.
+
+**Not exercised live.**
+- `/compact`, the case ticket 14's readiness needs.
+- A posted review reused, `afresh`, and a head that moved: each is unit-tested.
+- Whether the skill's grant covers a subagent's own script calls: the run's settings allowed the scripts.
+- An interactive session, with AskUserQuestion and `/clear` itself.
+- The Bash sandbox, which gives sandboxed commands a `$TMPDIR` of their own.
+- Any model but the one above.
