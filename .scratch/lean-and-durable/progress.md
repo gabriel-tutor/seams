@@ -2,7 +2,7 @@
 
 Status: active
 Stage: integrated
-Next: On main: ticket 11's review fixes are committed; next the paid runs the user approved (each review case 3 times, one headless implement run), then the record commit and the definition of done.
+Next: On main: the paid runs are done and the harness now allows a review fix's git rm; next ticket 11's record commit, then its definition of done.
 Updated: 2026-09-26
 Ticket: 11
 Candidate: 2438aed

@@ -113,6 +113,17 @@ class RunContextTest(unittest.TestCase):
         self.assertEqual((r["first_tool"], r["before"]), ("Write", ["Write(outside)"]))
 
 
+class SettingsTest(unittest.TestCase):
+    """What a run may do in its throwaway workspace without a prompt, which -p cannot answer."""
+
+    def test_a_review_fix_can_be_committed(self):
+        # lean-and-durable ticket 11's live runs: a review fix that moved a test file ran `git rm`, which the settings
+        # denied, so a run that had started every review its scenario checks counted as an error.
+        allow = json.loads(load_harness().settings(False))["permissions"]["allow"]
+        for form in ("Bash(git add:*)", "Bash(git rm:*)", "Bash(git commit:*)"):
+            self.assertIn(form, allow)
+
+
 class ScanTest(unittest.TestCase):
     def test_first_skill_after_exploration(self):
         r = scan(INIT,

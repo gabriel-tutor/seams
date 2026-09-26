@@ -86,15 +86,15 @@ def settings(superpowers: bool) -> str:
     """--settings for a run. Read access to Matt Pocock's skill files (the entries in
     ~/.claude/skills are symlinks, and permission checks use the resolved ~/.skills-manager
     path) and to the plugin's own reference files; a leading // makes a Read rule absolute.
-    The fixture's own checks and a commit are allowed so a gate scenario can run to its end in
-    the throwaway workspace, and the read-only forms the platform's own allowlist does not
+    The fixture's own checks and a commit (`git add`, `git rm`, `git commit`) are allowed so a
+    scenario can run to its end in the throwaway workspace, a review fix included, and the read-only forms the platform's own allowlist does not
     cover when they appear in a compound command (`git -C <path> status`, `echo "exit: $?"`,
     `ls`, `find`; the ticket-10 evidence set lost three runs to them); anything else the model
     runs is the platform's call to deny, and a denial makes the run an error, not a miss.
     Superpowers is forced off unless the run keeps the user's own setting."""
     allow = ["Read(~/.claude/skills/**)", "Read(~/.skills-manager/**)", f"Read(/{PLUGIN}/**)",
              "Bash(npm test:*)", "Bash(npm run typecheck:*)", "Bash(npx vitest:*)", "Bash(npx tsc:*)",
-             "Bash(git add:*)", "Bash(git commit:*)",
+             "Bash(git add:*)", "Bash(git rm:*)", "Bash(git commit:*)",
              "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git -C:*)",
              "Bash(echo:*)", "Bash(ls:*)", "Bash(find:*)"]
     config: dict = {"permissions": {"allow": allow}}
