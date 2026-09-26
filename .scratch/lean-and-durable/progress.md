@@ -2,13 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: On main: the paid runs are done and the harness now allows a review fix's git rm; next ticket 11's record commit, then its definition of done.
+Next: Implement ticket 12 (unblocked tickets in parallel), /clear first; it is the only unblocked ticket. implement has 27 bytes left, so its flow needs a reference of its own.
 Updated: 2026-09-26
-Ticket: 11
-Candidate: 2438aed
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation) and ticket 10 (the repository facts, from the Seams hooks: decision 33), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33) and ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -117,7 +115,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 08 | Every skill under the bound, lighter always-on cost (done, on local `main`) | 06 |
 | 09 | Read-only agents and explicit delegation (done, on local `main`) | 08 |
 | 10 | Pre-loaded facts, as the repository facts from the Seams hooks (decision 33; done, on local `main`) | 08 |
-| 11 | The quality bar in the definition of done; reviews scaled to risk | 09 |
+| 11 | The quality bar in the definition of done; reviews scaled to risk (done, on local `main`) | 09 |
 | 12 | Unblocked tickets built in parallel | 05, 11 |
 | 13 | Docs: resuming, surfaces, off switches, measuring, versions | 02, 03, 07, 10, 12 |
 | 14 | Release 3.3.0 | 01–13 |
@@ -130,6 +128,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 - From ticket 10: `claude plugin eval` publishes its HTML report to claude.ai by default when the account supports it. The eval commands in tickets 04, 05 and 09's records pass no `--no-publish`, so those reports may be on the account as private pages.
 - From ticket 10: the resume-grill eval case, one Haiku run with no baseline, scored 0.8 because Haiku answered from the progress file without invoking the grill. So the eval path's skill load has not been seen live. The headless runs without Bash show the same tool set loading the grill with its facts. An Opus run of the case would show it on the eval path.
 - From ticket 06, still open after ticket 10: `pr-review`'s temp directory. The repository facts go to implement, the grill and release only. `pr-review`'s core has 15 bytes left, and an expansion like `${TMPDIR:-/tmp}` in an injected command would abort the skill.
+- From ticket 11: `implement` has 27 bytes left under the bound, so ticket 12's parallel flow needs a reference of its own, and perhaps the record's rules moved into one with the tests that hold them. The two review scenarios ran only through the harness: `claude plugin eval` gives them no shell on this Mac. `/security-review` itself has not run live, since no fixture has `origin/HEAD` at its fixed point.
 - For the user, from ticket 07's live run: both sessions started a batch's reviewers in the foreground, in parallel, and the resumed one stayed in one turn, so the scripts' pre-approval held through the handover. `batch.md` still says the fan-out runs in the background and ends the turn (ticket 06's design, held by the static test). Should it say foreground? See ticket 07's Comments.
 
 ## Later phases: facts already verified (2026-09-25, official sources)

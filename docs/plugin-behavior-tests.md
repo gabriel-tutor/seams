@@ -1187,3 +1187,89 @@ With the facts in hand, the grill ran no git. Haiku still ran `git status` in `i
 - **A `deny` rule for Bash,** and the `--restricted` flag, which remove the same tool as the runs above.
 - **Hooks switched off** (`disableAllHooks`), where the skills look the facts up themselves.
 - **An interactive session,** and any model but Haiku 4.5.
+
+## 3.3, ticket 11: the quality bar and reviews by risk, 2026-09-26
+
+**What changed.**
+- **The definition of done.** `implement`'s definition of done has five more rows: Failure paths, Security, Performance, Observability and Rollback. Each is proven by a command or a check, or says `n/a` and why.
+- **Reviews scale with risk:**
+  - Every build gets Matt Pocock's `code-review` and a correctness review by the read-only `reviewer` agent.
+  - A sensitive change also gets a security review. That is `/security-review` when its merge-base with `origin/HEAD` is the fixed point (decision 34), and the `reviewer` agent on the security axis otherwise.
+  - A diff over 400 changed lines or 15 files gets `/simplify` offered.
+  - The handover offers `/verify` for a user-facing change to a runnable app.
+- **The detail** is in `plugin/skills/implement/references/reviews.md`.
+
+**The probes** (2.1.282, in the session that built it, no cost):
+- **`/review`.** `Skill("review")` answered `Unknown skill: review`. Matt Pocock's personal `code-review` replaces the bundled `/code-review`, whose alias is `/review`, and the Skill tool doesn't resolve the alias. So the `reviewer` agent does the correctness review.
+- **`/verify`.** `Skill("verify")` answered that it "cannot be used with Skill tool due to disable-model-invocation". Only the user can start it.
+
+**The deterministic suites.** `scripts/test.sh` passes 9 of 9 with 0 skipped on `327759e`, and again with the record, on Python 3.14.6 and 3.9.6. Each new check failed first:
+- the definition of done's rows, the review step, the reference and the routing notes (the static guard);
+- the scanner's record of each agent's task, the judge's `skills` and `tasks`, and the scenarios' graders held to both (the unit tests);
+- after the review, a subagent's calls kept out of the verdict, a run waiting for its scenario's timeout, and a review fix's `git rm`;
+- the two review fixtures (the setup test).
+
+**The harness.** Paid, on the user's yes: `behavior_test.py run --scenario feature-reviews --scenario sensitive-reviews --arm plugin --assert --jobs 3` (records under `tests/runs/ticket-11/`).
+
+Candidate: `327759e`; model: `claude-opus-5-5[1m]`; 6 runs.
+
+| Scenario | Expected first skill | Runs | Matched | Refused | Failed calls | Errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `feature-reviews` | `matt-pocock-workflow:implement` | 3 | 3 | 0 | 5 | 0 |
+| `sensitive-reviews` | `matt-pocock-workflow:implement` | 3 | 2 | 0 | 3 | 1 |
+
+Runs that did not match:
+
+- `sensitive-reviews` run 1: error, 1 permission denial: the harness settings blocked a call the model made
+
+That run's review fix moved a test into `tests/cart.test.ts` with `git rm`, which the harness's settings denied. By then it had started all four reviewers. `a263282` allows `git rm` beside `git add` and `git commit`.
+
+Every run did the same, in 83 to 97 seconds:
+- it invoked `implement`, then `code-review`, then `receiving-code-review`;
+- it started reviewers named "Standards review", "Spec review" and "Correctness review";
+- in `sensitive-reviews`, it added a "Security review". The fixture has no `origin`, so `/security-review` has nothing to diff against.
+
+The failed calls were compound reads (`ls` of a missing file, exit 1). Their costs weren't reported, because the harness stops each run at its first change, before the result event.
+
+**One headless `implement` run.** Also paid, on the same yes. It ran on the `feature-reviews` fixture, with the harness's command and settings, from the review to the handover: $1.10, 230 s, 28 turns, 2 of the model's compound commands denied and then re-run apart.
+- **The review:**
+  - Standards, Spec and Correctness reviewers, and no security review, since nothing was sensitive;
+  - no `/simplify` offer, since the diff was 33 lines;
+  - `receiving-code-review` on the findings.
+- **Acted on:** the two correctness gaps, both tests that could never fail.
+- **Left, with reasons:** five other findings (older code, the spec's sort order, style).
+- **The definition of done** showed the new rows:
+  - Failure paths: the `RangeError`'s check tested both ways;
+  - Security: a secret scan of the diff, no matches;
+  - Performance: `n/a`, not a hot path;
+  - Observability: `n/a` for logging, the error names the value;
+  - Rollback: `git revert` of the two commits.
+
+**The eval.** Not run. A `claude plugin eval` case can't get a shell on this Mac, because its sandbox won't start while `~/.docker` holds symlinks, and a review needs git. The cases carry their graders for a machine where it can:
+- the Skill grader on `implement`;
+- a `tool_order` for `code-review`;
+- the `reviewer` agent;
+- the correctness and security reviewers, anchored on each agent's description.
+
+**The reviews, and what they changed.** Matt Pocock's `code-review` (Standards, Spec) and a correctness reviewer ran on `2438aed`, as general-purpose agents told to only read. The session predates the Seams agents. `/simplify` was offered on the 652-line diff, and the user declined. Each finding was checked against the code or the docs first. Fixed in `327759e`:
+- the harness counted a subagent's own calls as the run's;
+- the harness ignored a scenario's timeout;
+- the Security row contradicted the rule on which findings are acted on;
+- task patterns that matched an axis anywhere;
+- the lost "or a check";
+- `/simplify`'s cleanups and `receiving-code-review`;
+- `/security-review`'s working tree;
+- a glossary word the repository avoids;
+- the setup test's line count;
+- the setups' file mode.
+
+The user settled two calls: decision 34 (`/security-review` only on this ticket's range) and decision 35 (the bootstrap left as it is).
+
+**Always-on cost.** Unchanged. No name or description changed, and the listing is still 2,626 of 2,650 characters. `implement` is 10,973 bytes, 27 under the bound.
+
+**Not exercised live.**
+- `/security-review` itself, which needs `origin/HEAD` at the fixed point.
+- `/simplify` accepted.
+- `/verify` offered for a runnable app.
+- The eval path of the two cases.
+- Any model but Opus 5.5.
