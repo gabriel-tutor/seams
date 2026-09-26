@@ -490,7 +490,7 @@ class JudgeTest(unittest.TestCase):
     def test_a_builds_review_runs_code_review_and_a_correctness_review(self):
         # lean-and-durable ticket 11: a build's review is Matt Pocock's code-review and a correctness review. Claude
         # can't reach the bundled /review while his code-review holds its name ("Unknown skill: review", 2.1.282), so
-        # the correctness review is a reviewer agent told its axis; code-review's own sub-agents are reviewers too.
+        # the correctness review is a reviewer agent told its axis; code-review's own subagents are reviewers too.
         implement, reviewer = "matt-pocock-workflow:implement", "matt-pocock-workflow:reviewer"
         standards = f"{reviewer}\nStandards review\nReview 1a2b3c4...HEAD against the repository's documented standards."
         correctness = f"{reviewer}\nCorrectness review\nReview 1a2b3c4...HEAD on the correctness axis."
@@ -499,11 +499,15 @@ class JudgeTest(unittest.TestCase):
                    tasks=[standards, correctness]),
             record("feature-reviews", 2, skill=implement, skills=[implement], agents=[reviewer], tasks=[correctness]),
             record("feature-reviews", 3, skill=implement, skills=[implement, "code-review"], agents=[reviewer],
-                   tasks=[standards]))
+                   tasks=[standards]),
+            # The axis is the reviewer's own, named in its description: a prompt that only mentions it is not that review.
+            record("feature-reviews", 4, skill=implement, skills=[implement, "code-review"], agents=[reviewer],
+                   tasks=[standards + " Correctness is reviewed separately."]))
         self.assertEqual(code, 1)
-        self.assertIn("1 of 3", report)
+        self.assertIn("1 of 4", report)
         self.assertRegex(report, r"miss\s+run 2: never invoked code-review")
-        self.assertRegex(report, r"miss\s+run 3: no agent was given a task matching .*correctness")
+        self.assertRegex(report, r"miss\s+run 3: no agent was given a task matching .*orrectness")
+        self.assertRegex(report, r"miss\s+run 4: no agent was given a task matching .*orrectness")
 
     def test_a_sensitive_builds_review_adds_a_security_review(self):
         # The fixture has no origin remote, so /security-review has no origin/HEAD to diff against: the reviewer agent
@@ -516,7 +520,7 @@ class JudgeTest(unittest.TestCase):
                              record("sensitive-reviews", 2, skill=implement, tasks=[correctness], **reviewed))
         self.assertEqual(code, 1)
         self.assertIn("1 of 2", report)
-        self.assertRegex(report, r"miss\s+run 2: no agent was given a task matching .*security")
+        self.assertRegex(report, r"miss\s+run 2: no agent was given a task matching .*ecurity")
 
     def test_a_scenario_without_an_expectation_file_fails_loudly(self):
         code, report = judge(record("no-such-scenario", 1, skill=self.TRIVIAL))
@@ -700,13 +704,17 @@ class ScenarioFilesTest(unittest.TestCase):
         self.assertEqual(sorted(expecting), ["feature-reviews", "sensitive-reviews"])
 
     def test_the_tasks_a_scenario_expects_have_agent_graders_that_agree(self):
-        # A build's review starts reviewer agents that differ only by what each is asked. On sample calls, one per
-        # axis a reviewer takes, the harness's `tasks` and the eval's task graders (Agent graders narrower than the
-        # agent's type) agree on which calls count.
+        # A build's review starts reviewer agents that differ only by what each is asked, and reviews.md names each by
+        # its axis in its description. On sample calls, one per axis a reviewer takes, a standards review whose prompt
+        # mentions the other two, and axis names in capitals, the harness's `tasks` and the eval's task graders (Agent
+        # graders narrower than the agent's type) agree on which calls count.
         harness = load_harness()
         reviewer = "matt-pocock-workflow:reviewer"
         calls = [{"subagent_type": reviewer, "description": f"{axis.capitalize()} review",
                   "prompt": f"Review 1a2b3c4...HEAD on the {axis} axis."} for axis in ("correctness", "security", "standards", "spec")]
+        calls += [{"subagent_type": reviewer, "description": "Standards review",
+                   "prompt": "Review 1a2b3c4...HEAD against the standards; correctness and security are reviewed apart."},
+                  {"subagent_type": reviewer, "description": "CORRECTNESS REVIEW", "prompt": "Review 1a2b3c4...HEAD."}]
         expecting = []
         for name in harness.all_scenarios():
             expect = harness.expectation(name)
@@ -719,11 +727,26 @@ class ScenarioFilesTest(unittest.TestCase):
                 narrower = [m for m in matchers if not m.search(json.dumps({"subagent_type": reviewer}))]
                 for call in calls:
                     task = "\n".join(call[k] for k in ("subagent_type", "description", "prompt"))
-                    wanted = any(re.search(p, task, re.IGNORECASE) for p in expect["tasks"])
+                    wanted = any(re.search(p, task) for p in expect["tasks"])
                     graded = any(m.search(json.dumps(call)) for m in narrower)
-                    self.assertEqual(wanted, graded, f"the harness and the graders disagree on: {call['description']}")
+                    self.assertEqual(wanted, graded, f"the harness and the graders disagree on: {call}")
                 expecting.append(name)
         self.assertEqual(sorted(expecting), ["feature-reviews", "sensitive-reviews"])
+
+    def test_a_run_waits_as_long_as_its_scenario_allows(self):
+        # lean-and-durable ticket 11's review: a build's review runs several reviewers, so its scenarios allow 900 s in
+        # prompt.md's timeout_seconds, which the eval reads; the harness waits as long, unless --timeout says otherwise.
+        harness = load_harness()
+        waited = []
+        harness.run_once = lambda scenario, arm, prompt, run_dir, timeout, *rest: waited.append(timeout) or {}
+        harness.print_summary = lambda *a: None
+        with tempfile.TemporaryDirectory() as d:
+            for scenario, given in (("feature-reviews", None), ("cosmetic-edit", None), ("feature-reviews", 120.0)):
+                args = type("Args", (), {"runs": 1, "past_skill": False, "prompt": None, "label": None, "scenario": [scenario],
+                                         "out": Path(d) / f"{scenario}-{given}", "arm": "plugin", "timeout": given,
+                                         "superpowers": False, "jobs": 1})()
+                harness.run_scenario(args, scenario, None)
+        self.assertEqual(waited, [900, 300, 120.0])
 
     def test_the_gate_scenarios_allow_a_refusal_and_run_past_the_skill(self):
         harness = load_harness()
@@ -784,7 +807,7 @@ class PastSkillTest(unittest.TestCase):
 
     def test_each_agents_task_is_recorded_with_its_type(self):
         # lean-and-durable ticket 11: a build's review starts reviewer agents that differ only by their task
-        # (code-review's two sub-agents, the correctness review, the security review), so the record keeps each
+        # (code-review's two subagents, the correctness review, the security review), so the record keeps each
         # Agent call's type, description and prompt, one line each, in the order the run made them.
         reviewer = "matt-pocock-workflow:reviewer"
         r = scan(INIT,
@@ -801,6 +824,43 @@ class PastSkillTest(unittest.TestCase):
                                       f"{reviewer}\nSecurity review\nReview 1a2b3c4...HEAD for security findings only.",
                                       "\ndocs\nFind the money rule"])
         self.assertEqual(r["agents"], [reviewer, reviewer, None])
+
+    def test_a_subagents_calls_are_neither_the_verdict_nor_a_refusal_of_the_run(self):
+        # lean-and-durable ticket 11's review: a stream carries each subagent's own calls, marked with the Agent call
+        # they belong to (`parent_tool_use_id`, as in tests/runs/lean-10b/grill-asis). A read-only reviewer's refused
+        # read or its redirect into the scratchpad is the agent's, not the run's route and not a gate defect after
+        # the declaration; what the agent read still counts as read.
+        reviewer = "matt-pocock-workflow:reviewer"
+        sub = lambda event: {**event, "parent_tool_use_id": "t1"}
+        refused = (f"Seams gate: `{reviewer}` is a read-only agent, and this call runs a command outside its reads: "
+                   "a read-only agent never changes the project.")
+        r = scan(INIT,
+                 assistant(tool("Skill", skill="matt-pocock-workflow:implement")),
+                 assistant(tool("Agent", id="t1", description="Correctness review",
+                                prompt="Review 1a2b3c4...HEAD on the correctness axis.", subagent_type=reviewer)),
+                 sub(assistant(tool("Bash", id="s1", command="sed -n 1,40p src/inventory.ts"))),
+                 sub(tool_result("s1", refused, error=True)),
+                 sub(assistant(tool("Bash", id="s2", command="git diff 1a2b3c4...HEAD > /tmp/review.diff"))),
+                 sub(tool_result("s2", "")),
+                 sub(assistant(tool("Read", id="s3", file_path="/ws/src/inventory.ts"))),
+                 tool_result("t1", "No findings."),
+                 assistant(tool("Edit", id="e1", file_path="/ws/.scratch/low-stock/progress.md")),
+                 tool_result("e1", "The file has been updated."),
+                 past_skill=True)
+        self.assertEqual((r["first_tool"], r["refusals"], r["late_refusals"]), ("Edit", 0, 0))
+        self.assertIn("/ws/src/inventory.ts", r["reads"])
+
+    def test_a_subagents_message_is_not_a_new_turn_of_the_model(self):
+        # A background subagent's message can arrive while the model's own call waits for its result: only the
+        # model's next turn, or the result itself, settles that call.
+        r = scan(INIT,
+                 assistant(tool("Agent", id="t1", description="money", prompt="Find the money rule",
+                                subagent_type="matt-pocock-workflow:scout")),
+                 assistant(tool("Edit", id="e1", file_path="/ws/src/pricing.ts")),
+                 {**assistant(tool("Read", id="s1", file_path="/ws/src/format.ts")), "parent_tool_use_id": "t1"},
+                 tool_result("e1", REFUSED, error=True),
+                 assistant(tool("Skill", skill="matt-pocock-workflow:grill")))
+        self.assertEqual((r["first_tool"], r["skill"], r["refusals"]), ("Skill", "matt-pocock-workflow:grill", 1))
 
     def test_an_edit_still_stops_the_scan(self):
         r = scan(INIT,

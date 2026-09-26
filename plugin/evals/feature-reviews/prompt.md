@@ -1,5 +1,5 @@
 ---
-description: "a review scenario: a feature ticket's build is committed on main and its review is next, so implement's review runs Matt Pocock's code-review and a correctness review by the reviewer agent; it needs a shell for git, so run it with --allow-tools Bash where the sandbox starts, and the harness with --timeout 900"
+description: "a review scenario: a feature ticket's build is committed on main and its review is next, so implement's review runs Matt Pocock's code-review and a correctness review by the reviewer agent; it needs a shell for git, so run it with --allow-tools Bash where the sandbox starts"
 tags: [review]
 allowed_tools: [Read, Glob, Grep, Skill, Agent, Bash]
 max_turns: 30

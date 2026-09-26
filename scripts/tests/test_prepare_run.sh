@@ -132,6 +132,8 @@ for pair in feature-reviews:low-stock sensitive-reviews:price-overrides; do
   [[ -z "$(cd "$WS" && git remote)" ]] || fail "$name: no remote, so no origin/HEAD"
   stat=$(cd "$WS" && git diff --shortstat HEAD~1 HEAD)
   [[ $stat =~ ^\ ([0-9]+)\ files?\ changed ]] && (( BASH_REMATCH[1] <= 15 )) || fail "$name: the build should touch few files: $stat"
+  lines=$(grep -oE '[0-9]+ (insertion|deletion)' <<< "$stat" | awk '{n += $1} END {print n + 0}')
+  (( lines <= 400 )) || fail "$name: the build should change few lines, not $lines: $stat"
   green "$WS" || fail "$name: tests should pass"
   typecheck "$WS" || fail "$name: typecheck should pass"
 done

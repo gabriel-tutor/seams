@@ -262,8 +262,9 @@ IMPL_DOD=$(section "Definition of done" "$IMPL")
 for row in "Failure paths" "Security" "Performance" "Observability" "Rollback"; do
   grep -qE "^\| $row \| [^|]+ \|$" <<< "$IMPL_DOD" || fail "implement's definition of done lacks the table row: $row"
 done
-section_says implement "$IMPL" "Definition of done" "a row that doesn't apply says \`n/a\` and why, in one line" "has a test" "no secret" \
-  "security findings resolved" "measured before and after" "logged at its boundary or shown to the user" "a revert, a flag or a down-migration"
+section_says implement "$IMPL" "Definition of done" "the command run or the check made" "Quality bar" "says \`n/a\` and why, in one line" \
+  "has a test" "no secret" "each security finding fixed or left with a reason" "measured before and after" \
+  "logged at its boundary or shown to the user" "a revert, a flag or a down-migration"
 # Reviews scale with risk (ticket 11). Every build gets code-review and a correctness review, a sensitive change a
 # security review too, a large diff a /simplify offer, and never ultra unasked; the detail is in a reference named
 # before the first step with when to read it. Only correctness and requirement gaps are acted on, and a user-facing
@@ -279,7 +280,8 @@ section_says implement "$IMPL" "Review fixes" "\`matt-pocock-workflow:receiving-
 section_says implement "$IMPL" Handover "offer \`/verify\`, which only the user can start"
 must_say "implement's reviews reference" "$IMPL_REVIEWS" "Read this when \`implement\`'s review starts" "\`docs/agents/issue-tracker.md\`" \
   "\`matt-pocock-workflow:foundations\`" "\`matt-pocock-workflow:reviewer\` agent on the correctness axis" "Unknown skill: review" \
-  "\`/security-review\`" "\`git merge-base origin/HEAD HEAD\` prints the fixed point" "for security findings only" \
+  "named by its axis in its description" "\`/security-review\`" "to the working tree, uncommitted files included" \
+  "\`git merge-base origin/HEAD HEAD\` prints the fixed point" "for security findings only" "skip \`receiving-code-review\`'s check" \
   "no \`origin\` remote" "400 changed lines" "15 files" "AskUserQuestion" "committed and re-checked like review fixes" \
   "Never \`ultra\`" "in one message" "\`matt-pocock-workflow:receiving-code-review\`" \
   "Act only on correctness bugs and gaps against the ticket or spec" "offered them instead"

@@ -67,7 +67,7 @@ When the resume note or the user points at a ticket its progress file records in
 
 ## Definition of done
 
-Before claiming the work is done, commit the ticket's record (Progress file, above), so that HEAD is the candidate everything below refers to. Then run `matt-pocock-workflow:verification-before-completion` and confirm each item below. Present the evidence as a table: the first row names the candidate SHA the evidence was gathered on, then one row per item with the command run and the line of its output that proves it. From Failure paths to Rollback, a row that doesn't apply says `n/a` and why, in one line.
+Before claiming the work is done, commit the ticket's record (Progress file, above), so that HEAD is the candidate everything below refers to. Then run `matt-pocock-workflow:verification-before-completion` and confirm each item below. Present the evidence as a table: the first row names the candidate SHA the evidence was gathered on, then one row per item with the command run or the check made, and the line that proves it. A Quality bar row (Failure paths to Rollback) that doesn't apply says `n/a` and why, in one line.
 
 | Item | What counts |
 | --- | --- |
@@ -76,7 +76,7 @@ Before claiming the work is done, commit the ticket's record (Progress file, abo
 | Typecheck and lint | typecheck passes; lint passes if the repo has one |
 | Acceptance criteria | every criterion on the ticket or spec is met, checked one by one |
 | Failure paths | each new way the change can fail has a test |
-| Security | no secret in the diff; a sensitive change's security findings resolved |
+| Security | no secret in the diff; on a sensitive change, each security finding fixed or left with a reason |
 | Performance | a hot path or a growing collection, measured before and after |
 | Observability | a new failure is logged at its boundary or shown to the user |
 | Docs | updated where behavior changed: the README's run or usage lines, the glossary if a term moved |

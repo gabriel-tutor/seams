@@ -12,16 +12,16 @@ which starts with `Seams gate:`), or a change that failed, changed nothing, so i
 
   behavior_test.py run --scenario S [--scenario T | --scenario all] --arm plugin|control
                        [--runs N] [--jobs 5] [--past-skill] [--superpowers] [--prompt TEXT]
-                       [--label NAME] [--timeout 300] [--out DIR] [--assert]
+                       [--label NAME] [--timeout SECONDS] [--out DIR] [--assert]
       Runs `claude -p` in fresh fixture workspaces (scripts/prepare_run.sh S), with --settings
       allowing reads of Matt Pocock's skill files, the fixture's checks and a commit in the
       workspace, and disabling Superpowers (--superpowers keeps the user's own setting),
       adding --plugin-dir plugin for the plugin arm. Each run ends at its confirmed verdict,
       at the end of the reply, or at the timeout. Keeps every raw stream, appends one record
-      per run to <out>/results.jsonl, prints a summary. The prompt, the run count and
-      --past-skill default to plugin/evals/S/{prompt.md,expect.json}: the same directory
+      per run to <out>/results.jsonl, prints a summary. The prompt, the run count, the timeout
+      and --past-skill default to plugin/evals/S/{prompt.md,expect.json}: the same directory
       `claude plugin eval` runs as a case (prompt.md's frontmatter is the eval's; the harness
-      sends the body).
+      sends the body, and waits as long as its `timeout_seconds`, 300 without one).
       --assert judges every run against expect.json (the first skill expected; `refusal`,
       whether a gate refusal is allowed; `reads`, `reply`, `changes`, `agents`, `skills` and
       `tasks`, when present, the files the run must read, what its reply must mention, whether it
@@ -120,7 +120,9 @@ class Scanner:
     call the gate refused (an error result carrying the gate's reason, `Seams gate: ...`) or a
     change that failed did not change anything, so it is counted and the scan goes on. A new
     turn of the model, which only follows the results, confirms too; a stream that ends before
-    the result leaves the verdict as made.
+    the result leaves the verdict as made. A subagent's own calls and results, which the stream
+    marks with the Agent call they belong to, are never the verdict, a refusal or a new turn of
+    the model: only what the agent reads is recorded, as read.
     """
 
     def __init__(self, past_skill: bool = False, workspace: Optional[Path] = None):
@@ -165,6 +167,8 @@ class Scanner:
         elif kind == "result":
             self._reply(event)
             self.stopped = True
+        elif event.get("parent_tool_use_id"):          # a subagent's own call or result: the agent's, not the run's
+            self._subagent(event)
         elif kind == "assistant":
             message = event.get("message") or {}
             if self.awaiting is not None and message.get("id") != self.awaiting_message:
@@ -187,6 +191,18 @@ class Scanner:
                     if self.stopped:
                         break
         return self.stopped
+
+    def _subagent(self, event: dict) -> None:
+        """What a subagent reads counts as read; nothing else it does is the run's route."""
+        content = (event.get("message") or {}).get("content") if event.get("type") == "assistant" else None
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            inputs = block.get("input") or {}
+            if block.get("name") == "Read" and isinstance(inputs.get("file_path"), str):
+                self.record["reads"].append(inputs["file_path"])
+            elif block.get("name") == "Bash" and not gate.classify_command(inputs.get("command") or ""):
+                self.record["commands"].append(inputs.get("command") or "")
 
     def _count_denials(self) -> None:
         """The platform's permission denials, less any the gate made (a refusal is a decision
@@ -411,6 +427,15 @@ def prompt_text(scenario: str) -> str:
     return text.strip()
 
 
+def scenario_timeout(scenario: str) -> float:
+    """How long a run of the scenario may take: prompt.md's `timeout_seconds`, which the eval
+    reads too, or 300 seconds when it names none."""
+    text = (SCENARIOS / scenario / "prompt.md").read_text()
+    head = text[4:text.find("\n---", 4)] if text.startswith("---\n") else ""
+    found = re.search(r"^timeout_seconds:\s*(\d+)\s*$", head, re.M)
+    return int(found.group(1)) if found else 300
+
+
 def expectation(scenario: str) -> Optional[dict]:
     """plugin/evals/<scenario>/expect.json: the first skill the scenario expects (`skill`, one
     name or a list of acceptable ones), whether a gate refusal is allowed in it (`refusal`),
@@ -421,7 +446,7 @@ def expectation(scenario: str) -> Optional[dict]:
     change rather than end on a reply (`changes`), the agents it must start (`agents`, one
     type or several, each named by an Agent call), the skills it must invoke after the first
     (`skills`, one name or several), and what those agents must be asked (`tasks`, regexes each
-    found in one Agent call's type, description and prompt, case-insensitive). That is how a
+    found in one Agent call's type, description and prompt, a line each). That is how a
     resumed grill shows it read its progress file and asked the questions recorded there, a
     resumed ticket that it re-read its state and carried on from the recorded step, a grill that
     it found its facts through the agent the skill names, and a build's review that it ran each
@@ -500,7 +525,7 @@ def judge_run(record: dict, expect: dict) -> "tuple[str, str]":
         if skill not in (record.get("skills") or []):
             return "miss", f"never invoked {skill}"
     for pattern in expect["tasks"]:
-        if not any(re.search(pattern, task, re.IGNORECASE) for task in (record.get("tasks") or [])):
+        if not any(re.search(pattern, task) for task in (record.get("tasks") or [])):
             return "miss", f"no agent was given a task matching {pattern}"
     if expect["changes"] and record.get("ended") != "verdict":
         return "miss", "the run ended on a reply without a change: it stopped to ask or report instead of carrying on"
@@ -622,6 +647,7 @@ def run_scenario(args, scenario: str, sha: Optional[str]) -> list:
     runs = args.runs or (expect["runs"] if expect else 5)
     past_skill = args.past_skill or bool(expect and expect["past_skill"])
     prompt = args.prompt or prompt_text(scenario)
+    timeout = args.timeout or scenario_timeout(scenario)
     label = scenario if not args.label else (args.label if len(args.scenario) == 1 else f"{args.label}-{scenario}")
     if args.out:
         out = args.out if len(args.scenario) == 1 else args.out / scenario
@@ -630,7 +656,7 @@ def run_scenario(args, scenario: str, sha: Optional[str]) -> list:
     out.mkdir(parents=True, exist_ok=True)
 
     def one(n: int) -> dict:
-        record = run_once(scenario, args.arm, prompt, out / f"{args.arm}-{n}", args.timeout, past_skill,
+        record = run_once(scenario, args.arm, prompt, out / f"{args.arm}-{n}", timeout, past_skill,
                           args.superpowers)
         return {"label": label, "scenario": scenario, "arm": args.arm, "superpowers": args.superpowers,
                 "candidate": sha, "run": n, **record}
@@ -666,7 +692,7 @@ def main(argv: Optional[list] = None) -> int:
                        help="keep the user's own Superpowers setting instead of forcing it off")
     run_p.add_argument("--prompt")
     run_p.add_argument("--label")
-    run_p.add_argument("--timeout", type=float, default=300)
+    run_p.add_argument("--timeout", type=float, default=None)   # seconds; the scenario's timeout_seconds by default
     run_p.add_argument("--out", type=Path)
     run_p.add_argument("--assert", dest="check", action="store_true",
                        help="judge the runs against each scenario's expect.json; exit 1 when any run is short")
