@@ -1,12 +1,12 @@
 # Progress: lean and durable (Seams roadmap, phase 1 of 4)
 
 Status: active
-Stage: release-ready
-Next: Ticket 14: on the user's yes, fast-forward main to the release commit and verify it (CI on main, a fresh install from GitHub, the local install). Then ticket 15, the paid evidence deferred at the release, each run asked first, and ticket 16, the gate's case-insensitive paths.
+Stage: deployed
+Next: Ticket 15: the paid evidence 3.3.0 shipped without (evals, shell cases, resume after clear and compact), each run asked first; then ticket 16, the gate's case-insensitive paths.
 Updated: 2026-09-27
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`; tickets 15 and 16 joined them at the release (decisions 46 and 47).
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33), ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36) ticket 12 (unblocked tickets built in parallel, per-agent declarations: decisions 37 to 42) and ticket 13 (the docs: resuming, surfaces, off switches, measuring, versions: decisions 43 to 45), all integrated on local `main`, not pushed. Ticket 14 (the 3.3.0 release) is release-ready: the version bumped (`f8b912d`), the paid evidence deferred to ticket 15 by the user (decision 46), and the gate fix its first staging run called for (`ac16b39` and its review's fixes `7c80291`, decision 47), staged as pull request #12. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33), ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36) ticket 12 (unblocked tickets built in parallel, per-agent declarations: decisions 37 to 42) and ticket 13 (the docs: resuming, surfaces, off switches, measuring, versions: decisions 43 to 45), all integrated on `main` and released with 3.3.0. Ticket 14 is done: 3.3.0 released on 2026-09-27 as `4891cb0`, now `origin/main`, with the paid evidence deferred to ticket 15 by the user (decision 46) and the gate fix its first staging run called for (`ac16b39` and its review's fixes `7c80291`, decision 47); verified on GitHub, in a fresh install and in this machine's install. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -139,7 +139,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 11 | The quality bar in the definition of done; reviews scaled to risk (done, on local `main`) | 09 |
 | 12 | Unblocked tickets built in parallel (done, on local `main`) | 05, 11 |
 | 13 | Docs: resuming, surfaces, off switches, measuring, versions (done, on local `main`) | 02, 03, 07, 10, 12 |
-| 14 | Release 3.3.0 (release-ready: staged as PR #12, with the gate fix `ac16b39` and `7c80291`) | 01–13 |
+| 14 | Release 3.3.0 (done: `4891cb0`, deployed 2026-09-27) | 01–13 |
 | 15 | 3.3.0's release evidence, deferred at the release (decision 46) | 14 |
 | 16 | The gate's path checks on a case-insensitive filesystem (sensitive; needs triage) | 14 |
 
@@ -157,7 +157,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 - From ticket 12's review: a builder's verification (`verification-before-completion` in its definition of done) still marks the whole session verified, as any subagent's did before, so it clears the main conversation's unverified changes too. Not a gap the review raised; per-agent verification would be a change to the done-check.
 - For the user, from ticket 07's live run: both sessions started a batch's reviewers in the foreground, in parallel, and the resumed one stayed in one turn, so the scripts' pre-approval held through the handover. `batch.md` still says the fan-out runs in the background and ends the turn (ticket 06's design, held by the static test). Should it say foreground? See ticket 07's Comments.
 - From ticket 13, for ticket 14, now settled: `docs/compatibility.md` records the 3.3.0 release; the always-on figure was measured again on the candidate (about 857) and the listing Claude sees with the agents (2,437 characters); the CHANGELOG heading reads `3.3.0 — 2026-09-27`. What stays open moved to ticket 15: no case in `plugin/evals/` resumes a `pr-review` batch, and no batch has been resumed through `/compact`.
-- From ticket 14: the routing harness switches off only `superpowers@claude-plugins-official`, and on this account `claude plugin list` shows `superpowers@synced` held back only because that one takes precedence, so ticket 15's harness runs should check their init event's plugins. The old `release/3.2.1` branch is still on `origin`.
+- From ticket 14: the routing harness switches off only `superpowers@claude-plugins-official`, and on this account `claude plugin list` shows `superpowers@synced` held back only because that one takes precedence, so ticket 15's harness runs should check their init event's plugins. The throwaway branches `release/3.2.1` and `release/3.3.0` are still on `origin`; deleting them is the user's call.
 - From ticket 06's second live run, never routed: `review_payload.py` fences a suggestion with a fixed triple backtick (lines 194 to 195, and 225), so a suggestion that holds one breaks its block. It is a 3.2.1 bug, for `diagnosing-bugs`.
 
 ## Later phases: facts already verified (2026-09-25, official sources)
