@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased (3.3.0)
+
+Lean and durable: the same workflow, lighter on tokens, faster, and nothing lost across `/clear` and compaction. This is phase 1 of the four-phase roadmap agreed on 2026-09-25; the spec is `.scratch/lean-and-durable/spec.md`, and every decision with its reason is in `.scratch/lean-and-durable/progress.md`. The plugin id and the marketplace name are unchanged, so `claude plugin update matt-pocock-workflow@my-workflow-agent-skills` is the whole upgrade. It supports Claude Code 2.1.269 or later.
+
+- **Work in progress survives `/clear`, compaction and a new session** ([ADR 0003](docs/adr/0003-committed-progress-file.md)). A grill's answers lived only in the conversation, so `/clear` mid-grill lost them, and after `/clear` you had to explain where you were. Now each feature keeps a committed progress file, `.scratch/<feature>/progress.md`, which the flow skills write as they go. The grill records each answer as it lands. `to-spec` and `to-tickets` record their stage. `implement` records the ticket in progress, the candidate under review and the findings to fix, then makes a record commit before the definition of done. `finishing-a-development-branch`, now Seams' adaptation of the Superpowers copy so that it can record integration, and `release` record the later stages. The session-start hook now also runs on resume and fork. It adds a resume note built from the newest three active files: under 1,500 characters, framed as data, each field one capped line with markup stripped, plus a one-line notice for you. The skill that continues the work re-reads the spec, the tickets and git, and reports a mismatch rather than acting on the note. A ticket whose file agrees with git resumes without `implement`'s gate question.
+- **A `pr-review` batch resumes.** `evidence.py` pins each pull request's evidence by head and baseline. Typing the same `/pr-review` again reuses a review finished at the same head and baseline, continues an unfinished one from its last completed step, and reviews a moved head afresh; `afresh` reuses nothing. A batch keeps its own progress file beside its evidence under the temp directory, and the resume note lists it until the batch's final handover.
+- **Every skill fits what compaction keeps.** Compaction keeps the first 5,000 tokens of each invoked skill. `pr-review` was about 8,800, so a long batch lost its posting, cleanup and handover steps. It is now a core of 10,985 bytes plus six references, each read at its step. A static guard, which also runs on CI, holds every `SKILL.md` to 11,000 bytes, about 4,000 tokens. `pr-review` no longer says subagents can't start subagents; it names Claude Code's real limits.
+- **Lighter every session.** Descriptions lead with their trigger and drop repetition. The bootstrap states the routing as the project's facts, without the `<EXTREMELY_IMPORTANT>` wrapper: Claude Code's hook docs warn that text framed as commands can trip Claude's prompt-injection defenses. On the new wording, the routing and gate evals kept every case, on Opus 5 and Sonnet 5. By `claude plugin details`, the always-on cost fell from about 1,165 tokens to about 857, including the two new agents. No skill or agent pins a model or an effort level, since a pin overrides your own choice both ways. The Seams skills read `${CLAUDE_EFFORT}`, and at `low` they skip only extras they name, never a gate or a check.
+- **Faster.**
+  - The grill asks every independent question at once, up to four in one call; a gate, security or destructive question is still asked alone.
+  - Two read-only agents ship with the plugin: `scout` finds facts in the code and docs, and `reviewer` reviews a named diff. The grill, `to-spec`, `foundations` and `implement` delegate to them by name and start independent reads together. On Opus 5, Claude Code tells Claude not to start subagents unless asked, and when the grill only named the agent, all three test runs read the code themselves.
+  - `implement`, the grill and `release` start with the repository facts (the branch, the short HEAD, the status and the progress files), which the Skill and prompt-expansion hooks add. No skill injects a shell command: a session without the Bash tool aborted such a skill before Claude saw it.
+  - `pr-review`'s scripts are pre-approved, so they run without permission prompts.
+  - When two or more tickets are unblocked, `implement` offers to build them at once. Each gets a background builder in its own worktree from your local HEAD, at most half the cores and four at a time. The builds are integrated one at a time, with the full suite on each, and a ticket that fails stays on its branch.
+- **The quality bar.** `implement`'s definition of done gains failure paths, security, performance, observability and rollback. Each is proven by a command or a check, or marked n/a with a reason.
+  - Reviews scale with risk. Every build gets Matt Pocock's `code-review` plus a correctness review by the `reviewer` agent. The bundled `/review` can't be reached while his `code-review` holds its name: `Skill("review")` answers "Unknown skill".
+  - A sensitive change also gets a security review: `/security-review` when its merge-base with `origin/HEAD` is the ticket's fixed point, and the `reviewer` agent on the security axis otherwise.
+  - `/simplify` is offered on a diff over 400 changed lines or 15 files, and `/verify` after a user-facing change.
+  - Only correctness and requirement findings are acted on.
+- **A gate that doesn't trip itself.**
+  - A hand-written shell tokenizer replaces `shlex`, which can't open a quote inside a word. `x="$(awk '$1>0' f)"` is no longer refused as a redirect. The rewrite also catches seven writes the old gate let through, among them `true;>f`, `(>f)` and `echo $# > f`.
+  - `Monitor` commands go through the classifier. Before a declaration, `PowerShell` counts as a change apart from a short read-only list. Before, both tools bypassed the gate.
+  - A typed skill is recorded from its `UserPromptExpansion` event, so a bare name and each skill of a stacked command declare.
+  - A typed message that starts a new request after a declared one now tells Claude which declaration lapsed, so Claude invokes that skill again instead of having its next edit refused. That refusal had happened four times in one session.
+  - Writes under the session's scratchpad are scratch.
+  - The read-only agents are held to a list of reads, whatever the request has declared.
+  - A subagent's own declaration covers that subagent alone and outlives the main conversation's requests, so a parallel run's builders never open the gate for a message you type mid-run.
+  - The done-check asks through hook feedback instead of showing a hook error.
+  - Every hook entry runs in exec form, so no path needs quoting.
+- **`foundations`** offers `/fewer-permission-prompts`, which you run, for the read-only commands that keep asking for permission.
+- **Housekeeping and docs.**
+  - The version lives in `plugin.json` only; Claude Code uses it over the marketplace entry's without a warning, so a second copy could only go stale.
+  - The README covers resuming, where Seams loads, what switches it off, what it costs and how to measure it, and the Claude Code versions it supports.
+  - `CONTEXT.md` gains *Quality bar*, *Progress file*, *Resume note*, *Repository facts*, *Read-only agent*, *Lapse hint*, *Record commit*, *Parallel run* and *Builder*.
+  - Evidence for each change is in `docs/plugin-behavior-tests.md`: one section per ticket, and one for the release's figures.
+
 ## 3.2.1 — 2026-09-24
 
 What the first real batch taught: `/pr-review` on 15 pull requests of a private repository, run from 3.2.0. The review worked end to end; these are the six gaps it showed, and what closed each.

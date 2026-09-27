@@ -106,6 +106,20 @@ V_CHANGELOG=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+' "$REPO/CHANGELOG.md" | c
 [[ -n $V_PLUGIN && $V_PLUGIN == "$V_README" && $V_PLUGIN == "$V_CHANGELOG" ]] \
   || fail "versions disagree: plugin.json $V_PLUGIN, README badge $V_README, CHANGELOG $V_CHANGELOG"
 
+# The README says what 3.3 changed for whoever runs Seams (lean-and-durable ticket 13): how resuming works, where Seams
+# loads and where it doesn't, the settings that switch it off without a word, how to measure what it costs, and the
+# Claude Code versions it supports. Its claims cite this repository or the Claude Code docs.
+README="$REPO/README.md"
+section_says README "$README" "How to use it" "### Resuming work" "\`.scratch/<feature>/progress.md\`" "resume note" "Seams: resuming"
+section_says README "$README" "What it costs" "\`claude plugin details matt-pocock-workflow\`" "\`/skill-doctor\`" \
+  "\`CLAUDE_CODE_ENABLE_TELEMETRY=1\`" "\`OTEL_LOG_TOOL_DETAILS=1\`"
+section_says README "$README" Compatibility "### Where Seams loads" "| The CLI" "| Desktop" "| VS Code" "claude.ai account" "WSL" \
+  "\`claude -p\`"
+section_says README "$README" Compatibility "### What switches it off" "\`disableAllHooks\`" "\`allowManagedHooksOnly\`" \
+  "\`strictPluginOnlyCustomization\`" "\`--bare\`" "\`CLAUDE_CODE_SIMPLE=1\`" "\`--safe-mode\`" "\`CLAUDE_CODE_SAFE_MODE=1\`"
+section_says README "$README" Compatibility "### Claude Code versions" "Claude Code 2.1.269 or later" "\`fork\` source (2.1.214)" \
+  "\`scratchpad_dir\` in hook input (2.1.257)" "\`omitClaudeMd\` for the read-only agents (2.1.271)"
+
 # Every skill: frontmatter naming its own directory and a description. Model invocation stays on for
 # every skill but the ones typed by hand only: pr-review, which runs a PR's code, spends minutes of
 # checks and can post to GitHub, is one of those, and stays one.
@@ -193,6 +207,8 @@ must_say release "$REL" "check readiness now?" "Anything unmet blocks" "the targ
 must_say foundations "$PLUGIN/skills/foundations/SKILL.md" "| Deploy target and pipeline |" "| Environments and config |" \
   "| Backups and restore |" "| Monitoring and alerts |" "| Dependency and secret scanning |" "not applicable" \
   "published nowhere" "runbook" ".env.example" "platform's skill"
+# ...and it offers /fewer-permission-prompts, which the user runs (lean-and-durable ticket 13).
+section_says foundations "$PLUGIN/skills/foundations/SKILL.md" "3. Offer" "\`/fewer-permission-prompts\`" "the user runs"
 
 # The incident skill (ticket 06): contain and restore before diagnosis, the seven steps in order,
 # and each step's rule inside its own section: the three facts and no cause; the safest reversible

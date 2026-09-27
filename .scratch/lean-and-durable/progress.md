@@ -2,8 +2,9 @@
 
 Status: active
 Stage: integrated
-Next: Implement ticket 13 (docs), /clear first; it is the only unblocked ticket.
+Next: Review ticket 13's build commit on main against a27a8cb (code-review and a correctness reviewer), then its fixes, its record commit and the definition of done.
 Updated: 2026-09-27
+Ticket: 13
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33), ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36) and ticket 12 (unblocked tickets built in parallel, per-agent declarations: decisions 37 to 42), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
@@ -88,6 +89,17 @@ Updated: 2026-09-27
 40. During a run only the main conversation writes the progress file (`Ticket` lists the run's tickets, `## Parallel` each one's state), kept current in the main checkout and committed with the run's record: a builder's copy would collide at the merges, and a branch that changed it fails its integration. Builders invoke `implement` through the Skill tool and follow the reference's section For a builder, which replaces the gate, the progress file, resuming, the record and every question. (Made while building ticket 12, not the user's choice.)
 41. A resumed run checks each ticket against git, then starts the pending tickets the free slots allow before integrating the built ones, so they build meanwhile. A building ticket is waited for: `/clear` no longer kills background agents (changelog: "Fixed `/clear` killing background agent/bash tasks") and a compaction keeps them and reminds Claude of them; when nothing shows its builder running, the user says whether to wait or start it again. (Made while building ticket 12, not the user's choice.)
 42. A subagent's own declaration covers that subagent alone and outlives the main conversation's requests; the main conversation's declarations still cover every call of their request, a subagent's included (`seams_gate.declared_for`). A builder's `implement` had reopened the gate for a message the user typed mid-run, against user story 48: the security and spec reviews both found it. An entry that names no subagent (an older ledger, a damaged one) is the main conversation's, and the lapse hint names only the main conversation's declarations. (The user's choice while building ticket 12, 2026-09-27, after its review.)
+
+43. The README names the Claude Code versions phase 1's recorded runs used, 2.1.282 and 2.1.283, not the spec's "tested on 2.1.281". No 3.3 run used 2.1.281, the version current when the spec was written: the run records' init events show 2.1.282 for tickets 02 to 10 and 2.1.283 for tickets 11 and 12. The release names the version its own evidence runs on. (Made while building ticket 13, against the ticket's letter, for its must-not; not the user's choice.)
+44. The CHANGELOG's 3.3.0 entry is headed `Unreleased (3.3.0)` until the release dates it. The static test holds the CHANGELOG's first versioned heading, the README badge and `plugin.json` to one version, so a `## 3.3.0` heading before the bump would fail it now, and a release that forgets the rename fails it then. (Made while building ticket 13, not the user's choice.)
+45. The docs correct the stale claims that ticket 13's topics touch, beyond its five topics:
+    - the grill asking "one clickable question at a time", on the README's line 7 and in `plugin.json`'s description;
+    - "There is no environment variable that turns the gate off": `CLAUDE_CODE_SIMPLE=1` and `CLAUDE_CODE_SAFE_MODE=1` both do;
+    - the README's Durable state bullet, which left out the progress file;
+    - the Compatibility paragraph's Claude Code 2.1.272, which was 3.0.0's;
+    - the evidence doc's intro.
+
+    (Made while building ticket 13; not the user's choice.)
 
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.

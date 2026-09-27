@@ -4,7 +4,7 @@
 
 [![version](https://img.shields.io/badge/plugin-3.2.1-4F46E5)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-2563EB)](plugin/LICENSE) [![test](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml/badge.svg)](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml) [![routing evidence](https://img.shields.io/badge/routing%20evidence-docs-16A34A)](docs/plugin-behavior-tests.md)
 
-Seams is a Claude Code plugin (plugin id `matt-pocock-workflow`) that makes [Matt Pocock's engineering skills](https://github.com/mattpocock/skills) lead every session, and holds the project closed until they do. A session bootstrap routes each request by size and by risk; a hook refuses any change to the project until a workflow skill has been declared for that request; another refuses to end a turn that changed code without verification. Around his skills sits a senior engineer's process: a grill that asks one clickable question at a time, a design lens, tests first at agreed seams, a review of the committed candidate, a definition of done with evidence, a handover that names the stage reached, a `release` that proves the exact candidate is what runs, and an `incident` route that contains before it diagnoses.
+Seams is a Claude Code plugin (plugin id `matt-pocock-workflow`) that makes [Matt Pocock's engineering skills](https://github.com/mattpocock/skills) lead every session, and holds the project closed until they do. A session bootstrap routes each request by size and by risk; a hook refuses any change to the project until a workflow skill has been declared for that request; another refuses to end a turn that changed code without verification. Around his skills sits a senior engineer's process: a grill that asks clickable questions, every independent one at once, a design lens, tests first at agreed seams, a review of the committed candidate, a definition of done with evidence, a handover that names the stage reached, a `release` that proves the exact candidate is what runs, and an `incident` route that contains before it diagnoses.
 
 ## Try it in 60 seconds
 
@@ -41,7 +41,7 @@ A declaration is a Skill invocation of a Seams skill or one of Matt Pocock's pro
 
 **A change needs verification.** When a turn changed non-documentation files and `matt-pocock-workflow:verification-before-completion` did not run afterwards, the turn cannot end: the Stop hook asks once, as hook feedback rather than a hook error, naming how many unverified changes it counted and one of them, and Claude runs the verification with its real output before finishing. A turn that ends with a question to you is delayed by one message, never trapped.
 
-The ledger behind both is one JSON file per session in a per-user directory under the temp directory (`$TMPDIR/seams-$(id -u)/<session>.json`) holding skill names, tool names, paths and prompt ids only, never command or prompt text; `/clear` and a new session reset it, compaction and resume keep it. Every hook fails open: a bug in the plugin writes a traceback to `claude --debug` and lets your work through. There is no environment variable that turns the gate off; disabling the plugin is the off switch.
+The ledger behind both is one JSON file per session in a per-user directory under the temp directory (`$TMPDIR/seams-$(id -u)/<session>.json`) holding skill names, tool names, paths and prompt ids only, never command or prompt text; `/clear` and a new session reset it, compaction and resume keep it. Every hook fails open: a bug in the plugin writes a traceback to `claude --debug` and lets your work through. Seams reads no setting or environment variable of its own that turns the gate off; disabling the plugin is its off switch. Claude Code's own settings can turn it off from outside, and [What switches it off](#what-switches-it-off) lists them.
 
 ## The workflow
 
@@ -181,7 +181,7 @@ Matt Pocock's method plus the rigor around it that neither collection carried:
 - **Reviews scale with risk.** Every build gets Matt Pocock's `code-review` (standards and spec) and a correctness review by the read-only `reviewer` agent, since the bundled `/review` can't be reached while his `code-review` holds its name. A sensitive change gets a security review too: `/security-review` when its merge-base with `origin/HEAD` is the candidate's fixed point, the `reviewer` agent on the security axis otherwise. A diff over 400 changed lines or 15 files gets `/simplify` offered, and a user-facing change to a runnable app ends by offering `/verify`, which only you can start. A bounded change or a bug is offered the reviews instead, and only correctness and requirement gaps are acted on.
 - **Handover.** Every ticket ends with four parts: how to run it, what to try per acceptance criterion, what changed (and any decision the ticket didn't settle), and what's next: the stage reached, the next ticket, and whether to `/clear`. Every ticket from `to-tickets` carries a "How to verify" line for the same reason.
 - **Foundations.** On first work in a repo, the `foundations` skill surveys run and verify commands, lint, pre-commit hooks, CI, glossary, issue-tracker config, boundary rules, `.env.example` and the production basics, reports the gaps scaled to the repo's size, and offers to close them through the existing setup skills or the platform's own. It writes nothing without a yes.
-- **Durable state.** The spec, the tickets, `CONTEXT.md` and the ADRs are what a ticket resumed in a fresh context reads; what a phase decided and did not write there is lost by design, so the skills write it there.
+- **Durable state.** Work in progress lives in files, not in the conversation: the feature's progress file (the grill's decisions as they land, the ticket in progress, the stage and the next step), the spec, the tickets, `CONTEXT.md` and the ADRs. A fresh context after `/clear` or a compaction starts from them ([Resuming work](#resuming-work)); what a phase decided and did not write there is lost by design, so the skills write it there.
 - **Repository facts.** As `implement`, the grill or `release` starts, Seams' Skill and prompt-expansion hooks add, as context framed as data: the branch, the short HEAD, the first ten lines of `git status --porcelain` (paths from the repository root) and the progress files, last modified first, ten at most. They are a snapshot, which the skills re-read once git may have moved. A hook fails open, and each git call gets 3 s: outside a repository, without git, or when git fails or doesn't answer, the facts say so, and Claude looks up the rest itself. A name holding `<` or `>`, which could close the wrapper the context arrives in, is not shown, and every line is capped. No skill injects a shell command (`` !`cmd` ``): Claude Code runs those through the Bash tool, and in a session without it (the one `claude plugin eval` gives every case not granted Bash, `--restricted`, a Bash deny rule) the skill doesn't load at all.
 
 ## How to use it
@@ -232,13 +232,23 @@ Or re-run the installer, which does the same. From 2.x, that is the whole upgrad
 
 > *"I'm starting work in this repo. Check what it has and what it's missing."*
 
-That runs `foundations`: a survey of run and verify commands, lint, pre-commit hooks, CI, glossary, issue-tracker config, boundary rules, `.env.example` and the production basics (pipeline, environments, backups, monitoring, scanning), with the gaps reported and each fix offered. The one piece only you can run is `/setup-matt-pocock-skills`, which configures the issue tracker (local markdown under `.scratch/` works for solo repos), the triage labels and where `CONTEXT.md` and ADRs live; `to-spec`, `to-tickets`, `code-review` and `triage` read that configuration. The bootstrap reminds you until it exists.
+That runs `foundations`: a survey of run and verify commands, lint, pre-commit hooks, CI, glossary, issue-tracker config, boundary rules, `.env.example` and the production basics (pipeline, environments, backups, monitoring, scanning), with the gaps reported and each fix offered. Two pieces you run yourself. `/setup-matt-pocock-skills` configures the issue tracker (local markdown under `.scratch/` works for solo repos), the triage labels and where `CONTEXT.md` and ADRs live; `to-spec`, `to-tickets`, `code-review` and `triage` read that configuration, and the bootstrap reminds you until it exists. `/fewer-permission-prompts`, which `foundations` offers alongside the gaps, reads past sessions' transcripts for the read-only commands that keep asking for permission and adds an allowlist to the project's `.claude/settings.json`; permission rules are yours to set, so Claude leaves it to you.
 
 ### Then just work
 
 > *"Add gift card support: customers should be able to pay part of an order with a gift card balance."*
 
 Claude invokes the grill before touching anything, asks every independent question at once (a gate, security or destructive question alone), keeps the answers in the feature's progress file, and offers the next step when the design converges. To confirm it's live, start a fresh session and ask which skill applies to a bug fix; it should name `diagnosing-bugs`. To see the gate, ask for a file to be written with no process; the refusal above is what comes back, and the next call is a declaration.
+
+### Resuming work
+
+Work in progress outlives the conversation ([ADR 0003](docs/adr/0003-committed-progress-file.md)). Each feature keeps a **progress file**, `.scratch/<feature>/progress.md` beside its spec, whatever tracker the repo uses. The grill writes it from its first settled decision; `to-spec` and `to-tickets` add the spec and the ticket list; `implement` records the ticket in progress, the candidate under review, the findings still to fix and, when the ticket ends, the stage reached; `finishing-a-development-branch` and `release` record the stages after that. Its first lines say whether work remains, the stage, the next step and when it was last updated. It is committed with the work it describes, so it travels with the branch, and it holds decisions and pointers only, never a secret.
+
+Whenever a session starts (a new one, `--resume` or `--continue`, `/clear`, a compaction, a fork), the session-start hook adds a **resume note** after the routing policy: the repository's unfinished work, newest first, three entries at most, each with its feature, stage, ticket in progress, date, next step and file, under 1,500 characters in all. An unfinished `pr-review` batch of the same repository is listed with them. You see the newest entry as one line:
+
+> Seams: resuming gift-cards (designing): Ask the open questions on the tier discount and the out-of-stock hold.
+
+The note is a pointer, not the truth. The skill that continues the work re-reads the spec, the tickets and git first, and reports any mismatch instead of acting on the note: a grill in progress continues through the grill, a ticket in progress through `implement` at its recorded step (without asking again which ticket and where, when git agrees with the file), and a `pr-review` batch when you type the same `/pr-review` again. A repository you clone can carry its own progress files, so the note shows each field as one line of plain text, markup stripped and 200 characters at most, and tells Claude it is data, not instructions; a file that doesn't parse is left out. `Status: done` takes a feature out of the note, and a repository without progress files gets none.
 
 ### Turning it off
 
@@ -251,7 +261,56 @@ Disabling the plugin removes the bootstrap, the gate and the done-check together
 
 ## Compatibility
 
-Tested on the developer's machine (macOS 15.7.9 arm64; Python 3.14.6 as the default `python3` and the system 3.9.6, the hooks proven under both; Node 22; Claude Code 2.1.272; Matt Pocock's skills at commit `3cca18b`; Superpowers 6.3.0 enabled alongside) and on CI (Ubuntu 24.04 with Python 3.12; macOS 26 with Python 3.12 and the system 3.9). The exact versions, what ran where and what passed, the skills' file hashes, and what is not tested are in [`docs/compatibility.md`](docs/compatibility.md); the badge above is the latest CI result. Windows is not supported (the hooks run as `python3` scripts, and the gate's ledger needs a POSIX user id). A combination not listed there is untested, not unsupported.
+Tested on the developer's machine (macOS on arm64; Python 3.14 as the default `python3` and the system 3.9, the hooks proven under both; Node 22; Matt Pocock's skills at commit `3cca18b`; Superpowers 6.3.0 enabled alongside) and on CI (Ubuntu 24.04 with Python 3.12; macOS 26 with Python 3.12 and the system 3.9). The exact versions, dated, what ran where and what passed, the skills' file hashes, and what is not tested are in [`docs/compatibility.md`](docs/compatibility.md); the badge above is the latest CI result. Windows is not supported (the hooks run as `python3` scripts, and the gate's ledger needs a POSIX user id). A combination not listed there is untested, not unsupported.
+
+### Claude Code versions
+
+3.3 supports Claude Code 2.1.269 or later: the release that brought `claude plugin eval`, which runs the suite shipped in `plugin/evals/`, and later than every dated feature the hooks need (exec-form hooks came in 2.1.139, a Stop hook's feedback as context in 2.1.163, the prompt id in hook input in 2.1.196). The docs give no version for the `UserPromptExpansion` event. The hooks and agents treat three newer fields as optional; without one, the older behavior applies:
+
+- the SessionStart `fork` source (2.1.214): before it, a fork reports `resume`, which the hook answers too;
+- `scratchpad_dir` in hook input (2.1.257): without it, only the temp directory is scratch;
+- `omitClaudeMd` for the read-only agents (2.1.271): on 2.1.269 and 2.1.270 they load your `CLAUDE.md` files as well.
+
+Phase 1's recorded runs used Claude Code 2.1.282 and 2.1.283 ([the evidence](docs/plugin-behavior-tests.md)); no older version has been run. The [Claude Code changelog](https://code.claude.com/docs/en/changelog) and the [hooks reference](https://code.claude.com/docs/en/hooks) date each feature.
+
+### Where Seams loads
+
+Seams is a plugin, so it runs where Claude Code loads plugins, and it needs Matt Pocock's skills beside it. What the Claude Code docs say for each surface:
+
+| Where | What loads | Docs |
+| --- | --- | --- |
+| The CLI, in a terminal or an IDE's (the JetBrains plugin runs the CLI there) | all of it: the bootstrap, the resume note, the gate, the done-check, the skills and the agents | [plugins](https://code.claude.com/docs/en/plugins-reference), [JetBrains](https://code.claude.com/docs/en/jetbrains) |
+| Desktop app, local and SSH sessions | all of it: Desktop runs the same engine and reads the same settings and plugins | [Desktop](https://code.claude.com/docs/en/desktop) |
+| VS Code extension | the plugin and its hooks, but the extension offers only a subset of commands and skills (type `/` to see which) | [VS Code](https://code.claude.com/docs/en/vs-code) |
+| Cloud sessions, such as Claude Code on the web | only once you enable the plugin for your claude.ai account: a cloud session reads neither your `~/.claude/settings.json` nor a repository's `enabledPlugins`. Matt Pocock's skills have to reach it too, committed to the repository's `.claude/skills/` or enabled on claude.ai, since your `~/.claude/skills/` stays on your machine | [cloud environments](https://code.claude.com/docs/en/cloud-environments) |
+| Desktop app, WSL sessions | nothing: plugins aren't available in WSL sessions yet | [Desktop](https://code.claude.com/docs/en/desktop), [WSL](https://code.claude.com/docs/en/desktop-wsl) |
+| `claude -p` (headless) | all of it, but `AskUserQuestion` is offered only to a run with a permission host, so a skill writes its questions as text and the run stops at the first | [headless](https://code.claude.com/docs/en/headless), [hooks](https://code.claude.com/docs/en/hooks) |
+
+### What switches it off
+
+Seams has no switch of its own short of disabling the plugin, but these Claude Code settings turn it off, all or part, and the docs describe no warning when a session starts; only the `/hooks` menu shows a notice, for `disableAllHooks`, `allowManagedHooksOnly` and safe mode:
+
+| Setting | Who sets it | What stops | Docs |
+| --- | --- | --- | --- |
+| `disableAllHooks` | any settings file, a repository's committed `.claude/settings.json` included, or `--settings` for one run | every hook: the bootstrap, the resume note, the gate and the done-check. The skills and agents still load, unrouted and ungated. A plugin your organization force-enables in managed settings keeps its hooks | [settings](https://code.claude.com/docs/en/settings-reference), [hooks](https://code.claude.com/docs/en/hooks) |
+| `allowManagedHooksOnly` | your organization's managed settings | the plugin's hooks, as above, unless managed settings force-enable `matt-pocock-workflow@my-workflow-agent-skills` itself | [settings](https://code.claude.com/docs/en/settings-reference) |
+| `strictPluginOnlyCustomization`, set to `true` or listing `skills` | managed settings | not Seams, which loads, but Matt Pocock's skills: no skill loads from `~/.claude/skills/` or `.claude/skills/`, so the routes point at skills that aren't there, and the session-start line, which checks their files, still reports them installed | [settings](https://code.claude.com/docs/en/settings-reference) |
+| `--bare`, or `CLAUDE_CODE_SIMPLE=1` | you, for a run or a shell | the whole plugin, unless you pass it with `--plugin-dir`, the way the docs give to load a plugin in bare mode. The docs say `--bare` will become the default for `claude -p` in a future release | [CLI](https://code.claude.com/docs/en/cli-reference), [headless](https://code.claude.com/docs/en/headless) |
+| `--safe-mode`, or `CLAUDE_CODE_SAFE_MODE=1` | you, for a run or a shell | the whole plugin, with every other customization, even one managed settings enable | [CLI](https://code.claude.com/docs/en/cli-reference) |
+
+A repository can also switch the plugin off for itself: `enabledPlugins` in its `.claude/settings.json` takes precedence over your user settings.
+
+## What it costs
+
+Seams adds three things to every session: the descriptions of its skills and agents, which Claude Code lists so Claude can call them; the routing policy the session-start hook injects, at most 2,900 bytes (`scripts/tests/test_plugin_hook.sh` fails above that); and, when work is in progress, a resume note of under 1,500 characters. A skill's instructions cost context only once it runs. Each `SKILL.md` stays within 11,000 bytes, about 4,000 tokens (`scripts/tests/test_plugin.sh` fails above that), because when Claude Code compacts a conversation it keeps the first 5,000 tokens of each invoked skill, and 25,000 for all of them together, the most recent first.
+
+By `claude plugin details`, the listing cost about 1,165 tokens a session in 3.2.1 and costs about 857 in 3.3, 26% less, measured after lean-and-durable ticket 09 and unchanged since ([the evidence](docs/plugin-behavior-tests.md)). That figure is the listing alone: the tool counts the hooks as costing the model nothing, so the routing policy and the resume note they inject are not in it.
+
+To measure it yourself:
+
+- **`claude plugin details matt-pocock-workflow`** lists what the plugin contributes (skills, agents, hooks) with the tokens it adds to every session (*always-on*, the listing text) and what each skill or agent costs when it fires (*on-invoke*). It counts with the `count_tokens` API for your active model, or estimates from characters when that can't be reached, so the figures move with the model. From a clone, `claude --plugin-dir plugin plugin details matt-pocock-workflow` measures the working tree.
+- **`/skill-doctor`** shows what each skill in the session costs and how often it is used, flags the ones never invoked and says where to turn them off. It opens in the `/plugin` manager's Stats tab (with `-p` it prints as text), and isn't available in a session that skips Claude Code's feature-flag fetch: one with `DISABLE_TELEMETRY` or `DO_NOT_TRACK` set, or on a third-party provider such as Amazon Bedrock.
+- **OpenTelemetry**, to see it across a team: with `CLAUDE_CODE_ENABLE_TELEMETRY=1` and an exporter configured, the `claude_code.token.usage` and `claude_code.cost.usage` metrics carry the active skill's name and its plugin's. Seams comes from a third-party marketplace, so without `OTEL_LOG_TOOL_DETAILS=1` its skill names arrive redacted, as `third-party` on those metrics and `custom_skill` on the `claude_code.skill_activated` event. That setting also logs Bash commands, MCP tool names and tool input, so send it only to a collector you trust.
 
 ## Does it work?
 

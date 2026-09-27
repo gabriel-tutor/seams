@@ -46,5 +46,6 @@ Ask with AskUserQuestion which gaps to close now, multi-select, recommended ones
 - Run instructions, verify commands, `.env.example`, a CI workflow → write them yourself, matching the repo's package manager and existing conventions; show each file before writing it
 - Deploy target and pipeline, environments and config, monitoring → the platform's skill when one is installed (for example `vercel:deploy`, `expo:eas-workflows`, `wrangler`); otherwise write the CI or deploy workflow, a per-environment `.env.example` and a runbook skeleton (`docs/runbook.md`: deploy, roll back, restore, who to page) yourself, each shown before writing
 - Backups and restore, dependency and secret scanning → the platform's scheduled backups and a rehearsed restore in the runbook; an audit and a secret scan added to CI or the pre-commit hooks
+- Permission prompts on routine read-only commands (not a survey row: offer it in the same question) → `/fewer-permission-prompts`, which the user runs: it reads past sessions' transcripts for the read-only Bash and MCP calls that keep asking, and adds an allowlist to the project's `.claude/settings.json`. Permission rules are the user's to set, so tell them to type it.
 
 Anything not chosen stays in the report for another day. Done when every chosen gap is closed and its verify command has been run once with the output shown.

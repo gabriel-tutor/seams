@@ -1,6 +1,6 @@
 # Plugin behavior tests
 
-This file is the routing evidence for the `matt-pocock-workflow` plugin, from the first 2.0 probes to the 3.0.0 evidence set, oldest section first. The last two sections are the ones that describe the shipped plugin: what the harness measures, and the 3.0.0 counts.
+This file is the behavior evidence for the `matt-pocock-workflow` plugin, from the first 2.0 probes to 3.3, oldest section first. A section headed by a release holds the figures that release shipped on; the sections headed "3.3, ticket NN" hold what each of 3.3's tickets proved as it was built, and the last section holds the 3.3.0 release's own figures.
 
 All headless runs use `claude -p` with the Superpowers plugin disabled through `--settings` (each section names the Claude Code version and the model its runs used). Nothing in `~/.claude/settings.json` is changed.
 
@@ -1370,3 +1370,101 @@ Refusing tool writes into the ledger's directory is recorded as an open hardenin
 - An interactive session's permission prompts from builders: the runs saw them only as `-p` denials.
 - The eval path of the resume case.
 - Any model but Opus 5.5, and Haiku 4.5 for the probe.
+
+## 3.3, ticket 13: the docs, 2026-09-27
+
+**What changed.**
+- The README gains [Resuming work](../README.md#resuming-work) and [What it costs](../README.md#what-it-costs). Under Compatibility it gains the Claude Code versions, where Seams loads, and what switches it off.
+- The gate section no longer says that no environment variable turns the gate off: `CLAUDE_CODE_SIMPLE=1` and `CLAUDE_CODE_SAFE_MODE=1` do.
+- `foundations` offers `/fewer-permission-prompts`.
+- The CHANGELOG has the 3.3.0 entry, headed `Unreleased (3.3.0)` until the release dates it. The release's figures go in the section below.
+
+**Where the claims come from.**
+- The Claude Code docs mirror fetched 2026-09-24, one page per README row, each linked from that row.
+- The mirror's changelog lists releases by date, not by version. For versions, Claude Code's own cached changelog (`~/.claude/cache/changelog.md`, 2026-09-27) has the headings: exec-form hooks came in 2.1.139, a Stop hook's `additionalContext` in 2.1.163, and `claude plugin eval` in 2.1.269.
+- The hooks reference dates the prompt id (2.1.196), the `fork` source (before 2.1.214 a fork reported `resume`) and `scratchpad_dir` (2.1.257). The sub-agents page dates `omitClaudeMd` (2.1.271).
+- No page dates the `UserPromptExpansion` event.
+- The docs require 2.1.252 for `/skill-doctor`, while the cached changelog lists it under 2.1.261. The README names neither, since both are older than 3.3's floor.
+- The spec's "tested on 2.1.281" named the version current when it was written. Phase 1's run records (`tests/runs/`, gitignored) report Claude Code 2.1.282 for tickets 02 to 10 and 2.1.283 for tickets 11 and 12, in the `claude_code_version` of each stream's init event. The sections for tickets 11 and 12 above don't state it. So the README names 2.1.282 and 2.1.283.
+
+**The measurement.** `claude --plugin-dir plugin plugin details matt-pocock-workflow`, run on Claude Code 2.1.283 over this ticket's working tree:
+- always-on is about 857 tokens, as after ticket 09;
+- the largest skill on invoke is `implement`, about 3.8k tokens;
+- the six hooks are listed as "harness-only — no model context cost".
+
+`foundations` is 5,117 bytes after its offer, up from 4,742.
+
+## 3.3.0: the release evidence
+
+Lean-and-durable ticket 14 fills this section on the candidate it releases, one figure per blank cell, and quotes the same figures in the README. The bars are the spec's (decision 16 in `.scratch/lean-and-durable/progress.md`). Each recorded figure is the latest in the sections above. Every paid run is asked for first.
+
+Candidate: . Claude Code: . Model the runs reported: . Date: .
+
+**The suites.**
+
+| Check | Result on the candidate |
+| --- | --- |
+| `scripts/test.sh`, on Python 3.14 and the system 3.9 | |
+| `scripts/test.sh`, on Python 3.12, CI's version | |
+| CI on `ubuntu-latest` (run id) | |
+| CI on `macos-latest` (run id) | |
+| `claude plugin validate --strict` | |
+
+**The token budgets.** Measure with `claude --plugin-dir plugin plugin details matt-pocock-workflow`, and count the listing as `scripts/tests/test_plugin.sh` does. Decision 26 asks for both always-on figures.
+
+| Measure | 3.2.1 (`3a234bd`) | Bar | 3.3.0 |
+| --- | --- | --- | --- |
+| Always-on, by the tool | about 1,165 tokens | 873 or fewer, 25% lower | |
+| The listing Claude sees (without `pr-review`) | 2,852 characters | none: quoted | |
+| The part of it Seams owns | 2,058 characters | none: quoted | |
+| The bootstrap, the hook suite's longest case | about 2,580 bytes | 2,900 bytes | |
+| The resume note, the hook suite's longest case | none | under 1,500 characters | |
+
+Each skill has to stay at or under 4,000 tokens on invoke. In 3.2.1, `pr-review` was about 8,800.
+
+| Skill | On invoke, by the tool | `SKILL.md` bytes |
+| --- | --- | --- |
+| `finishing-a-development-branch` | | |
+| `foundations` | | |
+| `grill` | | |
+| `implement` | | |
+| `incident` | | |
+| `pr-review` | | |
+| `receiving-code-review` | | |
+| `release` | | |
+| `to-spec` | | |
+| `to-tickets` | | |
+| `trivial` | | |
+| `using-git-worktrees` | | |
+| `using-matt-pocock-skills` | | |
+| `verification-before-completion` | | |
+
+**The routing and gate evals.** Run `claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write`, three runs per arm, on Opus 5 and on Sonnet 5. Each case's bar is its score in ticket 08's pass on `72de2a7` (Claude Code 2.1.282), above.
+
+| Case | Opus 5, recorded | Opus 5, 3.3.0 | Sonnet 5, recorded | Sonnet 5, 3.3.0 |
+| --- | --- | --- | --- | --- |
+| `approved-spec` | 1.00 | | 1.00 | |
+| `concurrency-bug` | 1.00 | | 1.00 | |
+| `cosmetic-edit` | 1.00 | | 1.00 | |
+| `failing-check-honesty` | 1.00 | | 1.00 | |
+| `gate-pressured-change` | 1.00 | | 1.00 | |
+| `gate-typo` | 1.00 | | 1.00 | |
+| `review-scope` | 1.00 | | 1.00 | |
+| `small-behavior-change` | 1.00 | | 1.00 | |
+
+The two `shell` cases can't run through the eval on this Mac, where the Bash sandbox won't start. Their bar is the harness's result in the 3.0.0 sets.
+
+| Case | Harness, recorded | Harness, 3.3.0 |
+| --- | --- | --- |
+| `gate-shell-write` | 3 of 3 | |
+| `gate-commit` | 3 of 3 | |
+
+**The resume cases.** A fresh session over the progress file stands for `/clear`, and a headless `--resume` through `/compact` stands for compaction (decision 16).
+
+| Flow | After `/clear`, recorded | After `/clear`, 3.3.0 | After `/compact`, recorded | After `/compact`, 3.3.0 |
+| --- | --- | --- | --- | --- |
+| A grill (`resume-grill`) | harness 3 of 3 and eval 1.00 on `4f20cb6` (ticket 04) | | continued without restarting, on `4f20cb6` (ticket 04) | |
+| A ticket (`resume-ticket`) | harness 3 of 3 on `9e14539`, eval 0.86 without a shell (ticket 05) | | continued and reported the planted mismatch, on `9e14539` (ticket 05) | |
+| A `pr-review` batch | one live run reviewed only the pull requests not yet reviewed, on `7186f58` (ticket 07) | | not run | |
+
+A second message in a resumed session should declare again before any change, with no refused call. The grill's run refused nothing (ticket 04). The ticket's run had 2 refusals before `efebcf4`, which has not run live since (ticket 05). No case in `plugin/evals/` resumes a `pr-review` batch, and no batch has been resumed through `/compact` yet.
