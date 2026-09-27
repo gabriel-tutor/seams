@@ -35,13 +35,13 @@ Run `/improve-codebase-architecture` (user-only) every few days. It reports deep
 
 The four skills from Superpowers (three copies, and `finishing-a-development-branch` adapted to record integration in the progress file), named with their prefix because the Superpowers originals share their names and are not declarations:
 
-- **Worktrees:** `matt-pocock-workflow:using-git-worktrees` when feature work needs isolation from the current workspace; `implement` offers it at its gate.
+- **Worktrees:** `matt-pocock-workflow:using-git-worktrees` when feature work needs isolation from the current workspace; `implement` offers it at its gate. A parallel run makes its own, one per ticket under `.claude/worktrees/`, from local HEAD (`implement`'s `references/parallel.md`).
 - **Review feedback:** `matt-pocock-workflow:receiving-code-review` before acting on any review finding: verify it against the code, then fix or push back with reasons.
 - **Verify** and **finish** are in the bootstrap: `matt-pocock-workflow:verification-before-completion` before any claim, `matt-pocock-workflow:finishing-a-development-branch` on a branch.
 
 ## Durable state
 
-The durable state is the spec, the tickets, `CONTEXT.md`, the ADRs (`docs/agents/issue-tracker.md` says where the first two live) and the feature's progress file, `.scratch/<feature>/progress.md`: what the work has settled so far, its stage and its next step, in the format `progress-file.md` beside this file describes. Every flow skill keeps it at its own step (`progress-file.md` says which) and commits it with the work it describes. At every session start the resume note lists the active ones: a grill in progress continues through `grill`, a ticket in progress through `implement`. Work resumed in a fresh context reads them and never relies on chat memory; what a phase decided and did not write down there is lost by design, so write it down there.
+The durable state is the spec, the tickets, `CONTEXT.md`, the ADRs (`docs/agents/issue-tracker.md` says where the first two live) and the feature's progress file, `.scratch/<feature>/progress.md`: what the work has settled so far, its stage and its next step, in the format `progress-file.md` beside this file describes. Every flow skill keeps it at its own step (`progress-file.md` says which) and commits it with the work it describes. At every session start the resume note lists the active ones: a grill in progress continues through `grill`, a ticket or a parallel run in progress through `implement`. Work resumed in a fresh context reads them and never relies on chat memory; what a phase decided and did not write down there is lost by design, so write it down there.
 
 ## Phase boundaries
 

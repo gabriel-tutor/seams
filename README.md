@@ -88,7 +88,7 @@ flowchart LR
     TK -->|yes| TKT["to-tickets<br/>vertical slices · blocking edges · how to verify<br/>the lens's negative cases as acceptance criteria<br/>a new app's ticket 01: the walking skeleton<br/>a release ticket when the spec ships"] --> I
 ```
 
-### 3. Build: implement, one ticket at a time
+### 3. Build: implement, one ticket at a time or several at once
 
 ```mermaid
 flowchart LR
@@ -110,6 +110,8 @@ flowchart LR
     H -->|on the base branch| M
     M -->|ship it| REL["release, part 4"]
 ```
+
+**Several unblocked tickets at once.** When two or more tickets have no open blocker and you haven't named one, `implement` offers them in one multi-select question. Each ticket you pick is built by a **builder**, a background subagent running `implement`'s steps without questions (tests first, the commit, the reviews, the definition of done), in its own worktree under `.claude/worktrees/` on a branch named for the ticket. The worktree is made from your local HEAD, so unpushed commits such as the spec are in it. At most half the machine's cores, and four, build at once: Claude Code runs 20 subagents at a time and counts each builder's reviewers among them. The main conversation integrates each finished ticket onto your branch, one at a time. The merge and the full suite run in that ticket's worktree, since a test runner in the main checkout would also collect every worktree's copy of the tests, and your branch only fast-forwards to a merge whose suite passed. A ticket that fails stays on its branch, with its worktree and its handover, and is reported, and the others go on. The progress file's `## Parallel` section shows each ticket's state, so a `/clear` mid-run resumes with the right tickets pending. The run ends with one definition of done on the integrated candidate and one handover.
 
 ### 4. Ship and run: past the merge
 
@@ -319,7 +321,7 @@ The platform itself refuses to let the model start the skill. What those runs di
 - `.claude-plugin/marketplace.json` — makes this repo a single-plugin marketplace
 - `scripts/install.sh` — the one-command installer; `scripts/behavior_test.py` — the routing-test harness; `scripts/test.sh` and `scripts/tests/` — the test suites
 - `docs/plugin-behavior-tests.md` — the routing evidence and its method; `docs/compatibility.md` — what it was tested with; `docs/adr/` — the decisions; `docs/case-study-web-downloader.md` — one feature end to end on a real repo; `docs/carousel/` — the workflow as five slides for sharing
-- `plugin/evals/` — the fifteen scenarios, one directory each, shared by the routing harness and `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
+- `plugin/evals/` — the sixteen scenarios, one directory each, shared by the routing harness and `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
 
 ## Tests
 
@@ -337,7 +339,7 @@ python3 scripts/behavior_test.py report tests/runs/mine/*/results.jsonl         
 claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write   # the same scenarios through claude plugin eval, from the clone
 ```
 
-The eval suite is the same fifteen scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
+The eval suite is the same sixteen scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
 
 ```bash
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag routing --tag gate --scaffold --allow-tools Edit Write

@@ -286,6 +286,78 @@ must_say "implement's reviews reference" "$IMPL_REVIEWS" "Read this when \`imple
   "Never \`ultra\`" "in one message" "\`matt-pocock-workflow:receiving-code-review\`" \
   "Act only on correctness bugs and gaps against the ticket or spec" "offered them instead"
 grep -qF '${CLAUDE_SKILL_DIR}' "$IMPL_REVIEWS" && fail "implement's reviews reference uses \${CLAUDE_SKILL_DIR}, which Claude Code fills in only in the skill itself"
+# Unblocked tickets built in parallel (lean-and-durable ticket 12): implement has no room left under the bound, so the
+# parallel flow lives in a reference, named before the first step with when to read it, as the reviews are.
+IMPL_PARALLEL="$PLUGIN/skills/implement/references/parallel.md"
+[[ -f "$IMPL_PARALLEL" ]] || fail "implement lacks references/parallel.md"
+grep -F -- "references/parallel.md" <<< "$(awk '/^## /{exit} {print}' "$IMPL")" | grep -qF "read this when" \
+  || fail "implement does not name references/parallel.md before its first step with when to read it (\"read this when\")"
+grep -qF '${CLAUDE_SKILL_DIR}' "$IMPL_PARALLEL" && fail "implement's parallel reference uses \${CLAUDE_SKILL_DIR}, which Claude Code fills in only in the skill itself"
+# The offer comes only when two or more tickets are unblocked and the request names no one ticket; a ticket with an open
+# blocker is never in it; the user picks in one multi-select question, whose yes covers the whole run.
+headings_in_order "implement's parallel reference" "$IMPL_PARALLEL" "## The offer"
+section_says "implement's parallel reference" "$IMPL_PARALLEL" "The offer" "every ticket it is blocked by is done" \
+  "a ticket with an open blocker is never offered" "two or more are unblocked" "the request names no one ticket" \
+  "one AskUserQuestion" "\`multiSelect: true\`" "Two or more picked" "One picked" "no offer"
+# Setup: each worktree under .claude/worktrees/ from local HEAD, checked against it, so an unpushed commit (the spec) is in
+# it; a branch named for its ticket; never Claude Code's own worktree tools, which branch from the remote's default
+# branch. At most half the cores, Claude Code's 20 subagents at once (a builder's reviewers count among them), and the
+# tickets picked.
+headings_in_order "implement's parallel reference" "$IMPL_PARALLEL" "## The offer" "## Setup"
+section_says "implement's parallel reference" "$IMPL_PARALLEL" Setup "\`git check-ignore -q .claude/worktrees/\`" "\`.gitignore\`" \
+  "\`git worktree add -b <feature>/<NN>-<slug> .claude/worktrees/<feature>-<NN> <base>\`" "one at a time" \
+  "must print the base" "unpushed" "\`worktree.baseRef\`" "\`isolation\`" "leave it as it is" \
+  "half the machine's cores" "\`getconf _NPROCESSORS_ONLN\`" "20 subagents" "each builder's reviewers" "the tickets picked"
+# Builders: one background subagent per ticket, given the facts (the ticket, its worktree and branch, the base, the agreed
+# seams) and implement's steps, which it runs without questions, since a subagent cannot ask them. It works only in its
+# worktree, never touches the progress file or another branch, keeps its declaration, commits what it has, and ends
+# with a first line the main conversation can read.
+headings_in_order "implement's parallel reference" "$IMPL_PARALLEL" "## The offer" "## Setup" "## Builders" "## For a builder"
+section_says "implement's parallel reference" "$IMPL_PARALLEL" Builders "in the background" "\`general-purpose\`" "in one message" \
+  "the agreed seams" "the base" "Invoke \`matt-pocock-workflow:implement\`" "For a builder" "absolute path" "facts, never a plan"
+section_says "implement's parallel reference" "$IMPL_PARALLEL" "For a builder" "only in your worktree" "\`cd <worktree> &&\`" \
+  "describe the main checkout" "The user's pick is the gate's yes" "AskUserQuestion" "Never edit the progress file" \
+  "No record commit" "Never merge, rebase, push" "\`--no-verify\`" "invoke \`matt-pocock-workflow:implement\` again and retry" \
+  "Concurrent subagent limit reached" "never skip a review" "unfinished" "\`Ticket <NN>: built at <sha>\`" \
+  "\`Ticket <NN>: failed: <reason>\`" "\`/simplify\`" "start in the main checkout, not in your worktree" \
+  "the range as \`<base>...<branch>\`, never \`HEAD\`" "offers nothing: the main conversation integrates"
+# Integration, one ticket at a time: the merge and the full suite run in the ticket's worktree, never in the main
+# checkout, whose test runner would also collect every worktree's copy of the tests (vitest does, ignored or not: probed
+# while building ticket 12); the base branch only fast-forwards to a merge whose suite passed. A ticket that fails at
+# any step stays on its branch with its worktree and its handover, is reported, and nothing of it reaches the base.
+headings_in_order "implement's parallel reference" "$IMPL_PARALLEL" "## The offer" "## Setup" "## Builders" "## For a builder" \
+  "## When a builder ends" "## Integration"
+section_says "implement's parallel reference" "$IMPL_PARALLEL" "When a builder ends" "a builder's report, not the user's words" \
+  "\`git rev-parse --short <branch>\`" "\`git -C <worktree> status --porcelain\`" "the next \`pending\` ticket"
+section_says "implement's parallel reference" "$IMPL_PARALLEL" Integration "One ticket at a time" "never in the main checkout" \
+  "every worktree's copy" "\`git diff --name-only <base>...<branch>\`" "\`git -C <worktree> checkout --detach <base-branch>\`" \
+  "merge --no-ff" "merge --abort" "The full suite" "still on the base branch" "\`git merge --ff-only <merge-sha>\`" "\`git worktree remove <worktree>\`" \
+  "\`git branch -d <branch>\`" "never forced" "goes back on its branch" "keeps its worktree and its handover" "is reported" \
+  "the run goes on" "Nothing of it reaches the base branch"
+# The progress file shows each ticket's state in a run, kept by the main conversation alone (a builder's copy would
+# collide at the merges), current in the main checkout and committed with the run's record; its format is defined
+# where every other section of the file is.
+headings_in_order "implement's parallel reference" "$IMPL_PARALLEL" "## The offer" "## Setup" "## Builders" "## For a builder" \
+  "## When a builder ends" "## Integration" "## Progress file"
+section_says "implement's parallel reference" "$IMPL_PARALLEL" "Progress file" "Only the main conversation writes it" \
+  "\`Ticket\` lists the run's tickets" "\`## Parallel\`" "Base: <base-branch> at <sha>, <n> at once" "\`pending\`" "\`building\`" \
+  "\`built at <sha>\`" "\`integrated at <merge-sha>\`" "\`failed: <reason>\`" "current in the main checkout" "the run's record"
+section_says progress-file.md "$PF" "Who keeps it" "parallel run" "\`## Parallel\`"
+# A /clear mid-run resumes with the right tickets pending: each recorded state is checked against git before anything
+# acts on it; a /clear or a compaction doesn't stop a background builder, which still reports, so a building ticket is
+# waited for unless nothing shows its builder running, and then the user says whether to start it again.
+headings_in_order "implement's parallel reference" "$IMPL_PARALLEL" "## Progress file" "## Resuming a run"
+section_says "implement's parallel reference" "$IMPL_PARALLEL" "Resuming a run" "\`git merge-base --is-ancestor <merge-sha> <base-branch>\`" \
+  "still points there" "start it when a slot is free" "doesn't stop a background builder" "\`/tasks\`" "ask the user once" \
+  "goes on from what its branch holds" "merge --abort" "report it and ask" "Never act on the file instead" \
+  "the pick that started the run still covers it" "start the \`pending\` tickets the free slots allow first"
+# The end: the record commit, then the definition of done on the integrated candidate, gathered where no worktree sits
+# inside the tree its suite searches, then one handover naming each failed ticket's branch, worktree and reason.
+headings_in_order "implement's parallel reference" "$IMPL_PARALLEL" "## Resuming a run" "## The end of the run"
+section_says "implement's parallel reference" "$IMPL_PARALLEL" "The end of the run" "no ticket is \`pending\` or \`building\`" \
+  "record commit" "each integrated ticket marked done" "only the failed tickets" "definition of done on the integrated candidate" \
+  "each integrated ticket's acceptance criteria" "\`git worktree add --detach" "its branch, its worktree and its reason"
+must_say progress-file.md "$PF" "the tickets of a parallel run"
 # to-spec sets the stage to designed and points to the spec; its publish question names the commit that
 # follows (the spec, the progress file, the grill's glossary and ADR changes), made by name after the yes.
 section_says to-spec "$PLUGIN/skills/to-spec/SKILL.md" Process "name the commit that follows" "the progress file" \

@@ -36,7 +36,7 @@ The header is the `Key: value` lines before the first `##` heading, one line eac
 | `Stage` | `designing` while the grill runs, then the stage reached: designed, built, integrated, release-ready, deployed or operated |
 | `Next` | the next step, in one sentence |
 | `Updated` | the date of the last change, `YYYY-MM-DD`, which a time may follow (`2026-09-25T10:00`); the note lists the newest three |
-| `Ticket` | optional: the ticket in progress, by its number or id (`05`, `#123`) |
+| `Ticket` | optional: the ticket in progress, by its number or id (`05`, `#123`), or the tickets of a parallel run (`03, 05, 07`) |
 | `Candidate` | optional: while a ticket is in progress, the short SHA of the commit its review ran on (a commit can't name itself; `Next` says what the ticket's later commits do) |
 
 A file without a `Status`, a `Stage`, a `Next` and a dated `Updated` is skipped. The note shows each field as one line of plain text of at most 200 characters (a ticket in at most 60 characters), with markup removed, so keep the header plain.
@@ -50,7 +50,7 @@ Each flow skill updates the file at its own step and commits it by name with the
 - `grill`: creates it at the first settled decision (`Stage: designing`) and records each answered round.
 - `to-spec`: `Stage: designed`, the spec's path or URL under `## Spec`, and `Next` the split into tickets; committed with the spec after the publish yes.
 - `to-tickets`: the ticket list under `## Tickets` and `Next` the first unblocked ticket; committed with the tickets after the approval.
-- `implement`: `Ticket` from the gate's yes, `Candidate` when the review starts, and the review's findings to fix under `## Review`. Its record commit, just before the definition of done, sets the stage reached, marks the ticket done and removes those three; after the last ticket it sets `Status: done`, unless the spec has a Release section.
+- `implement`: `Ticket` from the gate's yes, `Candidate` when the review starts, and the review's findings to fix under `## Review`. Its record commit, just before the definition of done, sets the stage reached, marks the ticket done and removes those three; after the last ticket it sets `Status: done`, unless the spec has a Release section. A parallel run (`implement`'s `references/parallel.md`) keeps each of its tickets' state under `## Parallel`, which only the main conversation writes.
 - `finishing-a-development-branch`: `Stage: integrated` after a local merge, committed on the base branch.
 - `release`: the stage reached at its operations handover, and `Status: done` once the last environment the spec's Release section names is verified.
 - `pr-review`: a batch keeps a file of this shape beside its evidence, under the temp directory rather than the repository (ADR 0003 names the exception), which its scripts write and bring up to date as each pull request moves on. Its `Stage` counts the pull requests by step (`3 pull requests: 1 drafted, 2 pinned`), its `Updated` carries the time, and two more keys name the session's repository (`Repository`) and the evidence directories (`Evidence`). The resume note lists an unfinished batch of the session's repository among its entries; typed again, the same `/pr-review` command continues it.

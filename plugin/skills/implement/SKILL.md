@@ -13,15 +13,17 @@ Build what a spec, a ticket or an agreed design describes: tests first at the ag
 
 **Reviews.** `${CLAUDE_SKILL_DIR}/references/reviews.md`: read this when the review starts, and again after a compaction or `/clear`.
 
+**Parallel tickets.** `${CLAUDE_SKILL_DIR}/references/parallel.md`: read this when two or more tickets are unblocked, before the gate's question, and to resume a parallel run.
+
 **Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of the status and the progress files. They are a snapshot: once git may have moved (a commit, a checkout, a new worktree, a resumed session), run git again, and look up yourself any fact the hook did not give.
 
 ## Gate
 
-Before reading anything, confirm which spec, ticket or agreed design you're building, and where. Offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch. Wait for a yes. Skip this only when the user's last message already names both, when a yes earlier in this request covered this ticket and where it goes ("build all three on main"), or when you resume a ticket in progress whose state matches its progress file (Resuming, below).
+Before reading anything, confirm which spec, ticket or agreed design you're building, and where. Offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch. Wait for a yes. Skip this only when the user's last message already names both, when a yes earlier in this request covered this ticket and where it goes, or when you resume a ticket in progress whose state matches its progress file (Resuming, below).
 
 Then note the starting point for the review's fixed point: the branch and HEAD from the repository facts (in a new worktree, its own), and the base branch.
 
-An answer typed as a message, not picked in AskUserQuestion, starts a new request, which the Seams gate keeps closed until a process skill is invoked: when it continues this ticket (after a mismatch or an unmet row, say), invoke `matt-pocock-workflow:implement` again before the next change.
+An answer typed, not picked, starts a new request: when it continues this ticket, invoke `matt-pocock-workflow:implement` again before the next change.
 
 ## Progress file
 
@@ -55,7 +57,7 @@ When the resume note or the user points at a ticket its progress file records in
 ## Review
 
 1. **Fixed point.** On a branch, `git merge-base <base> HEAD`; on the base branch itself, the starting commit noted at the beginning. The candidate is HEAD; do not change it while the review runs.
-2. **Empty diff.** If `git diff --stat <fixed-point>...HEAD` prints nothing, there is nothing to review: say why (nothing committed yet, or the fixed point is HEAD) and fix that first. Never review an empty diff.
+2. **Empty diff.** If `git diff --stat <fixed-point>...HEAD` prints nothing, there is nothing to review: say why (nothing committed yet, or the fixed point is HEAD) and fix that first.
 3. Invoke `code-review` (Matt Pocock's, bare name) with the Skill tool, passing the fixed point. It diffs `<fixed-point>...HEAD` and reviews along its two axes, Standards and Spec.
 4. **By risk** (the reference): a correctness review always, a security review on a sensitive change, `/simplify` offered on a large diff; never `ultra` unless the user asks.
 

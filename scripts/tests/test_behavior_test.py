@@ -123,6 +123,14 @@ class SettingsTest(unittest.TestCase):
         for form in ("Bash(git add:*)", "Bash(git rm:*)", "Bash(git commit:*)"):
             self.assertIn(form, allow)
 
+    def test_a_resumed_parallel_run_can_read_its_worktrees_and_branches(self):
+        # lean-and-durable ticket 12: a parallel run resumes by checking each ticket against git (the worktrees, the
+        # branches, what the base branch already holds) before it acts, and a denied read makes the run an error.
+        allow = json.loads(load_harness().settings(False))["permissions"]["allow"]
+        for form in ("Bash(git worktree list:*)", "Bash(git branch:*)", "Bash(git rev-parse:*)", "Bash(git merge-base:*)",
+                     "Bash(git show:*)"):
+            self.assertIn(form, allow)
+
 
 class ScanTest(unittest.TestCase):
     def test_first_skill_after_exploration(self):
@@ -533,6 +541,35 @@ class JudgeTest(unittest.TestCase):
         self.assertIn("1 of 2", report)
         self.assertRegex(report, r"miss\s+run 2: no agent was given a task matching .*ecurity")
 
+    def test_a_resumed_parallel_run_starts_the_pending_ticket_and_carries_on(self):
+        # lean-and-durable ticket 12: a /clear mid-run leaves the progress file recording ticket 01 integrated, 02 built
+        # and 03 pending with its worktree made. The resumed run re-reads the file, the parallel reference and git, starts
+        # 03's builder in that worktree first, so that it builds while 02 is integrated, and goes on to a change rather
+        # than asking again: the pick that started the run still covers it.
+        implement = "matt-pocock-workflow:implement"
+        ws = "/runs/1/workspace"
+        read = {"reads": [f"{ws}/.scratch/shop-basics/progress.md", "/seams/plugin/skills/implement/references/parallel.md"],
+                "commands": ["git worktree list && git log --oneline -5"]}
+        builder = ("general-purpose\nBuild ticket 03\nBuild ticket 03 of shop-basics (removeLine) in the worktree "
+                   f"{ws}/.claude/worktrees/shop-basics-03, on its branch shop-basics/03-remove-line, from the base 1a2b3c4.")
+        restarted = builder.replace("ticket 03", "ticket 02").replace("shop-basics-03", "shop-basics-02")
+        asked = {"ended": "reply", "exit_code": 0, "result_subtype": "success", "result_error": False, "output_tokens": 90}
+        code, report = judge(
+            record("resume-parallel", 1, skill=implement, first_tool="Edit", tasks=[builder], **read),
+            # A built ticket started over instead of integrated, and the pending one never started.
+            record("resume-parallel", 2, skill=implement, first_tool="Edit", tasks=[restarted], **read),
+            record("resume-parallel", 3, skill=implement, first_tool="Edit", tasks=[builder],
+                   reads=read["reads"][:1], commands=read["commands"]),
+            record("resume-parallel", 4, skill=implement, first_tool="Edit", tasks=[builder], reads=read["reads"], commands=[]),
+            # The builder started, then the run stopped to ask whether to integrate 02.
+            record("resume-parallel", 5, skill=implement, first_tool=None, tasks=[builder], **read, **asked))
+        self.assertEqual(code, 1)
+        self.assertIn("1 of 5", report)
+        self.assertRegex(report, r"miss\s+run 2: no agent was given a task matching Build ticket 03")
+        self.assertRegex(report, r"miss\s+run 3: never read a file matching .*parallel")
+        self.assertRegex(report, r"miss\s+run 4: never read a file matching git")
+        self.assertRegex(report, r"miss\s+run 5: .*without a change")
+
     def test_a_scenario_without_an_expectation_file_fails_loudly(self):
         code, report = judge(record("no-such-scenario", 1, skill=self.TRIVIAL))
         self.assertEqual(code, 1)
@@ -742,7 +779,7 @@ class ScenarioFilesTest(unittest.TestCase):
                     graded = any(m.search(json.dumps(call)) for m in narrower)
                     self.assertEqual(wanted, graded, f"the harness and the graders disagree on: {call}")
                 expecting.append(name)
-        self.assertEqual(sorted(expecting), ["feature-reviews", "sensitive-reviews"])
+        self.assertEqual(sorted(expecting), ["feature-reviews", "resume-parallel", "sensitive-reviews"])
 
     def test_a_run_waits_as_long_as_its_scenario_allows(self):
         # lean-and-durable ticket 11's review: a build's review runs several reviewers, so its scenarios allow 900 s in

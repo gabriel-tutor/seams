@@ -61,6 +61,14 @@ _Avoid_: the branch, the work, current changes
 A ticket's last commit, made just before its definition of done: it brings the progress file to the stage reached and the next step, and it is the candidate the definition of done refers to.
 _Avoid_: wrap-up commit, bookkeeping commit
 
+**Parallel run**:
+Two or more unblocked tickets that the user picked to build at once: each by a builder in its own worktree from local HEAD, then integrated onto the base branch one ticket at a time by the main conversation, with the full suite after each. A ticket that fails stays on its branch. The progress file's `## Parallel` section holds each ticket's state.
+_Avoid_: batch (a `pr-review` word), fan-out
+
+**Builder**:
+The background subagent that builds one ticket of a parallel run in its worktree, through `implement`'s steps without questions, and ends with its handover. It never touches the progress file or another branch.
+_Avoid_: worker, helper
+
 **Quality bar**:
 What every candidate that ships must meet: a definition of done covering how the change fails, is attacked, performs, is observed, is documented and is rolled back, each item proven by evidence, with scope and architecture sized to the stated needs plus the next order of growth.
 _Avoid_: perfection, gold-plating, bare minimum, best effort
