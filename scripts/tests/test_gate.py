@@ -869,6 +869,14 @@ class ProjectChanges(unittest.TestCase):
         self.assertIsNone(gate.change_for_event(event("Write", file_path="/home/u/.claude/memory/n.md", content="x"),
                                                 config_dir="/home/u/.claude"))
 
+    def test_the_claude_config_directory_is_not_scratch_for_a_shell_write_inside_the_temp_directory_either(self):
+        # self.config is a mkdtemp, so it lies under the temp directory, where a CI job's or an eval run's config
+        # directory lies too: the temp directory's rule must not reach into it.
+        change = gate.change_for_event(event("Bash", command=f"rm -rf {self.config}/settings.json"),
+                                       config_dir=self.config)
+        self.assertIsNotNone(change)
+        self.assertEqual(change["label"], "rm")
+
     def test_a_temp_path_that_leads_into_the_project_is_the_project(self):
         project = tempfile.mkdtemp()               # the session's cwd: the project, wherever it lives
         os.makedirs(os.path.join(project, "src"))
@@ -1137,6 +1145,14 @@ class ReadOnlyAgents(unittest.TestCase):
                     self.assertEqual(decision["decision"], "deny")
                     self.assertIsNone(decision["change"])
         self.assertEqual(self.decide("NotebookEdit", notebook_path="/proj/n.ipynb", new_source="x")["decision"], "deny")
+        # The config directory inside the temp directory, where a CI job's or an eval run's lies (self.config is a
+        # mkdtemp): still not scratch, by editor or by redirect. Ubuntu's CI, whose suite runs under /tmp, found a
+        # scout's write to its settings allowed.
+        settings = os.path.join(self.config, "settings.json")
+        for tool in ("Edit", "Write", "MultiEdit"):
+            with self.subTest(config_inside_temp=tool):
+                self.assertEqual(self.decide(tool, agent=self.SCOUT, file_path=settings, content="x")["decision"], "deny")
+        self.assertEqual(self.decide(command=f"git diff HEAD > {settings}")["decision"], "deny")
         # Nor into a git directory, even under the temp directory: its config names programs git runs.
         reason = self.decide("Write", agent=self.SCOUT, file_path=f"{t}/repo/.git/config", content="x")["reason"]
         self.assertIn("inside a git directory", reason)

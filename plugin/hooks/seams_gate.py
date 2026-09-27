@@ -1204,15 +1204,17 @@ def is_exempt_path(path: str, config: Optional[str] = None, cwd: Optional[str] =
     return any(_under(real, root) for root in roots)
 
 
-def is_scratch_path(path: str, cwd: Optional[str] = None, scratchpad: object = None) -> bool:
+def is_scratch_path(path: str, cwd: Optional[str] = None, scratchpad: object = None,
+                    config: Optional[str] = None) -> bool:
     """Where a shell command may write without a declaration: /dev/null, or under a temp directory or
     the session's scratchpad, and outside the session's working directory. Narrower than
-    is_exempt_path: the Claude config directory is not scratch, since a shell command there could
-    delete the user's settings."""
+    is_exempt_path: the Claude config directory is not scratch, even where it lies inside a temp
+    directory (a CI job's or an eval run's does), since a shell command there could delete the
+    user's settings."""
     real = os.path.realpath(path)
     if real == "/dev/null":
         return True
-    if cwd and _under(real, cwd):
+    if (cwd and _under(real, cwd)) or _under(real, config_dir(config)):
         return False
     roots = (tempfile.gettempdir(),) + TEMP_ROOTS + _scratchpad_roots(scratchpad)
     return any(_under(real, root) for root in roots)
@@ -1271,7 +1273,7 @@ def change_for_event(event: dict, config_dir: Optional[str] = None) -> Optional[
     if tool in ("Bash", "Monitor"):
         cwd, scratchpad = event.get("cwd"), event.get("scratchpad_dir")
         label = classify_command(tool_input.get("command") or "",
-                                 is_exempt=lambda path: is_scratch_path(path, cwd, scratchpad))
+                                 is_exempt=lambda path: is_scratch_path(path, cwd, scratchpad, config_dir))
         if label:
             return {"tool": tool, "label": label, "doc": False}
     if tool == "PowerShell":
@@ -1449,7 +1451,7 @@ def shell_read_problem(command: str, is_scratch: Callable[[str], bool]) -> Optio
     return None
 
 
-def read_only_problem(event: dict) -> Optional[str]:
+def read_only_problem(event: dict, config: Optional[str] = None) -> Optional[str]:
     """Why a read-only agent may not make this call, as text for its refusal, or None when it only reads,
     or writes scratch. Editor tools: only under the temp directory or the session's scratchpad (not the
     config directory, which a declared request may write). Bash and a Monitor watch: the list of reads.
@@ -1460,11 +1462,12 @@ def read_only_problem(event: dict) -> Optional[str]:
         path = _editor_path(event)
         if not path:
             return None
-        if not is_scratch_path(path, cwd, scratchpad):
+        if not is_scratch_path(path, cwd, scratchpad, config):
             return f"writes `{path}`, outside the temp directory and the session's scratchpad"
         return f"writes `{path}`, inside a git directory" if _in_git_dir(path) else None
     if tool in ("Bash", "Monitor"):
-        return shell_read_problem(tool_input.get("command") or "", lambda path: is_scratch_path(path, cwd, scratchpad))
+        return shell_read_problem(tool_input.get("command") or "",
+                                  lambda path: is_scratch_path(path, cwd, scratchpad, config))
     if tool == "PowerShell":
         command = tool_input.get("command") or ""
         return None if not command.strip() or powershell_reads(command) else "runs PowerShell outside its read-only list"
@@ -1482,7 +1485,7 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: Optional[str] = N
     is held to the list of reads, whatever the ledger says, and never records a change."""
     agent = event.get("agent_type")
     if isinstance(agent, str) and agent in READ_ONLY_AGENTS:
-        problem = read_only_problem(event)
+        problem = read_only_problem(event, config_dir)
         if problem:
             return {"decision": "deny", "reason": read_only_reason(agent, problem), "change": None}
         return {"decision": "allow", "reason": None, "change": None}

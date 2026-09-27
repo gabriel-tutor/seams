@@ -47,6 +47,9 @@ OUT=$(pre_edit "$TMPDIR/scratch.py"); [[ -z "$OUT" ]] || fail "temp-dir write sh
 OUT=$(pre_edit "$CLAUDE_CONFIG_DIR/memory/note.md"); [[ -z "$OUT" ]] || fail "config-dir write should pass: $OUT"
 OUT=$(pre_bash "mkdir -p $TMPDIR/evid/checks && echo ok > $TMPDIR/evid/checks/x.log"); [[ -z "$OUT" ]] || fail "a shell write confined to the temp dir should pass: $OUT"
 OUT=$(pre_bash "cp $TMPDIR/evid/checks/x.log $PROJ/src/x.log"); denied "$OUT" || fail "a copy into the project should still be denied: $OUT"
+# The config dir is not scratch for a shell write, even inside the temp dir, where a CI job's or an eval run's lies.
+OUT=$(export CLAUDE_CONFIG_DIR="$TMPDIR/config"; pre_bash "rm -f $TMPDIR/config/settings.json")
+denied "$OUT" || fail "a shell write to a config dir inside the temp dir should be denied: $OUT"
 [[ ! -e "$LEDGER" ]] || ! grep -q '"label"' "$LEDGER" || fail "a temp-only shell write should not be recorded as a change"
 
 # 4. A declaration opens the gate, and the allowed change is recorded (path, no content).
@@ -154,6 +157,10 @@ done
 grep -q "git's read subcommands" <<< "$OUT" || fail "the refusal should name the reads a read-only agent may run: $OUT"
 OUT=$(agent scout Write "{\"file_path\":\"$CLAUDE_CONFIG_DIR/settings.json\",\"content\":\"{}\"}")
 denied "$OUT" || fail "a read-only agent's write to the config dir should be denied: $OUT"
+# Where the config dir lies inside the temp dir the temp rule must not reach into it: under /tmp, as Ubuntu's mktemp
+# puts this suite, a scout's write to its settings had passed.
+OUT=$(export CLAUDE_CONFIG_DIR="$TMPDIR/config"; agent scout Write "{\"file_path\":\"$TMPDIR/config/settings.json\",\"content\":\"{}\"}")
+denied "$OUT" || fail "a read-only agent's write to a config dir inside the temp dir should be denied: $OUT"
 
 # 8. Session start: clear and startup reset the ledger; compact and resume keep it; a fork is a new
 # session, which starts with an empty ledger and leaves its parent's alone.

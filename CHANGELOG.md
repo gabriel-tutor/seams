@@ -26,6 +26,7 @@ Lean and durable: the same workflow, lighter on tokens, faster, and nothing lost
   - A typed message that starts a new request after a declared one now tells Claude which declaration lapsed, so Claude invokes that skill again instead of having its next edit refused. That refusal had happened four times in one session.
   - Writes under the session's scratchpad are scratch.
   - The read-only agents are held to a list of reads, whatever the request has declared.
+  - The Claude config directory is never scratch, even where it lies inside the temp directory, as a CI job's or an eval run's does: a read-only agent may not write there, and a shell write there needs a declaration. The release's CI on Ubuntu, where the suite runs under `/tmp`, found a scout's write to the settings there allowed; 3.2.1 let an undeclared shell write there pass the same way.
   - A subagent's own declaration covers that subagent alone and outlives the main conversation's requests, so a parallel run's builders never open the gate for a message you type mid-run.
   - The done-check asks through hook feedback instead of showing a hook error.
   - Every hook entry runs in exec form, so no path needs quoting.
