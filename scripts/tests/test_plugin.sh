@@ -307,6 +307,7 @@ headings_in_order "implement's parallel reference" "$IMPL_PARALLEL" "## The offe
 section_says "implement's parallel reference" "$IMPL_PARALLEL" Setup "\`git check-ignore -q .claude/worktrees/\`" "\`.gitignore\`" \
   "\`git worktree add -b <feature>/<NN>-<slug> .claude/worktrees/<feature>-<NN> <base>\`" "one at a time" \
   "must print the base" "unpushed" "\`worktree.baseRef\`" "\`isolation\`" "leave it as it is" \
+  "unless \`worktree.baseRef\` is \`head\`, they branch from the remote's default branch, which leaves unpushed commits out" \
   "half the machine's cores" "\`getconf _NPROCESSORS_ONLN\`" "20 subagents" "each builder's reviewers" "the tickets picked"
 # Builders: one background subagent per ticket, given the facts (the ticket, its worktree and branch, the base, the agreed
 # seams) and implement's steps, which it runs without questions, since a subagent cannot ask them. It works only in its
@@ -318,6 +319,7 @@ section_says "implement's parallel reference" "$IMPL_PARALLEL" Builders "in the 
 section_says "implement's parallel reference" "$IMPL_PARALLEL" "For a builder" "only in your worktree" "\`cd <worktree> &&\`" \
   "describe the main checkout" "The user's pick is the gate's yes" "AskUserQuestion" "Never edit the progress file" \
   "No record commit" "Never merge, rebase, push" "\`--no-verify\`" "invoke \`matt-pocock-workflow:implement\` again and retry" \
+  "a declaration of your own" "doesn't lapse it" \
   "Concurrent subagent limit reached" "never skip a review" "unfinished" "\`Ticket <NN>: built at <sha>\`" \
   "\`Ticket <NN>: failed: <reason>\`" "\`/simplify\`" "start in the main checkout, not in your worktree" \
   "the range as \`<base>...<branch>\`, never \`HEAD\`" "offers nothing: the main conversation integrates"

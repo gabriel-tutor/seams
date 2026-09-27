@@ -13,7 +13,7 @@ The routing policy injected into every session at start, resume, clear, compacti
 _Avoid_: system prompt, preamble
 
 **Declaration**:
-A Skill invocation of a process skill, by Claude or typed by the user, that opens the gate for the current request.
+A Skill invocation of a process skill, by Claude or typed by the user, that opens the gate for the current request. A subagent's own declaration opens it for that subagent alone, and outlives the request.
 _Avoid_: unlock, override
 
 **Gate**:

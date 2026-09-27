@@ -89,16 +89,19 @@ def settings(superpowers: bool) -> str:
     The fixture's own checks and a commit (`git add`, `git rm`, `git commit`) are allowed so a
     scenario can run to its end in the throwaway workspace, a review fix included, and the read-only forms the platform's own allowlist does not
     cover when they appear in a compound command (`git -C <path> status`, `echo "exit: $?"`,
-    `ls`, `find`; the ticket-10 evidence set lost three runs to them), and the reads a parallel run
-    resumes with (its worktrees, its branches, what the base branch already holds); anything else
-    the model runs is the platform's call to deny, and a denial makes the run an error, not a miss.
+    `ls`, `find`; the ticket-10 evidence set lost three runs to them), and what a parallel run
+    resumes with: the reads of its worktrees, its branches and what the base branch holds, and its
+    git steps (a worktree made or removed, a merge, a checkout), so a resumed run reaches its
+    verdict; anything else the model runs is the platform's call to deny, and a denial makes the
+    run an error, not a miss.
     Superpowers is forced off unless the run keeps the user's own setting."""
     allow = ["Read(~/.claude/skills/**)", "Read(~/.skills-manager/**)", f"Read(/{PLUGIN}/**)",
              "Bash(npm test:*)", "Bash(npm run typecheck:*)", "Bash(npx vitest:*)", "Bash(npx tsc:*)",
              "Bash(git add:*)", "Bash(git rm:*)", "Bash(git commit:*)",
              "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git -C:*)",
              "Bash(git worktree list:*)", "Bash(git branch:*)", "Bash(git rev-parse:*)", "Bash(git merge-base:*)",
-             "Bash(git show:*)", "Bash(echo:*)", "Bash(ls:*)", "Bash(find:*)"]
+             "Bash(git show:*)", "Bash(git worktree add:*)", "Bash(git worktree remove:*)", "Bash(git merge:*)",
+             "Bash(git checkout:*)", "Bash(echo:*)", "Bash(ls:*)", "Bash(find:*)"]
     config: dict = {"permissions": {"allow": allow}}
     if not superpowers:
         config["enabledPlugins"] = {"superpowers@claude-plugins-official": False}

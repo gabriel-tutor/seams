@@ -931,8 +931,9 @@ def is_continuation(prompt: str) -> bool:
 
 # --- The ledger ---------------------------------------------------------------------------
 # One JSON file per session: the current request's declarations, changes and last
-# verification, and the skills a typed prompt expanded to, under its prompt id until it is
-# submitted. Skill names, tool names, paths and ids only; never command or prompt text.
+# verification, each subagent's own declarations (which outlive a request), and the skills a
+# typed prompt expanded to, under its prompt id until it is submitted. Skill names, tool names,
+# paths and ids only; never command or prompt text.
 
 LEDGER_VERSION = 2                            # 2: events ordered by seq, not by the clock
 
@@ -999,8 +1000,10 @@ def _next_seq(ledger: dict) -> int:
 
 
 def new_request(ledger: dict) -> dict:
+    """A new request of the main conversation: its declarations and the changes so far go. A subagent's own
+    declarations stay, since they cover that subagent alone (declared_for)."""
     ledger["started"] = time.time()
-    ledger["declarations"] = []
+    ledger["declarations"] = [d for d in _listed(ledger, "declarations") if isinstance(d, dict) and subagent_of(d)]
     ledger["changes"] = []
     ledger["verified_at"] = None
     ledger["verified_seq"] = 0
@@ -1010,6 +1013,29 @@ def new_request(ledger: dict) -> dict:
 def add_declaration(ledger: dict, skill: str, agent_id: Optional[str] = None) -> None:
     ledger["declarations"].append({"skill": skill, "at": time.time(), "seq": _next_seq(ledger),
                                    "agent": agent_id})
+
+
+def subagent_of(declaration: dict) -> Optional[str]:
+    """The subagent whose own declaration this is, or None for the main conversation's (an entry that names no
+    subagent, as every entry did before lean-and-durable ticket 12, is the main conversation's)."""
+    agent = declaration.get("agent")
+    return agent if isinstance(agent, str) and agent else None
+
+
+def declared_for(ledger: dict, agent_id: object = None) -> bool:
+    """Whether a call is covered: by the main conversation's declarations, which cover every call of their
+    request, a subagent's included, or by the calling subagent's own, which cover it alone and outlive the main
+    conversation's requests. So a parallel run's builder keeps working while the user types, and never opens the
+    gate for the user's new request (user story 48). A ledger whose declarations are not a list keeps the old rule."""
+    declarations = ledger.get("declarations")
+    if not isinstance(declarations, list):
+        return bool(declarations)
+    caller = agent_id if isinstance(agent_id, str) and agent_id else None
+    for d in declarations:
+        owner = subagent_of(d) if isinstance(d, dict) else None
+        if owner is None or owner == caller:
+            return True
+    return False
 
 
 def add_change(ledger: dict, change: dict) -> None:
@@ -1066,7 +1092,8 @@ def record_expansion(event: dict, ledger: dict) -> bool:
         return False
     declares = event.get("expansion_type") == "slash_command" and isinstance(skill, str) and is_declaration(skill)
     if prompt_id == ledger.get("request_prompt"):     # its prompt hook ran first: the request is this prompt's
-        declared = [d.get("skill") for d in _listed(ledger, "declarations") if isinstance(d, dict)]
+        declared = [d.get("skill") for d in _listed(ledger, "declarations")
+                    if isinstance(d, dict) and not subagent_of(d)]
         if not declares or skill in declared:
             return False
         add_declaration(ledger, skill)
@@ -1093,7 +1120,8 @@ def submit_prompt(event: dict, ledger: dict, config_dir: Optional[str] = None) -
     ledger["expanded"] = []
     if not typed and is_continuation(prompt):
         return {"changed": bool(expanded), "context": None}
-    lapsed = [] if typed else [d.get("skill") for d in _listed(ledger, "declarations") if isinstance(d, dict)]
+    lapsed = [] if typed else [d.get("skill") for d in _listed(ledger, "declarations")
+                               if isinstance(d, dict) and not subagent_of(d)]
     new_request(ledger)
     ledger["request_prompt"] = prompt_id              # a late expansion of this prompt still declares it
     for skill in dict.fromkeys(typed):
@@ -1461,7 +1489,7 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: Optional[str] = N
     change = change_for_event(event, config_dir)
     if change is None:
         return {"decision": "allow", "reason": None, "change": None}
-    if not ledger.get("declarations"):
+    if not declared_for(ledger, event.get("agent_id")):
         return {"decision": "deny", "reason": deny_reason(change), "change": None}
     return {"decision": "allow", "reason": None, "change": change}
 

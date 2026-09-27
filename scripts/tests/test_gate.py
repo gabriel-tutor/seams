@@ -972,6 +972,62 @@ class PreToolUseDecision(unittest.TestCase):
         self.assertEqual(self.decide(event("Edit", agent_id="a1", file_path="/proj/src/a.ts"))["decision"], "allow")
 
 
+class SubagentDeclarations(unittest.TestCase):
+    """A subagent's own declaration covers that subagent alone (lean-and-durable ticket 12, the user's choice after
+    its security review). A parallel run's builders invoke `implement` themselves; while declarations were the
+    session's, a builder's reopened the gate for a message the user had typed mid-run, which no skill had routed
+    (user story 48). So a subagent's declaration opens nothing for the main conversation or for another agent, and
+    it outlives a typed message, so a builder keeps working while the user types. The main conversation's
+    declarations still cover every call of their request, a subagent's included, as before."""
+
+    def setUp(self):
+        self.ledger = gate.empty_ledger("s1")
+
+    def allowed(self, agent_id: str = None) -> bool:
+        edit = event("Edit", agent_id=agent_id, file_path="/proj/src/a.ts", old_string="a", new_string="b")
+        return gate.decide_pre_tool_use(edit, self.ledger)["decision"] == "allow"
+
+    def test_a_subagents_declaration_opens_nothing_for_the_main_conversation_or_another_agent(self):
+        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement", "builder-1")
+        self.assertTrue(self.allowed("builder-1"))
+        self.assertFalse(self.allowed(), "the main conversation's request has no declaration of its own")
+        self.assertFalse(self.allowed("builder-2"))
+
+    def test_a_subagents_own_declaration_outlives_a_typed_message_and_the_main_conversations_does_not(self):
+        send(self.ledger, "/matt-pocock-workflow:implement tickets 03 and 05 in parallel",
+             ("matt-pocock-workflow:implement", "plugin"))
+        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement", "builder-1")
+        self.assertTrue(self.allowed() and self.allowed("builder-1") and self.allowed("builder-2"))
+        send(self.ledger, "also rename the README's title", prompt_id="p2")
+        self.assertFalse(self.allowed(), "the typed message started a request no skill has routed")
+        self.assertTrue(self.allowed("builder-1"), "the builder's own declaration still holds")
+        self.assertFalse(self.allowed("builder-2"), "a subagent that relied on the main conversation's lapses with it")
+
+    def test_the_lapse_hint_names_only_the_main_conversations_declarations(self):
+        send(self.ledger, "/tdd add a test", ("tdd", "userSettings"))
+        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement", "builder-1")
+        hint = send(self.ledger, "now the label", prompt_id="p2")["context"]
+        self.assertIn("`tdd`", hint)
+        self.assertNotIn("implement", hint, "a builder's declaration did not lapse")
+        self.assertIsNone(send(self.ledger, "and the colour", prompt_id="p3")["context"],
+                          "a request whose only declarations are a subagent's had none to lapse")
+
+    def test_a_typed_skill_still_declares_its_request_when_a_subagent_declared_the_same_skill(self):
+        # The prompt hook first, then the prompt's own expansion: a subagent's declaration of the same skill is not
+        # this request's.
+        gate.add_declaration(self.ledger, "matt-pocock-workflow:grill", "helper-1")
+        send(self.ledger, "/grill add coupons", prompt_id="p2")      # its parse cannot read a bare /grill
+        gate.record_expansion(expansion("matt-pocock-workflow:grill", "plugin", "p2"), self.ledger)
+        self.assertTrue(self.allowed())
+
+    def test_an_entry_that_names_no_subagent_is_the_main_conversations(self):
+        # A ledger written before ticket 12, or a damaged entry, opens what it opened before, and lapses as before.
+        self.ledger["declarations"] = [{"skill": "tdd"}, {"skill": "matt-pocock-workflow:grill", "agent": 7}]
+        self.assertTrue(self.allowed() and self.allowed("builder-1"))
+        send(self.ledger, "now the label", prompt_id="p2")
+        self.assertEqual(declared(self.ledger), [])
+
+
 class ReadOnlyAgents(unittest.TestCase):
     """Seams' two read-only agents, `scout` and `reviewer`, read and never write, whatever the ledger says
     (lean-and-durable ticket 09, decision 30). A shell command passes only when every part of it is a read the

@@ -131,6 +131,14 @@ class SettingsTest(unittest.TestCase):
                      "Bash(git show:*)"):
             self.assertIn(form, allow)
 
+    def test_a_parallel_runs_git_steps_are_judged_not_denied(self):
+        # Ticket 12's review: a resumed run whose first change is a git step of the run (a worktree made or removed,
+        # a merge, a checkout in a worktree) must reach its verdict, a match or a miss, instead of a denial that
+        # makes the run an error.
+        allow = json.loads(load_harness().settings(False))["permissions"]["allow"]
+        for form in ("Bash(git worktree add:*)", "Bash(git worktree remove:*)", "Bash(git merge:*)", "Bash(git checkout:*)"):
+            self.assertIn(form, allow)
+
 
 class ScanTest(unittest.TestCase):
     def test_first_skill_after_exploration(self):
@@ -751,11 +759,13 @@ class ScenarioFilesTest(unittest.TestCase):
                 expecting.append(name)
         self.assertEqual(sorted(expecting), ["feature-reviews", "sensitive-reviews"])
 
-    def test_the_tasks_a_scenario_expects_have_agent_graders_that_agree(self):
+    def test_the_tasks_a_scenario_expects_have_graders_that_agree(self):
         # A build's review starts reviewer agents that differ only by what each is asked, and reviews.md names each by
-        # its axis in its description. On sample calls, one per axis a reviewer takes, a standards review whose prompt
-        # mentions the other two, and axis names in capitals, the harness's `tasks` and the eval's task graders (Agent
-        # graders narrower than the agent's type) agree on which calls count.
+        # its axis in its description; a resumed parallel run starts a builder named for its ticket and told its
+        # worktree (parallel.md). On sample calls (one per axis a reviewer takes, a standards review whose prompt
+        # mentions the other two, axis names in capitals, and builders with and without their worktree), the
+        # harness's `tasks` and the eval's task graders agree on which calls count. A task grader is an Agent grader
+        # narrower than the agent's type, or a regex the trace must contain.
         harness = load_harness()
         reviewer = "matt-pocock-workflow:reviewer"
         calls = [{"subagent_type": reviewer, "description": f"{axis.capitalize()} review",
@@ -763,6 +773,10 @@ class ScenarioFilesTest(unittest.TestCase):
         calls += [{"subagent_type": reviewer, "description": "Standards review",
                    "prompt": "Review 1a2b3c4...HEAD against the standards; correctness and security are reviewed apart."},
                   {"subagent_type": reviewer, "description": "CORRECTNESS REVIEW", "prompt": "Review 1a2b3c4...HEAD."}]
+        calls += [{"subagent_type": "general-purpose", "description": f"Build ticket {n}",
+                   "prompt": f"Build ticket {n} of shop-basics in the worktree /ws/.claude/worktrees/shop-basics-{n}."}
+                  for n in ("02", "03")]
+        calls += [{"subagent_type": "general-purpose", "description": "Build ticket 03", "prompt": "Build ticket 03 of shop-basics."}]
         expecting = []
         for name in harness.all_scenarios():
             expect = harness.expectation(name)
@@ -770,13 +784,16 @@ class ScenarioFilesTest(unittest.TestCase):
                 continue
             with self.subTest(scenario=name):
                 graders = [grader_frontmatter(p) for p in sorted((harness.SCENARIOS / name / "graders").glob("*.md"))]
-                matchers = [re.compile(g["input_match"].strip("'\"")) for g in graders
-                            if g.get("type") == "tool_used" and g.get("tool") == "Agent"]
-                narrower = [m for m in matchers if not m.search(json.dumps({"subagent_type": reviewer}))]
+                agent_graders = [re.compile(g["input_match"].strip("'\"")) for g in graders
+                                 if g.get("type") == "tool_used" and g.get("tool") == "Agent"]
+                task_graders = [m for m in agent_graders if not m.search(json.dumps({"subagent_type": reviewer}))]
+                task_graders += [re.compile(g["pattern"].strip("'\"")) for g in graders
+                                 if g.get("type") == "regex" and g.get("target") == "trace" and g.get("match") != "not_contains"]
+                self.assertTrue(task_graders, "a scenario that expects tasks has a grader for them")
                 for call in calls:
                     task = "\n".join(call[k] for k in ("subagent_type", "description", "prompt"))
                     wanted = any(re.search(p, task) for p in expect["tasks"])
-                    graded = any(m.search(json.dumps(call)) for m in narrower)
+                    graded = any(m.search(json.dumps(call)) for m in task_graders)
                     self.assertEqual(wanted, graded, f"the harness and the graders disagree on: {call}")
                 expecting.append(name)
         self.assertEqual(sorted(expecting), ["feature-reviews", "resume-parallel", "sensitive-reviews"])
