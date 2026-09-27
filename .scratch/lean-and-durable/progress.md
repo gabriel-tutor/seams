@@ -2,13 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: Record ticket 13 on main: its review fixes follow 891c244, so the record commit and the definition of done come next.
+Next: Release 3.3.0 (ticket 14) through matt-pocock-workflow:release, /clear first. Its readiness still lacks a pr-review batch resumed after /compact, which no case covers yet.
 Updated: 2026-09-27
-Ticket: 13
-Candidate: 891c244
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33), ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36) and ticket 12 (unblocked tickets built in parallel, per-agent declarations: decisions 37 to 42), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33), ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36) ticket 12 (unblocked tickets built in parallel, per-agent declarations: decisions 37 to 42) and ticket 13 (the docs: resuming, surfaces, off switches, measuring, versions: decisions 43 to 45), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -137,7 +135,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 10 | Pre-loaded facts, as the repository facts from the Seams hooks (decision 33; done, on local `main`) | 08 |
 | 11 | The quality bar in the definition of done; reviews scaled to risk (done, on local `main`) | 09 |
 | 12 | Unblocked tickets built in parallel (done, on local `main`) | 05, 11 |
-| 13 | Docs: resuming, surfaces, off switches, measuring, versions | 02, 03, 07, 10, 12 |
+| 13 | Docs: resuming, surfaces, off switches, measuring, versions (done, on local `main`) | 02, 03, 07, 10, 12 |
 | 14 | Release 3.3.0 | 01–13 |
 
 ## Open questions
@@ -153,6 +151,12 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 - From ticket 12, not exercised live: the offer as a multi-select question, a resume after a restart, a merge conflict at integration, builders' permission prompts in an interactive session (the runs saw them only as `-p` denials), and the eval path of `resume-parallel`.
 - From ticket 12's review: a builder's verification (`verification-before-completion` in its definition of done) still marks the whole session verified, as any subagent's did before, so it clears the main conversation's unverified changes too. Not a gap the review raised; per-agent verification would be a change to the done-check.
 - For the user, from ticket 07's live run: both sessions started a batch's reviewers in the foreground, in parallel, and the resumed one stayed in one turn, so the scripts' pre-approval held through the handover. `batch.md` still says the fan-out runs in the background and ends the turn (ticket 06's design, held by the static test). Should it say foreground? See ticket 07's Comments.
+- From ticket 13, for ticket 14:
+  - No case in `plugin/evals/` resumes a `pr-review` batch, and no batch has been resumed through `/compact`. Decision 16 and ticket 14's readiness need both.
+  - `docs/compatibility.md` records 3.0.0's and 3.1.0's combinations only.
+  - The README's always-on figure (about 857, measured after ticket 09 and again in ticket 13) is the release's to re-measure. So is the listing Claude sees, not measured since the agents joined it.
+  - The release dates the CHANGELOG's `Unreleased (3.3.0)` heading. 3.2.1's entry carries the day it was cut (2026-09-24), not the day it shipped (2026-09-25).
+- From ticket 06's second live run, never routed: `review_payload.py` fences a suggestion with a fixed triple backtick (lines 194 to 195, and 225), so a suggestion that holds one breaks its block. It is a 3.2.1 bug, for `diagnosing-bugs`.
 
 ## Later phases: facts already verified (2026-09-25, official sources)
 
