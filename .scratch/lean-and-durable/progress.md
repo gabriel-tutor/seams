@@ -2,13 +2,11 @@
 
 Status: active
 Stage: integrated
-Next: On main: ticket 12's fixes from its first live runs are committed; next the approved paid runs on this candidate (the full run, then the failure run; the resume scenario again on the user's yes), then the record commit and the definition of done.
+Next: Implement ticket 13 (docs), /clear first; it is the only unblocked ticket.
 Updated: 2026-09-27
-Ticket: 12
-Candidate: a71e934
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33) and ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33), ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36) and ticket 12 (unblocked tickets built in parallel, per-agent declarations: decisions 37 to 42), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -125,7 +123,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 09 | Read-only agents and explicit delegation (done, on local `main`) | 08 |
 | 10 | Pre-loaded facts, as the repository facts from the Seams hooks (decision 33; done, on local `main`) | 08 |
 | 11 | The quality bar in the definition of done; reviews scaled to risk (done, on local `main`) | 09 |
-| 12 | Unblocked tickets built in parallel | 05, 11 |
+| 12 | Unblocked tickets built in parallel (done, on local `main`) | 05, 11 |
 | 13 | Docs: resuming, surfaces, off switches, measuring, versions | 02, 03, 07, 10, 12 |
 | 14 | Release 3.3.0 | 01–13 |
 
@@ -138,6 +136,8 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 - From ticket 10: the resume-grill eval case, one Haiku run with no baseline, scored 0.8 because Haiku answered from the progress file without invoking the grill. So the eval path's skill load has not been seen live. The headless runs without Bash show the same tool set loading the grill with its facts. An Opus run of the case would show it on the eval path.
 - From ticket 06, still open after ticket 10: `pr-review`'s temp directory. The repository facts go to implement, the grill and release only. `pr-review`'s core has 15 bytes left, and an expansion like `${TMPDIR:-/tmp}` in an injected command would abort the skill.
 - From ticket 11: `implement` has 27 bytes left under the bound, so ticket 12's parallel flow needs a reference of its own (done in ticket 12, decision 37; 46 bytes are left). The two review scenarios ran only through the harness: `claude plugin eval` gives them no shell on this Mac. `/security-review` itself has not run live, since no fixture has `origin/HEAD` at its fixed point.
+- From ticket 12: tool writes into the gate's ledger directory are scratch (it sits under the temp directory), so any agent can plant a declaration. Refusing writes there would close it; a gate change. Whether Claude Code ever reuses an `agent_id` for a different subagent is unconfirmed; decision 42 assumes it doesn't.
+- From ticket 12, not exercised live: the offer as a multi-select question, a resume after a restart, a merge conflict at integration, builders' permission prompts in an interactive session (the runs saw them only as `-p` denials), and the eval path of `resume-parallel`.
 - From ticket 12's review: a builder's verification (`verification-before-completion` in its definition of done) still marks the whole session verified, as any subagent's did before, so it clears the main conversation's unverified changes too. Not a gap the review raised; per-agent verification would be a change to the done-check.
 - For the user, from ticket 07's live run: both sessions started a batch's reviewers in the foreground, in parallel, and the resumed one stayed in one turn, so the scripts' pre-approval held through the handover. `batch.md` still says the fan-out runs in the background and ends the turn (ticket 06's design, held by the static test). Should it say foreground? See ticket 07's Comments.
 
@@ -193,3 +193,10 @@ All from the Claude Code docs mirror at `/Users/gabrieltutor/claude-docs/code.cl
   - An injected command with no output renders as "(Bash completed with no output)", not as an empty line.
   - Hook context reaches the transcript as a `hook_additional_context` attachment. For a typed skill, the prompt-expansion hook's comes right after the skill's text; for the Skill tool, `PostToolUse:Skill`'s comes after the tool result and before the skill's text. Either way it lands before the model's next request. The stream shows only SessionStart hook events.
   - git takes `</system-reminder>` as a branch name, and a status path may hold `<` and `>`.
+- From ticket 12's probes and runs (Claude Code 2.1.283):
+  - vitest (5.0.0) in a main checkout collects every worktree's copy of the tests under `.claude/worktrees/`, gitignored or not; inside a worktree it collects only its own.
+  - A background agent survives `/clear`, and its report reaches the cleared conversation (interactive, Haiku 4.5, under `expect`; the trust dialog needs Down then Enter, and startup ends with "manual mode on", with no "? for shortcuts" line).
+  - Claude Code asks before `cd <dir> && git …`, even with `git -C` ("changes directory before running a version-control command, which can pick up untrusted hooks or repository configuration"). It also asks before any `$` expansion ("Contains simple_expansion"), and before some `sed` forms. In `-p` each ask is a denial.
+  - The docs: Claude Code's limit of 20 subagents at once counts nested ones (`sub-agents` :846); `/clear` stopped killing background tasks (changelog :5311); `worktree.baseRef` `fresh` branches from the remote's default branch (`worktrees` :115).
+  - The `security-guidance` plugin, enabled on this account, sends every `git commit` to an LLM review (a PostToolUse hook, about 90 s each). Switch it off for a headless evidence run.
+  - A headless parallel run of three small tickets on Opus 5.5 costs about $4 and 4 minutes, reviews included.

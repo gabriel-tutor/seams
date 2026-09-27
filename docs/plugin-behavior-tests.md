@@ -1273,3 +1273,100 @@ The user settled two calls: decision 34 (`/security-review` only on this ticket'
 - `/verify` offered for a runnable app.
 - The eval path of the two cases.
 - Any model but Opus 5.5.
+
+## 3.3, ticket 12: unblocked tickets built in parallel, 2026-09-27
+
+**What changed.**
+- **The offer.** When two or more tickets are unblocked and the request names no one ticket, `implement`'s gate question is one multi-select offer of them; a ticket with an open blocker is never in it.
+- **The run** (`plugin/skills/implement/references/parallel.md`):
+  - Each picked ticket gets a worktree under `.claude/worktrees/` made from local HEAD, on a branch named for it, and a background **builder** running `implement`'s steps without questions.
+  - At most half the cores and four builders run at once: Claude Code's limit of 20 subagents counts each builder's reviewers too.
+  - The main conversation integrates each built ticket one at a time. The merge and the full suite run in the ticket's own worktree, and the base branch only fast-forwards to a merge whose suite passed.
+  - A failed ticket stays on its branch, with its worktree and its handover, and is reported. The progress file's `## Parallel` section holds each ticket's state.
+- **The gate** (the user's choice after the review, decision 42): a subagent's own declaration covers that subagent alone and outlives the main conversation's requests. A builder's `implement` no longer opens the gate for a message the user typed mid-run.
+
+**The probes** (no cost unless stated):
+- **vitest and nested worktrees.** On the eval fixture (vitest 5.0.0), `vitest list` in the main checkout collected every worktree's copy of the tests under `.claude/worktrees/`, whether or not `.gitignore` listed the directory. Inside a worktree it collected only its own. Hence the merge and its suite run in the ticket's worktree.
+- **`/clear` and a background agent.** An interactive Haiku 4.5 session under `expect`, Claude Code 2.1.283, with Seams and Superpowers switched off. It started a background agent that slept 45 s, then `/clear` ran. The agent's report reached the cleared conversation. Asked afterwards, the model answered: *"Yes. The last line was: 'PROBE-FINISHED'"*. The resume rule relies on this: a `/clear` doesn't stop a builder.
+- **Worktree removal.** `git worktree remove` without `--force` removes a worktree whose only extra files are ignored ones (a `node_modules` link).
+
+**The deterministic suites.** `scripts/test.sh` passes 9 of 9 on each commit of the ticket, on Python 3.14.6 and 3.9.6. The Python suites also pass on 3.12.13, CI's version (234 tests on `fcf1729`). Each new check failed first:
+- the reference's rules, section by section, and its pointer in `implement`'s opening (the static guard);
+- the gate's per-agent declarations (five unit tests);
+- the harness's settings for a resumed run's reads, git steps and core count;
+- the resume scenario's judge case, and the tasks graders held to the harness on builder calls.
+
+**The harness.** Paid, on the user's yes: `behavior_test.py run --scenario resume-parallel --arm plugin --assert --jobs 3` (records under `tests/runs/lean-12/`). The scenario plants a run stopped halfway: 01 integrated, 02 built, 03 pending with its worktree made.
+
+The first set, on `fcf1729`:
+
+Candidate: `fcf1729`; model: `claude-opus-5-5[1m]`; 3 runs.
+
+| Scenario | Expected first skill | Runs | Matched | Refused | Failed calls | Errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `resume-parallel` | `matt-pocock-workflow:implement` | 3 | 0 | 0 | 3 | 3 |
+
+Each run re-checked its slots with `getconf _NPROCESSORS_ONLN`, which the harness's settings denied. In substance they resumed right. Two started 03's builder before their first change. One marked 03 `building` before starting it. `f3f246c` allows the core count and says a ticket is `building` only once its builder has started.
+
+The second set, on `f3f246c`:
+
+Candidate: `f3f246c`; model: `claude-opus-5-5[1m]`; 3 runs.
+
+| Scenario | Expected first skill | Runs | Matched | Refused | Failed calls | Errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `resume-parallel` | `matt-pocock-workflow:implement` | 3 | 2 | 0 | 1 | 1 |
+
+Runs that did not match:
+
+- `resume-parallel` run 2: error, 1 permission denial: the harness settings blocked a call the model made
+
+Claude Code's own check on `sed` denied a read inside a compound command. The run then did what the other two did:
+- it invoked `implement`, and read the progress file and the reference;
+- it checked each ticket against git;
+- it started ticket 03's builder, told its worktree, before its first change;
+- it went on to integrate 02.
+
+Each took 25–30 s. Their cost wasn't reported, since the harness stops a run at its first change.
+
+**Two headless runs from scratch.** Paid, on the same yes. Opus 5.5, `claude -p "Build the shop-basics tickets 01, 02 and 03 in parallel on main." --plugin-dir plugin` in a fresh fixture: the shop-basics feature (`plugin/evals/_shared/shop-basics.sh`) committed on `main`, and an `origin` remote that lacks that commit. The driver is gitignored (`tests/runs/lean-12/drive.sh`); it switches off the installed Seams, Superpowers, and the `security-guidance` plugin. That plugin sends every `git commit` to an LLM review, about 90 s each: the first attempt was stopped at 2 minutes for it.
+- **All three built,** on `f3f246c`: $4.19, 239 s.
+  - `.claude/worktrees/` was ignored in its own commit, `7860a4a`, the base. Three worktrees at it, on `shop-basics/01-format-cents`, `…/02-inventory-release` and `…/03-remove-line`. The unpushed spec commit is under the base.
+  - Three builders started at once (min of 7, 4 and 3), each reviewed by Standards, Spec and Correctness reviewers. Ticket 02's builder acted on one finding: a release made during an in-flight reservation was lost. It added a test for it.
+  - Integration went 03, 01, 02: `65cf67e`, `6aa8c2d`, `907b38e`. Each was merged in its worktree, passed `npm test` and the typecheck there, then `main` fast-forwarded to it. Each worktree and branch was then removed.
+  - The record commit, `6dca0a8`, set `Status: done`, since the spec has no Release section. The definition of done ran on it in the main checkout, with no worktree left: 26 of 26 tests, typecheck clean.
+  - 19 calls were denied. Most were `cd <worktree> && git …`, which Claude Code asks about ("changes directory before running a version-control command, which can pick up untrusted hooks or repository configuration"), and commands with shell variables ("Contains simple_expansion"). The run also wrote its tickets `building` before starting their builders. `008d07f` puts git through `git -C`, has paths written out, and starts every ticket `pending`.
+- **Ticket 02 made to fail,** on `008d07f`: $4.02, 253 s. A pre-commit hook refused every commit on `shop-basics/02-*`.
+  - 02's builder reported `Ticket 02: failed: pre-commit hook refuses commits to shop-basics/02-*`. It tried no bypass; its one hook-related command read the hook's path.
+  - 01 and 03 were integrated one at a time as before (`0ebceaf`, `744132b`), each reviewed by its three reviewers.
+  - 02 stayed on its branch, at the base, with its work staged in its worktree (`src/inventory.ts`, `tests/inventory-release.test.ts`).
+  - The record commit, `3b4f63e`, kept only 02's line under `## Parallel`. Its `Next` names 02 and the user's choice: wait, lift the freeze, or use another branch.
+  - The definition of done ran in a worktree made at the candidate while 02's remained, then removed: 20 tests, typecheck clean.
+  - 9 calls were denied: `cd` in the same command as `git -C`, and `$?` or `${PIPESTATUS[0]}`. `d786b63` names both.
+
+**The eval.** Not run. The resume case needs a shell for git, and `claude plugin eval` can't give one on this Mac, since its sandbox won't start while `~/.docker` holds symlinks. The case carries its graders for a machine where it can:
+- the Skill grader on `implement`;
+- reads of the progress file and the reference;
+- a builder for 03 told its worktree;
+- no builder for 01 or 02.
+
+**The reviews, and what they changed.** Matt Pocock's `code-review` (Standards, Spec), a correctness reviewer and a security reviewer ran on `a71e934`, as read-only `feature-dev:code-reviewer` agents; the session's agent list predates the Seams agents. The security review ran because the run removes worktrees and deletes branches. `/simplify` was offered on the 519-line diff, and the user declined. Each finding was checked against the code first. Fixed in `fcf1729`:
+- a builder's declaration opened the gate for a message the user typed mid-run (the security and spec reviews both; user story 48). The fix is per-agent declarations, decision 42, the user's choice.
+- the harness would deny a resumed run's git steps;
+- the tasks-graders check compared nothing for the new scenario;
+- a sentence that read as if `worktree.baseRef: head` dropped unpushed commits.
+
+A security and a correctness review of `fcf1729` followed. The correctness review found nothing. The security review raised two findings, not acted on, with reasons:
+- the per-agent persistence is the design the user chose, and it covers only that agent's own calls;
+- a forged ledger entry was possible before the change: writes under the temp directory are scratch, so a writer can re-plant at will, and persistence adds no power.
+
+Refusing tool writes into the ledger's directory is recorded as an open hardening.
+
+**Always-on cost.** Unchanged: no skill's name or description changed. `implement` is 10,954 bytes, 46 under the bound; the reference is 13,147 bytes, read when two or more tickets are unblocked or a run resumes.
+
+**Not exercised live.**
+- The offer itself, as a multi-select question. `-p` has no AskUserQuestion, so the runs named their tickets.
+- A resume after a restart, where the user is asked whether a builder still runs.
+- A merge conflict at integration.
+- An interactive session's permission prompts from builders: the runs saw them only as `-p` denials.
+- The eval path of the resume case.
+- Any model but Opus 5.5, and Haiku 4.5 for the probe.
