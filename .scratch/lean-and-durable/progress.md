@@ -2,9 +2,10 @@
 
 Status: active
 Stage: integrated
-Next: Review ticket 13's build commit on main against a27a8cb (code-review and a correctness reviewer), then its fixes, its record commit and the definition of done.
+Next: Record ticket 13 on main: its review fixes follow 891c244, so the record commit and the definition of done come next.
 Updated: 2026-09-27
 Ticket: 13
+Candidate: 891c244
 
 - Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
 - Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33), ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36) and ticket 12 (unblocked tickets built in parallel, per-agent declarations: decisions 37 to 42), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
@@ -96,7 +97,7 @@ Ticket: 13
     - the grill asking "one clickable question at a time", on the README's line 7 and in `plugin.json`'s description;
     - "There is no environment variable that turns the gate off": `CLAUDE_CODE_SIMPLE=1` and `CLAUDE_CODE_SAFE_MODE=1` both do;
     - the README's Durable state bullet, which left out the progress file;
-    - the Compatibility paragraph's Claude Code 2.1.272, which was 3.0.0's;
+    - the Compatibility paragraph's Claude Code 2.1.272 and patch versions (macOS 15.7.9, Python 3.14.6 and 3.9.6), which were 3.0.0's and stay dated in `docs/compatibility.md`;
     - the evidence doc's intro.
 
     (Made while building ticket 13; not the user's choice.)

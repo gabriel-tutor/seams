@@ -265,7 +265,7 @@ Tested on the developer's machine (macOS on arm64; Python 3.14 as the default `p
 
 ### Claude Code versions
 
-3.3 supports Claude Code 2.1.269 or later: the release that brought `claude plugin eval`, which runs the suite shipped in `plugin/evals/`, and later than every dated feature the hooks need (exec-form hooks came in 2.1.139, a Stop hook's feedback as context in 2.1.163, the prompt id in hook input in 2.1.196). The docs give no version for the `UserPromptExpansion` event. The hooks and agents treat three newer fields as optional; without one, the older behavior applies:
+3.3 supports Claude Code 2.1.269 or later: the release that brought `claude plugin eval` in September 2026, which runs the suite shipped in `plugin/evals/`, and later than every dated feature the hooks need. Exec-form hooks shipped in May 2026, the week of 2.1.139 to 2.1.142; a Stop hook's feedback as context in June; the prompt id in hook input in 2.1.196. The docs give no version for the `UserPromptExpansion` event. The hooks and agents treat three newer fields as optional; without one, the older behavior applies:
 
 - the SessionStart `fork` source (2.1.214): before it, a fork reports `resume`, which the hook answers too;
 - `scratchpad_dir` in hook input (2.1.257): without it, only the temp directory is scratch;
@@ -288,7 +288,7 @@ Seams is a plugin, so it runs where Claude Code loads plugins, and it needs Matt
 
 ### What switches it off
 
-Seams has no switch of its own short of disabling the plugin, but these Claude Code settings turn it off, all or part, and the docs describe no warning when a session starts; only the `/hooks` menu shows a notice, for `disableAllHooks`, `allowManagedHooksOnly` and safe mode:
+Seams has no switch of its own short of disabling the plugin, but these Claude Code settings turn it off, all or part, and the docs describe no warning when a session starts; only the `/hooks` menu shows a notice, for `disableAllHooks`, `allowManagedHooksOnly` and safe mode ([changelog](https://code.claude.com/docs/en/changelog)):
 
 | Setting | Who sets it | What stops | Docs |
 | --- | --- | --- | --- |

@@ -1381,7 +1381,7 @@ Refusing tool writes into the ledger's directory is recorded as an open hardenin
 
 **Where the claims come from.**
 - The Claude Code docs mirror fetched 2026-09-24, one page per README row, each linked from that row.
-- The mirror's changelog lists releases by date, not by version. For versions, Claude Code's own cached changelog (`~/.claude/cache/changelog.md`, 2026-09-27) has the headings: exec-form hooks came in 2.1.139, a Stop hook's `additionalContext` in 2.1.163, and `claude plugin eval` in 2.1.269.
+- The mirror's changelog lists releases by date, and its weekly pages give each week's versions. Exec-form hooks shipped on May 11, 2026, the week of 2.1.139 to 2.1.142 (`whats-new/2026-w20`). A Stop hook's `additionalContext` shipped on June 4, 2026. Both came before `claude plugin eval` on September 11 (2.1.269, `plugins-reference`). Claude Code's own cached changelog (`~/.claude/cache/changelog.md`, 2026-09-27) has version headings and puts the first two at 2.1.139 and 2.1.163. The README cites only what the mirror states: the Spec review of `891c244` found the cache's version numbers there, and the ticket's must-not allows only this repository and the mirror.
 - The hooks reference dates the prompt id (2.1.196), the `fork` source (before 2.1.214 a fork reported `resume`) and `scratchpad_dir` (2.1.257). The sub-agents page dates `omitClaudeMd` (2.1.271).
 - No page dates the `UserPromptExpansion` event.
 - The docs require 2.1.252 for `/skill-doctor`, while the cached changelog lists it under 2.1.261. The README names neither, since both are older than 3.3's floor.
