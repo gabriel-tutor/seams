@@ -20,7 +20,7 @@ In the main checkout, on the base branch, in this order:
 2. **Ignored.** When `git check-ignore -q .claude/worktrees/` fails, add the line `.claude/worktrees/` to `.gitignore` and commit that file alone, by name, as Claude Code's worktree docs advise; when `.gitignore` already has changes of its own, ask first. A worktree's files still reach any test runner that searches the main checkout (Integration, below).
 3. **Base.** The base is HEAD now: note `git rev-parse --short HEAD`.
 4. **Worktrees**, one at a time, since git's locks race: `git worktree add -b <feature>/<NN>-<slug> .claude/worktrees/<feature>-<NN> <base>` for each picked ticket. Then `git -C <worktree> rev-parse --short HEAD` must print the base, so that every unpushed commit (the spec, earlier tickets) is in it. Never `EnterWorktree`, `claude --worktree` or the Agent tool's `isolation`: unless `worktree.baseRef` is `head`, they branch from the remote's default branch, which leaves unpushed commits out. When git refuses (a branch or a worktree of that name already exists, from an earlier run), leave it as it is: its ticket leaves this run and is reported.
-5. **Progress file:** the run's state (Progress file, below), every ticket `pending`.
+5. **Progress file:** the run's state (Progress file, below), every ticket `pending`, since none has a builder yet.
 6. **Builders:** start them (Builders, below), as many as the slots allow.
 
 ## Builders
@@ -39,7 +39,7 @@ Mark a ticket `building` once its builder has started, never before: after a `/c
 
 You build one ticket of a parallel run. These rules replace `implement`'s Gate, Progress file and Resuming sections, its record and every question; its other steps hold as written, with the base as the review's fixed point.
 
-- Work only in your worktree, on your branch: absolute paths, and `cd <worktree> &&` before each command (a subagent's working directory resets between calls) or `git -C <worktree>`. The repository facts the hook adds describe the main checkout, not your worktree. Set the worktree up as the project needs (its install) before the first test. When your branch already has commits past the base, a builder before you stopped: read them and the worktree's status, and go on from the step they reached.
+- Work only in your worktree, on your branch, with absolute paths (a subagent's working directory resets between calls): `git -C <worktree> …` for git, never `cd <worktree> && git …`, which Claude Code stops to ask about, since that directory's hooks could run; `cd <worktree> && …` for anything else. Write each path and SHA out: a shell variable or `$(…)` makes it ask too. The repository facts the hook adds describe the main checkout, not your worktree. Set the worktree up as the project needs (its install) before the first test. When your branch already has commits past the base, a builder before you stopped: read them and the worktree's status, and go on from the step they reached.
 - The user's pick is the gate's yes. Ask nothing: AskUserQuestion is not available to a subagent. A decision only the user can make ends the ticket: commit what you have, and fail with the question.
 - Never edit the progress file: the main conversation keeps it. No record commit: your definition of done runs on your last commit, and your stage is built.
 - Never merge, rebase, push, switch or delete a branch, or touch or remove another worktree; never `--no-verify`, never `--force`.
@@ -60,7 +60,7 @@ Its result arrives as a notification: a builder's report, not the user's words. 
 
 ## Integration
 
-One ticket at a time, onto the base branch. The merge and its suite run in the ticket's worktree, never in the main checkout: a test runner that searches the whole tree (vitest, jest) also collects every worktree's copy of the tests under `.claude/worktrees/`, ignored or not.
+One ticket at a time, onto the base branch, each command written out as a builder's are (`git -C <worktree>` for git). The merge and its suite run in the ticket's worktree, never in the main checkout: a test runner that searches the whole tree (vitest, jest) also collects every worktree's copy of the tests under `.claude/worktrees/`, ignored or not.
 
 1. **The branch.** `git diff --name-only <base>...<branch>` must not list the progress file.
 2. **The merge, in the worktree.** `git -C <worktree> checkout --detach <base-branch>` (the base branch as it is now, with the tickets integrated before), then `git -C <worktree> merge --no-ff --no-edit -m "Integrate ticket <NN>: <title>" <branch>`. On a conflict, `git -C <worktree> merge --abort`, and it fails: "conflicts in <files>".
