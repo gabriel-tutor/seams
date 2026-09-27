@@ -876,6 +876,11 @@ class ProjectChanges(unittest.TestCase):
                                        config_dir=self.config)
         self.assertIsNotNone(change)
         self.assertEqual(change["label"], "rm")
+        # Fail closed (decision 47): where the config directory contains the scratchpad, the scratchpad is gated too.
+        pad = os.path.join(self.config, "scratchpad")
+        ev = event("Bash", command=f"rm -rf {pad}/x.log")
+        ev["scratchpad_dir"] = pad
+        self.assertIsNotNone(gate.change_for_event(ev, config_dir=self.config))
 
     def test_a_temp_path_that_leads_into_the_project_is_the_project(self):
         project = tempfile.mkdtemp()               # the session's cwd: the project, wherever it lives
@@ -1153,6 +1158,13 @@ class ReadOnlyAgents(unittest.TestCase):
             with self.subTest(config_inside_temp=tool):
                 self.assertEqual(self.decide(tool, agent=self.SCOUT, file_path=settings, content="x")["decision"], "deny")
         self.assertEqual(self.decide(command=f"git diff HEAD > {settings}")["decision"], "deny")
+        # The refusal names the real reason: the path is inside the temp directory, but it is the config directory.
+        self.assertIn("inside the Claude config directory",
+                      self.decide("Write", agent=self.SCOUT, file_path=settings, content="x")["reason"])
+        # Fail closed (decision 47): a scratchpad inside the config directory is no scratch for them either.
+        pad = os.path.join(self.config, "scratchpad")
+        self.assertEqual(self.decide("Write", agent=self.SCOUT, scratchpad=pad, file_path=f"{pad}/n.md",
+                                     content="x")["decision"], "deny")
         # Nor into a git directory, even under the temp directory: its config names programs git runs.
         reason = self.decide("Write", agent=self.SCOUT, file_path=f"{t}/repo/.git/config", content="x")["reason"]
         self.assertIn("inside a git directory", reason)

@@ -1348,7 +1348,7 @@ READ_ONLY_RULE = (
     + ", ".join(sorted(READ_COMMANDS - {"git", "gh"})) + " (find with no -exec, -ok, -delete or -fprint; sort "
     "with no -o or --compress-program), each by its plain name, with no variable, substitution, or glob in a git, gh, find or sort "
     "command, joined by pipes, &&, || or ;, and redirected only into the temp directory or the session's "
-    "scratchpad, where its editor tools may also write, never into a git directory.")
+    "scratchpad, where its editor tools may also write, never into a git directory or the Claude config directory.")
 
 
 def _in_git_dir(path: str) -> bool:
@@ -1442,7 +1442,7 @@ def shell_read_problem(command: str, is_scratch: Callable[[str], bool]) -> Optio
     for segment in _segments(tokens):
         words, targets = _split_redirects(segment)
         if targets and not _all_exempt(targets, env, is_scratch):
-            return "redirects outside the temp directory and the session's scratchpad"
+            return "redirects outside the temp directory and the session's scratchpad, or into the Claude config directory"
         if any(_in_git_dir(_placed_path(target, env)) for target in targets):
             return "redirects into a git directory"
         problem = _read_problem(words, env) if words else None
@@ -1463,6 +1463,8 @@ def read_only_problem(event: dict, config: Optional[str] = None) -> Optional[str
         if not path:
             return None
         if not is_scratch_path(path, cwd, scratchpad, config):
+            if _under(os.path.realpath(path), config_dir(config)):
+                return f"writes `{path}`, inside the Claude config directory"
             return f"writes `{path}`, outside the temp directory and the session's scratchpad"
         return f"writes `{path}`, inside a git directory" if _in_git_dir(path) else None
     if tool in ("Bash", "Monitor"):
