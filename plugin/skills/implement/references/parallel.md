@@ -33,7 +33,7 @@ Start each builder in the background: the Agent tool, `general-purpose` (it edit
 - that the user picked this ticket for a parallel run, with the absolute path of this reference;
 - "Invoke `matt-pocock-workflow:implement` with the Skill tool, then read that reference's section For a builder: it replaces the skill's gate, progress file, resuming and record, and every question."
 
-Mark each started ticket `building`. A ticket waiting for a slot stays `pending` and starts when a builder ends.
+Mark a ticket `building` once its builder has started, never before: after a `/clear`, `building` means a builder exists. A ticket waiting for a slot stays `pending` and starts when a builder ends.
 
 ## For a builder
 

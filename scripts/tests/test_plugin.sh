@@ -315,7 +315,8 @@ section_says "implement's parallel reference" "$IMPL_PARALLEL" Setup "\`git chec
 # with a first line the main conversation can read.
 headings_in_order "implement's parallel reference" "$IMPL_PARALLEL" "## The offer" "## Setup" "## Builders" "## For a builder"
 section_says "implement's parallel reference" "$IMPL_PARALLEL" Builders "in the background" "\`general-purpose\`" "in one message" \
-  "the agreed seams" "the base" "Invoke \`matt-pocock-workflow:implement\`" "For a builder" "absolute path" "facts, never a plan"
+  "the agreed seams" "the base" "Invoke \`matt-pocock-workflow:implement\`" "For a builder" "absolute path" "facts, never a plan" \
+  "once its builder has started, never before"
 section_says "implement's parallel reference" "$IMPL_PARALLEL" "For a builder" "only in your worktree" "\`cd <worktree> &&\`" \
   "describe the main checkout" "The user's pick is the gate's yes" "AskUserQuestion" "Never edit the progress file" \
   "No record commit" "Never merge, rebase, push" "\`--no-verify\`" "invoke \`matt-pocock-workflow:implement\` again and retry" \

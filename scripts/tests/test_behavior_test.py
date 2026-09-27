@@ -139,6 +139,13 @@ class SettingsTest(unittest.TestCase):
         for form in ("Bash(git worktree add:*)", "Bash(git worktree remove:*)", "Bash(git merge:*)", "Bash(git checkout:*)"):
             self.assertIn(form, allow)
 
+    def test_a_parallel_run_can_count_the_machines_cores(self):
+        # Ticket 12's first live resume runs: each checked its slots with `getconf _NPROCESSORS_ONLN`, the command the
+        # parallel reference names, and the settings' denial made all three runs errors.
+        allow = json.loads(load_harness().settings(False))["permissions"]["allow"]
+        for form in ("Bash(getconf:*)", "Bash(nproc:*)"):
+            self.assertIn(form, allow)
+
 
 class ScanTest(unittest.TestCase):
     def test_first_skill_after_exploration(self):

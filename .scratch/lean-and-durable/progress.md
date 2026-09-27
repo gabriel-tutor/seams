@@ -2,7 +2,7 @@
 
 Status: active
 Stage: integrated
-Next: On main: ticket 12's review fixes are committed (per-agent declarations, the harness's git steps, a real tasks check, clearer wording); next the paid runs the user approves, then the record commit and the definition of done.
+Next: On main: ticket 12's fixes from its first live runs are committed; next the approved paid runs on this candidate (the full run, then the failure run; the resume scenario again on the user's yes), then the record commit and the definition of done.
 Updated: 2026-09-27
 Ticket: 12
 Candidate: a71e934
