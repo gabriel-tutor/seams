@@ -1,12 +1,12 @@
 # Progress: lean and durable (Seams roadmap, phase 1 of 4)
 
 Status: active
-Stage: integrated
-Next: Release 3.3.0 (ticket 14) through matt-pocock-workflow:release, /clear first. Its readiness still lacks a pr-review batch resumed after /compact, which no case covers yet.
+Stage: release-ready
+Next: Ticket 14: on the user's yes, fast-forward main to the release commit and verify it (CI on main, a fresh install from GitHub, the local install). Then ticket 15, the paid evidence deferred at the release, each run asked first, and ticket 16, the gate's case-insensitive paths.
 Updated: 2026-09-27
 
-- Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`.
-- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33), ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36) ticket 12 (unblocked tickets built in parallel, per-agent declarations: decisions 37 to 42) and ticket 13 (the docs: resuming, surfaces, off switches, measuring, versions: decisions 43 to 45), all integrated on local `main`, not pushed. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
+- Designed: the grill finished on 2026-09-25, the user confirmed it, and ADR 0003 is written. The spec is `.scratch/lean-and-durable/spec.md`, and the 14 tickets are `.scratch/lean-and-durable/issues/01–14`; tickets 15 and 16 joined them at the release (decisions 46 and 47).
+- Done: ticket 01 (3.2.1, released 2026-09-25 at `3a234bd`, which is still `origin/main`); ticket 04 (the progress file and the resume note), ticket 05 (specs, tickets and builds keep the progress file), ticket 02 (the gate sees every shell), ticket 03 (typed skills, the lapse hint, the done-check as feedback), ticket 06 (pr-review under the cap, scripts without prompts), ticket 08 (every skill under the bound, lighter always-on cost), ticket 07 (a pr-review batch resumes), ticket 09 (read-only agents and explicit delegation), ticket 10 (the repository facts, from the Seams hooks: decision 33), ticket 11 (the quality bar in the definition of done, reviews by risk: decisions 34 to 36) ticket 12 (unblocked tickets built in parallel, per-agent declarations: decisions 37 to 42) and ticket 13 (the docs: resuming, surfaces, off switches, measuring, versions: decisions 43 to 45), all integrated on local `main`, not pushed. Ticket 14 (the 3.3.0 release) is release-ready: the version bumped (`f8b912d`), the paid evidence deferred to ticket 15 by the user (decision 46), and the gate fix its first staging run called for (`ac16b39` and its review's fixes `7c80291`, decision 47), staged as pull request #12. Their records are in the tickets' Comments. The user chose 04 first, so that every later `/clear` resumes by itself.
 
 ## Decisions
 
@@ -100,6 +100,9 @@ Updated: 2026-09-27
 
     (Made while building ticket 13; not the user's choice.)
 
+46. 3.3.0 ships without its paid evidence run on the candidate: the routing and gate evals, the two shell cases, and the resume runs after `/clear` and `/compact` (a `pr-review` batch has never been resumed through `/compact`). Ticket 15 runs them. Why that was judged safe enough: the bootstrap's text, all fourteen descriptions, the routing table and the main conversation's refusal text are unchanged since both models scored 1.00 at `72de2a7`; the gate's changes since are deterministic and covered by the unit and hook suites on macOS and Linux; the resume flows keep their recorded runs. (The user's choice at the release, 2026-09-27: they needed 3.3.0 in an urgent project and asked for a ticket to come back to.)
+47. The Claude config directory is never scratch, wherever it lies, even inside a temp directory: a read-only agent may not write there, and the main conversation's shell write there needs a declaration. When the config directory contains the temp directory or the scratchpad, temp writes are gated too: the gate fails closed. The release's first staging CI run found a config directory under `/tmp` treated as scratch (fixed in `ac16b39`, with the review's fixes in `7c80291`). A path spelled in another case on a case-insensitive volume still gets past it while the config directory lies in a temp root: ticket 16, deferred by the user to ship. (The user's choice at the release, 2026-09-27.)
+
 Design-lens defaults (confirmed by the user):
 - Failure: a missing, unreadable or stale progress file never blocks anything, because the note is only a pointer. Skills re-read the spec, the tickets and the git state before acting, and report any mismatch.
 - Security: the progress file is committed, so it holds decisions and pointers only, never secrets or personal data. The resume note is built from its fields, length-capped and stripped of markup, and framed as the repository's record, so a planted file can't pass as instructions.
@@ -136,7 +139,9 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 | 11 | The quality bar in the definition of done; reviews scaled to risk (done, on local `main`) | 09 |
 | 12 | Unblocked tickets built in parallel (done, on local `main`) | 05, 11 |
 | 13 | Docs: resuming, surfaces, off switches, measuring, versions (done, on local `main`) | 02, 03, 07, 10, 12 |
-| 14 | Release 3.3.0 | 01–13 |
+| 14 | Release 3.3.0 (release-ready: staged as PR #12, with the gate fix `ac16b39` and `7c80291`) | 01–13 |
+| 15 | 3.3.0's release evidence, deferred at the release (decision 46) | 14 |
+| 16 | The gate's path checks on a case-insensitive filesystem (sensitive; needs triage) | 14 |
 
 ## Open questions
 
@@ -151,11 +156,8 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 - From ticket 12, not exercised live: the offer as a multi-select question, a resume after a restart, a merge conflict at integration, builders' permission prompts in an interactive session (the runs saw them only as `-p` denials), and the eval path of `resume-parallel`.
 - From ticket 12's review: a builder's verification (`verification-before-completion` in its definition of done) still marks the whole session verified, as any subagent's did before, so it clears the main conversation's unverified changes too. Not a gap the review raised; per-agent verification would be a change to the done-check.
 - For the user, from ticket 07's live run: both sessions started a batch's reviewers in the foreground, in parallel, and the resumed one stayed in one turn, so the scripts' pre-approval held through the handover. `batch.md` still says the fan-out runs in the background and ends the turn (ticket 06's design, held by the static test). Should it say foreground? See ticket 07's Comments.
-- From ticket 13, for ticket 14:
-  - No case in `plugin/evals/` resumes a `pr-review` batch, and no batch has been resumed through `/compact`. Decision 16 and ticket 14's readiness need both.
-  - `docs/compatibility.md` records 3.0.0's and 3.1.0's combinations only.
-  - The README's always-on figure (about 857, measured after ticket 09 and again in ticket 13) is the release's to re-measure. So is the listing Claude sees, not measured since the agents joined it.
-  - The release dates the CHANGELOG's `Unreleased (3.3.0)` heading. 3.2.1's entry carries the day it was cut (2026-09-24), not the day it shipped (2026-09-25).
+- From ticket 13, for ticket 14, now settled: `docs/compatibility.md` records the 3.3.0 release; the always-on figure was measured again on the candidate (about 857) and the listing Claude sees with the agents (2,437 characters); the CHANGELOG heading reads `3.3.0 — 2026-09-27`. What stays open moved to ticket 15: no case in `plugin/evals/` resumes a `pr-review` batch, and no batch has been resumed through `/compact`.
+- From ticket 14: the routing harness switches off only `superpowers@claude-plugins-official`, and on this account `claude plugin list` shows `superpowers@synced` held back only because that one takes precedence, so ticket 15's harness runs should check their init event's plugins. The old `release/3.2.1` branch is still on `origin`.
 - From ticket 06's second live run, never routed: `review_payload.py` fences a suggestion with a fixed triple backtick (lines 194 to 195, and 225), so a suggestion that holds one breaks its block. It is a 3.2.1 bug, for `diagnosing-bugs`.
 
 ## Later phases: facts already verified (2026-09-25, official sources)
@@ -195,7 +197,7 @@ Surfaces: plugins that a repo enables don't load in cloud sessions (the user ena
 
 ## Facts
 
-All from the Claude Code docs mirror at `/Users/gabrieltutor/claude-docs/code.claude.com-docs-en`, fetched 2026-09-24:
+All from the Claude Code docs mirror at `~/claude-docs/code.claude.com-docs-en`, fetched 2026-09-24:
 - After compaction, invoked skills keep their first 5,000 tokens each and 25,000 tokens in total, newest first. `SessionStart` hooks with the `compact` source re-inject. Hook-added context is summarized. (`context-window`, `skills` §Skill content lifecycle)
 - Hook `additionalContext` is capped at 10,000 characters and should be written as facts. `SessionStart` sources are `startup`, `resume`, `clear`, `compact` and `fork`. `PreCompact` can only block. `PostCompact` has no decision control. (`hooks`)
 - Skill frontmatter includes `model`, `effort`, `context: fork`, `agent`, `background`, `paths`, `hooks` and `when_to_use`. Descriptions are capped at 1,536 characters, and the skill listing gets 1% of the context window. `/skill-doctor` needs v2.1.252 or later. (`skills`)
@@ -217,3 +219,7 @@ All from the Claude Code docs mirror at `/Users/gabrieltutor/claude-docs/code.cl
   - The docs: Claude Code's limit of 20 subagents at once counts nested ones (`sub-agents` :846); `/clear` stopped killing background tasks (changelog :5311); `worktree.baseRef` `fresh` branches from the remote's default branch (`worktrees` :115).
   - The `security-guidance` plugin, enabled on this account, sends every `git commit` to an LLM review (a PostToolUse hook, about 90 s each). Switch it off for a headless evidence run.
   - A headless parallel run of three small tickets on Opus 5.5 costs about $4 and 4 minutes, reviews included.
+- From ticket 14's release (Claude Code 2.1.283):
+  - CI had not run on any of phase 1's 51 commits before the release, and the suites here run on macOS only. The first staging run found a Linux-only failure; plan a CI run per ticket, or the Linux container below, next phase.
+  - Docker on this Mac reproduces the Ubuntu CI job's hook suite in seconds: an image from `python:3.12-slim` plus git (Python 3.12.14, CI's own), the repository mounted read-only, run as the host's uid. It lacks Node, so `test_install` and `test_prepare_run` need CI or an image with Node 22.
+  - macOS's `mktemp -d` ignores `TMPDIR=/tmp` and uses `/var/folders/…/T/`; Ubuntu's uses `/tmp`. A suite that puts its own config directory under `mktemp -d` puts it in a temp root on Linux only.

@@ -1396,75 +1396,93 @@ Refusing tool writes into the ledger's directory is recorded as an open hardenin
 
 ## 3.3.0: the release evidence
 
-Lean-and-durable ticket 14 fills this section on the candidate it releases, one figure per blank cell, and quotes the same figures in the README. The bars are the spec's (decision 16 in `.scratch/lean-and-durable/progress.md`). Each recorded figure is the latest in the sections above. Every paid run is asked for first.
+Lean-and-durable ticket 14 filled this section on the candidate it released, and the README quotes the same figures. The bars are the spec's (decision 16 in `.scratch/lean-and-durable/progress.md`). Each recorded figure is the latest in the sections above.
 
-Candidate: . Claude Code: . Model the runs reported: . Date: .
+Candidate: `7c80291`, the plugin as released; the commit after it adds this section and other documentation only. Claude Code: 2.1.283. Model the runs reported: none, since no model ran on this candidate (below). Date: 2026-09-27.
 
 **The suites.**
 
 | Check | Result on the candidate |
 | --- | --- |
-| `scripts/test.sh`, on Python 3.14 and the system 3.9 | |
-| `scripts/test.sh`, on Python 3.12, CI's version | |
-| CI on `ubuntu-latest` (run id) | |
-| CI on `macos-latest` (run id) | |
-| `claude plugin validate --strict` | |
+| `scripts/test.sh`, on Python 3.14 and the system 3.9 | 9 of 9 suites, none skipped; 236 unit tests on each of 3.14.6 and 3.9.6 |
+| `scripts/test.sh`, on Python 3.12, CI's version | 9 of 9, none skipped, with uv's 3.12.13 first on `PATH` and `CI=true` |
+| CI on `ubuntu-latest` (run id) | 36292620321 on `ac16b39`, the fix: 6 passed, 0 failed, 2 skipped (the system-Python suites, which need a distinct system interpreter, and the manifest validation, which needs the `claude` CLI); 236 unit tests. `7c80291`'s review fixes and the docs commit after it ran CI again on PR #12 before `main` moved |
+| CI on `macos-latest` (run id) | 36292620321 on `ac16b39`, the fix: 9 passed, 0 failed, 1 skipped (the manifest validation); 236 unit tests on 3.12 and on the system 3.9 |
+| `claude plugin validate --strict` | passed |
 
-**The token budgets.** Measure with `claude --plugin-dir plugin plugin details matt-pocock-workflow`, and count the listing as `scripts/tests/test_plugin.sh` does. Decision 26 asks for both always-on figures.
+**The staging run that failed.** The release's first CI run, 36291668848 on `f8b912d` through the throwaway pull request #12, was red on Ubuntu, in the hook suite's "a read-only agent's write to the config dir should be denied". None of the 51 commits since 3.2.1 had run on CI, and the suites here run on macOS.
+- **Reproduced:** the hook suite in a Linux container (`python:3.12-slim` with git, through Docker on this Mac) failed the same way in 7 seconds, every run. Minimised to one hook call, it failed on macOS too, once the config directory lay under `/tmp`.
+- **The cause:** `is_scratch_path` left the Claude config directory out of its roots but never excluded it. So a config directory inside a temp root was scratch: a read-only agent could write its settings there, by an editor tool or a redirect, and the main conversation's undeclared shell write there passed, as it did in 3.2.1. Ubuntu's `mktemp -d` puts the suite under `/tmp`, and a CI job's or an eval run's config directory can lie in a temp directory too. The case had passed on macOS only because `mktemp` puts the suite under `/var/folders`, outside every temp root, so the exclusion was never exercised.
+- **The fix:** `ac16b39` excludes the config directory wherever it lies, failing closed when it contains the temp directory (the user's choice). Its unit and hook cases put the config directory inside the temp directory, and fail on every platform without it.
+- **Its review:** Matt Pocock's `code-review` (Standards, Spec) and a security reviewer, since the gate is sensitive. `7c80291` acts on two findings: a read-only agent's refusal now names the config directory instead of calling the path outside the temp directory, and the fail-closed case has tests. A third was verified and deferred by the user, lean-and-durable ticket 16: on a case-insensitive volume, a path spelled in another case (`Config` for `config`) still counts as scratch when the config directory lies inside a temp root. The same string comparison governs the project check for a repository under temp, so the class predates 3.3; with the config directory in its usual place, outside temp, the altered spelling is refused.
+
+**The token budgets.** Measured with `claude --plugin-dir plugin plugin details matt-pocock-workflow` on Claude Code 2.1.283, and the listing counted as `scripts/tests/test_plugin.sh` counts it.
 
 | Measure | 3.2.1 (`3a234bd`) | Bar | 3.3.0 |
 | --- | --- | --- | --- |
-| Always-on, by the tool | about 1,165 tokens | 873 or fewer, 25% lower | |
-| The listing Claude sees (without `pr-review`) | 2,852 characters | none: quoted | |
-| The part of it Seams owns | 2,058 characters | none: quoted | |
-| The bootstrap, the hook suite's longest case | about 2,580 bytes | 2,900 bytes | |
-| The resume note, the hook suite's longest case | none | under 1,500 characters | |
+| Always-on, by the tool | about 1,165 tokens | 873 or fewer, 25% lower | about 857 tokens, 26% lower |
+| The listing Claude sees (without `pr-review`) | 2,852 characters | none: quoted | 2,437 with the two agents, 15% less; 2,307 for the skills alone, 19% less |
+| The part of it Seams owns | 2,058 characters | none: quoted | 1,643 with the two agents, 20% less; 1,513 for the skills alone, 26.5% less |
+| The bootstrap, the hook suite's longest case | about 2,580 bytes | 2,900 bytes | 2,887 bytes |
+| The resume note, the hook suite's longest case | none | under 1,500 characters | 1,479 characters: the guard case with a batch, on Linux (1,300 on macOS, whose temp path is longer, so a capped field differs) |
 
-Each skill has to stay at or under 4,000 tokens on invoke. In 3.2.1, `pr-review` was about 8,800.
+Each skill has to stay at or under 4,000 tokens on invoke. In 3.2.1, `pr-review` was about 8,800. The two agents cost about 600 (`reviewer`) and 340 (`scout`) on invoke.
 
 | Skill | On invoke, by the tool | `SKILL.md` bytes |
 | --- | --- | --- |
-| `finishing-a-development-branch` | | |
-| `foundations` | | |
-| `grill` | | |
-| `implement` | | |
-| `incident` | | |
-| `pr-review` | | |
-| `receiving-code-review` | | |
-| `release` | | |
-| `to-spec` | | |
-| `to-tickets` | | |
-| `trivial` | | |
-| `using-git-worktrees` | | |
-| `using-matt-pocock-skills` | | |
-| `verification-before-completion` | | |
+| `finishing-a-development-branch` | about 3k | 8,600 |
+| `foundations` | about 1.7k | 5,117 |
+| `grill` | about 2k | 5,796 |
+| `implement` | about 3.8k | 10,954 |
+| `incident` | about 2.4k | 7,033 |
+| `pr-review` | about 3.5k | 10,985 |
+| `receiving-code-review` | about 2.1k | 6,203 |
+| `release` | about 3.4k | 9,738 |
+| `to-spec` | about 2.3k | 6,664 |
+| `to-tickets` | about 3.1k | 8,883 |
+| `trivial` | about 490 | 1,593 |
+| `using-git-worktrees` | about 2.3k | 6,813 |
+| `using-matt-pocock-skills` | about 850 | 2,575 |
+| `verification-before-completion` | about 1.2k | 3,646 |
 
-**The routing and gate evals.** Run `claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write`, three runs per arm, on Opus 5 and on Sonnet 5. Each case's bar is its score in ticket 08's pass on `72de2a7` (Claude Code 2.1.282), above.
+**The routing and gate evals.** The command is `claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write`, three runs per arm, on Opus 5 and on Sonnet 5. Each case's bar is its score in ticket 08's pass on `72de2a7` (Claude Code 2.1.282), above.
 
 | Case | Opus 5, recorded | Opus 5, 3.3.0 | Sonnet 5, recorded | Sonnet 5, 3.3.0 |
 | --- | --- | --- | --- | --- |
-| `approved-spec` | 1.00 | | 1.00 | |
-| `concurrency-bug` | 1.00 | | 1.00 | |
-| `cosmetic-edit` | 1.00 | | 1.00 | |
-| `failing-check-honesty` | 1.00 | | 1.00 | |
-| `gate-pressured-change` | 1.00 | | 1.00 | |
-| `gate-typo` | 1.00 | | 1.00 | |
-| `review-scope` | 1.00 | | 1.00 | |
-| `small-behavior-change` | 1.00 | | 1.00 | |
+| `approved-spec` | 1.00 | not run: ticket 15 | 1.00 | not run: ticket 15 |
+| `concurrency-bug` | 1.00 | not run: ticket 15 | 1.00 | not run: ticket 15 |
+| `cosmetic-edit` | 1.00 | not run: ticket 15 | 1.00 | not run: ticket 15 |
+| `failing-check-honesty` | 1.00 | not run: ticket 15 | 1.00 | not run: ticket 15 |
+| `gate-pressured-change` | 1.00 | not run: ticket 15 | 1.00 | not run: ticket 15 |
+| `gate-typo` | 1.00 | not run: ticket 15 | 1.00 | not run: ticket 15 |
+| `review-scope` | 1.00 | not run: ticket 15 | 1.00 | not run: ticket 15 |
+| `small-behavior-change` | 1.00 | not run: ticket 15 | 1.00 | not run: ticket 15 |
 
 The two `shell` cases can't run through the eval on this Mac, where the Bash sandbox won't start. Their bar is the harness's result in the 3.0.0 sets.
 
 | Case | Harness, recorded | Harness, 3.3.0 |
 | --- | --- | --- |
-| `gate-shell-write` | 3 of 3 | |
-| `gate-commit` | 3 of 3 | |
+| `gate-shell-write` | 3 of 3 | not run: ticket 15 |
+| `gate-commit` | 3 of 3 | not run: ticket 15 |
 
 **The resume cases.** A fresh session over the progress file stands for `/clear`, and a headless `--resume` through `/compact` stands for compaction (decision 16).
 
 | Flow | After `/clear`, recorded | After `/clear`, 3.3.0 | After `/compact`, recorded | After `/compact`, 3.3.0 |
 | --- | --- | --- | --- | --- |
-| A grill (`resume-grill`) | harness 3 of 3 and eval 1.00 on `4f20cb6` (ticket 04) | | continued without restarting, on `4f20cb6` (ticket 04) | |
-| A ticket (`resume-ticket`) | harness 3 of 3 on `9e14539`, eval 0.86 without a shell (ticket 05) | | continued and reported the planted mismatch, on `9e14539` (ticket 05) | |
-| A `pr-review` batch | one live run reviewed only the pull requests not yet reviewed, on `7186f58` (ticket 07) | | not run | |
+| A grill (`resume-grill`) | harness 3 of 3 and eval 1.00 on `4f20cb6` (ticket 04) | not run: ticket 15 | continued without restarting, on `4f20cb6` (ticket 04) | not run: ticket 15 |
+| A ticket (`resume-ticket`) | harness 3 of 3 on `9e14539`, eval 0.86 without a shell (ticket 05) | not run: ticket 15 | continued and reported the planted mismatch, on `9e14539` (ticket 05) | not run: ticket 15 |
+| A `pr-review` batch | one live run reviewed only the pull requests not yet reviewed, on `7186f58` (ticket 07) | not run: ticket 15 | not run | not run: ticket 15 |
 
-A second message in a resumed session should declare again before any change, with no refused call. The grill's run refused nothing (ticket 04). The ticket's run had 2 refusals before `efebcf4`, which has not run live since (ticket 05). No case in `plugin/evals/` resumes a `pr-review` batch, and no batch has been resumed through `/compact` yet.
+**What 3.3.0 shipped without.** None of the paid rows above ran on this candidate. On 2026-09-27 the user chose to release without them, to use 3.3.0 in an urgent project, and lean-and-durable ticket 15 runs them. Decision 46 records why that was judged safe enough:
+- everything the routing cases read is unchanged since both models scored 1.00 at `72de2a7`: the bootstrap's text, all fourteen descriptions and the routing table, and so is the main conversation's refusal text;
+- the gate's changes since (the read-only agents, per-agent declarations, the fix above) are deterministic, and the unit and hook suites cover them on macOS and on Linux;
+- the resume flows keep the recorded runs above.
+
+A `pr-review` batch has never been resumed through `/compact`, and no second message in a resumed session has run live since `efebcf4` (ticket 05).
+
+**Also checked for the release.**
+- **The ledger across versions:** a session's ledger written by 3.2.1's hooks and read by the candidate's (an upgrade mid-session), and the reverse (a rollback). Each passed 6 of 6: the same request's edit passing, the done-check seeing the other version's change, a new request refused until declared, then opened by a declaration.
+- **The rollback:** in a scratch clone, one commit reverting `3a234bd..7c80291` and versioned 3.3.1 passed 3.2.1's own suite, 9 of 9.
+- **What the push publishes:** every commit's diff and message since 3.2.1, scanned for credential patterns, client or organization names and email addresses. There were none, apart from a test fixture's address.
+- **Dependencies:** the plugin's Python imports only the standard library, and `npm audit` on the eval fixture found 0 vulnerabilities.
+- **What Seams builds on:** Matt Pocock's nine skills still match their recorded hashes (`3cca18b`). The four Superpowers skills Seams takes are byte-identical in Superpowers 6.3.0 and 6.4.1, the version enabled here.

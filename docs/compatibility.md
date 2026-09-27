@@ -34,6 +34,17 @@ c9819d7f1e3b198064edc1faa3154224ed67395e9f07f5d3cea4b67cf0a11a98  setup-pre-comm
 
 To compare your install: `cd "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" && shasum -a 256 -c` with the block above on stdin. A differing hash means his skill moved on since this record; the plugin invokes it by name and does not depend on its text. The three skills Seams adapted from his (`to-spec`, `to-tickets`, `implement`) are recorded with their upstream hashes in `plugin/THIRD_PARTY_NOTICES.md`, and `test_plugin.sh` warns when the installed copies differ.
 
+## The 3.3.0 release, 2026-09-27
+
+On the machine above, now macOS 15.8 (24H23), arm64, with Claude Code 2.1.283, on the candidate `7c80291`:
+
+- `scripts/test.sh` passed 9 of 9, none skipped: Python 3.14.6 first on `PATH` with the system 3.9.6, and again with uv's 3.12.13 (CI's version) first on `PATH` and `CI=true`. `claude plugin validate --strict` passed.
+- In a Linux container on the same machine (Docker 29.8.0, `python:3.12-slim` on aarch64 with git 2.47.3, Python 3.12.14), `scripts/test.sh --fast` passed every suite but `test_install`, which needs Node and the image has none. The hook suite there reproduced the CI failure behind the release's gate fix ([plugin-behavior-tests.md](plugin-behavior-tests.md), its 3.3.0 section).
+- Node v22.23.1. The shell suites run under bash 3.2.57 at `/bin/bash`; `run_checks.py` prefers Homebrew's 5.3.20.
+- Matt Pocock's skills: the nine hashes above still match (`shasum -c`: 9 OK), so the skills installed here are still those of `3cca18b`.
+- Superpowers alongside: 6.4.1, enabled. The four skills Seams takes from it are byte-identical in 6.3.0, whose cache the static test checks, and 6.4.1.
+- The runs made while building 3.3 used Claude Code 2.1.282 and 2.1.283. The paid runs the release deferred are lean-and-durable ticket 15.
+
 ## Observed as a teammate would install it, 2026-09-18
 
 The README's one-liner, run from GitHub (`origin/main` at `5bd97cf`, version 3.0.0) into an empty scratch home and `CLAUDE_CONFIG_DIR` on the machine above, with Claude Code 2.1.276: prerequisites reported; with no terminal on stdin the skills step stopped and named the command; that command (`npx skills add mattpocock/skills -g -a claude-code --skill '*' -y`) installed 38 skills whose nine required `SKILL.md` files match the hashes above (`shasum -c`: 9 OK, so upstream had not moved since 2026-09-04); the one-liner again added the marketplace from `gabriel-tutor/seams`, installed and enabled the plugin, and `claude plugin list` in that directory reported 3.0.0. The cached plugin equals `origin/main`'s `plugin/` byte for byte (`diff -r`, only Claude Code's `.in_use` marker apart), hooks executable. Fed Claude Code's own event shapes from that cache: the bootstrap injected (2,844 bytes, its `routing.md` path inside the cache), a `Write` refused without a declaration and allowed after `matt-pocock-workflow:trivial`, the done-check blocking once and not on `stop_hook_active`, a `0600` ledger holding paths and skill names only. Two headless sessions on that copy (`--plugin-dir` at the cache, this machine's login): the `echo >>` probe refused with `README.md` untouched, and "which skill applies before a bug fix?" answered `diagnosing-bugs`. A third session confirmed that reading the plugin's `routing.md` is denied headless without a Read rule, so an interactive session asks once; the README says to allow it.
@@ -56,6 +67,8 @@ The 3.0.0 runs: 35019368288 on `362f670`, through a throwaway pull request (#2, 
 | Operating system | Ubuntu 24.04.5 LTS, x64 (image `ubuntu-24.04` 20260907.300.1) | macOS 26.6.2 (25G83), arm64 (image `macos-26-arm64` 20260907.0351.1) |
 | Python | 3.12.14 (`actions/setup-python`); the system `python3` is the same 3.12, so the system-Python suites are skipped | 3.12.10 (`actions/setup-python`) and the system 3.9.6, under which the gate unit tests, the hook suite and the session-start suite ran as well |
 | Result | 5 passed, 0 failed, 2 skipped (the system-Python suites, `test_plugin`) | 8 passed, 0 failed, 1 skipped (`test_plugin`) |
+
+The 3.3.0 runs, through the throwaway PR #12: 36291668848 on `f8b912d`, 2026-09-27 03:31 UTC, **red on Ubuntu** in `test_hooks` only (a config directory under `/tmp` was scratch for the gate; see the section above), green on macOS; then 36292620321 on `ac16b39`, the fix on `7c80291`, the fix, green on both platforms (Ubuntu 24.04 image 20260920.314.1: 6 passed, 2 skipped; macOS 26 image 20260907.0351.1: 9 passed, 1 skipped); the review's fixes and the documentation after them ran again on the same pull request before `main` moved.
 
 Earlier runs, for the record: 35006946323 on `65764f4` and 35008326549 on `e8150fc` (ticket 08, 2026-09-15 18:21 and 18:34 UTC, the same images) were green on macOS and failed on Ubuntu in the gate's hook suite at "ledger should be mode 600", a `stat` flag difference between BSD and GNU that the suite now avoids by reading the mode through the interpreter (commit `0ae7983`). Ubuntu counts as tested for everything `scripts/test.sh` runs there since 35019368288; Python 3.9 on Linux is not covered by CI (the Ubuntu runner has no distinct system interpreter) and is tested only through macOS's system 3.9.
 
