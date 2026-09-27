@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (3.3.0)
+## 3.3.0 — 2026-09-27
 
 Lean and durable: the same workflow, lighter on tokens, faster, and nothing lost across `/clear` and compaction. This is phase 1 of the four-phase roadmap agreed on 2026-09-25; the spec is `.scratch/lean-and-durable/spec.md`, and every decision with its reason is in `.scratch/lean-and-durable/progress.md`. The plugin id and the marketplace name are unchanged, so `claude plugin update matt-pocock-workflow@my-workflow-agent-skills` is the whole upgrade. It supports Claude Code 2.1.269 or later.
 
