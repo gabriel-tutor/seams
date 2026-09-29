@@ -213,8 +213,8 @@ def active_features(root: Path) -> list:
 # that is a link or that other users may write to is skipped, and so is a file that is a link or not the user's.
 EVIDENCE_DIR = "seams-pr-review"
 BATCH_FILE = re.compile(r"^progress-[A-Za-z0-9._-]+\.md$")
-BATCH_NOTE = (" A `pr-review` batch continues only when the user types `/pr-review` again with its pull requests: "
-              "Claude Code lets only the user start that skill.")
+BATCH_NOTE = (" A `pr-review` batch continues through `matt-pocock-workflow:pr-review` with its pull requests, "
+              "once the user asks to go on.")
 
 
 def evidence_roots() -> list:

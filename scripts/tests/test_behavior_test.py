@@ -146,6 +146,12 @@ class SettingsTest(unittest.TestCase):
         for form in ("Bash(getconf:*)", "Bash(nproc:*)"):
             self.assertIn(form, allow)
 
+    def test_a_pull_request_review_can_start(self):
+        # 3.3.1's routing runs (pr-review-routing): all three chose pr-review first, and Claude Code asked before
+        # starting it ("Execute skill"), unlike code-review, so the headless settings' denial made each run an error.
+        allow = json.loads(load_harness().settings(False))["permissions"]["allow"]
+        self.assertIn("Skill(matt-pocock-workflow:pr-review)", allow)
+
 
 class ScanTest(unittest.TestCase):
     def test_first_skill_after_exploration(self):

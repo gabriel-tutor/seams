@@ -350,9 +350,9 @@ def render(repo: Path, names: list, status: str, root: Path) -> str:
     else:
         tail = (f"{unfinished} of {n} unfinished." if unfinished
                 else "every review is drafted; Post and the handover remain.")
-        next_step = f"The user types /pr-review again with {described(urls)} to continue it: {tail}" if urls else ""
+        next_step = f"Continue it with pr-review on {described(urls)}: {tail}" if urls else ""
         if not urls or len(next_step) > 200:
-            next_step = f"The user types the /pr-review command under Continue in this file again to continue it: {tail}"
+            next_step = f"Continue it with the /pr-review command under Continue in this file: {tail}"
     lines = ["# Progress: pr-review batch", "",
              f"Status: {status}",
              f"Stage: {n} pull request{'s' if n != 1 else ''}: {', '.join(counts)}",

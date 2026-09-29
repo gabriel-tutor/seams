@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -320,20 +321,27 @@ class Declarations(unittest.TestCase):
         self.assertEqual(gate.slash_declaration("  /wayfinder  "), "wayfinder")
 
     def test_a_manual_only_seams_skill_typed_by_its_bare_name_declares_under_its_full_name(self):
-        # Claude Code runs a plugin skill typed bare (`/pr-review 42`) when no other command has the
+        # Claude Code runs a plugin skill typed bare (`/manual-review 42`) when no other command has the
         # name. A manual-only skill is only ever typed, so its bare form opens the gate like the
         # namespaced one. Every other bare name stays what it was: the model-invocable Seams skills
-        # are declared through the Skill tool under their full names, and a bare name they share with
-        # a Superpowers original or a project's own command (`/verification-before-completion`,
+        # are declared through the Skill tool or their expansion under their full names, and a bare name
+        # they share with a Superpowers original or a project's own command (`/verification-before-completion`,
         # `/release`) may not be the Seams skill at all. The name must match exactly: a case-insensitive
-        # file system finding `PR-REVIEW` is not the skill.
-        self.assertEqual(gate.slash_declaration("/pr-review 42"), "matt-pocock-workflow:pr-review")
+        # file system finding `MANUAL-REVIEW` is not the skill. No Seams skill is manual-only since
+        # `pr-review` became model-invocable, so a fixture plugin holds one.
+        plugin = tempfile.mkdtemp()
+        write_skill(plugin, "manual-review", manual=True)
+        write_skill(plugin, "grill", manual=False)
+        with mock.patch.object(gate, "SKILLS_DIR", os.path.join(plugin, "skills")):
+            self.assertEqual(gate.slash_declaration("/manual-review 42"), "matt-pocock-workflow:manual-review")
+            for prompt in ["/grill", "/MANUAL-REVIEW 42", "/Manual-Review", "/no-such-skill", "/..", "/.", "//etc/passwd"]:
+                with self.subTest(prompt=prompt):
+                    self.assertIsNone(gate.slash_declaration(prompt))
         self.assertEqual(gate.slash_declaration("/matt-pocock-workflow:pr-review https://github.com/o/r/pull/7"),
                          "matt-pocock-workflow:pr-review")
         self.assertEqual(gate.slash_declaration("/implement"), "implement")   # Matt Pocock's bare name wins, as it does in Claude Code
-        for prompt in ["/grill", "/release", "/verification-before-completion", "/using-git-worktrees",
-                       "/finishing-a-development-branch", "/receiving-code-review", "/using-matt-pocock-skills",
-                       "/PR-REVIEW 42", "/Pr-Review", "/no-such-skill", "/..", "/.", "//etc/passwd"]:
+        for prompt in ["/pr-review 42", "/grill", "/release", "/verification-before-completion", "/using-git-worktrees",
+                       "/finishing-a-development-branch", "/receiving-code-review", "/using-matt-pocock-skills"]:
             with self.subTest(prompt=prompt):
                 self.assertIsNone(gate.slash_declaration(prompt))
 
@@ -421,11 +429,16 @@ class TypedSkills(unittest.TestCase):
     def test_without_the_event_the_prompts_own_parse_still_records_it(self):
         for prompt, name in [("/tdd add a test", "tdd"),
                              ("/matt-pocock-workflow:grill add coupons", "matt-pocock-workflow:grill"),
-                             ("/pr-review 42", "matt-pocock-workflow:pr-review")]:
+                             ("/matt-pocock-workflow:pr-review 42", "matt-pocock-workflow:pr-review")]:
             with self.subTest(prompt=prompt):
                 ledger = gate.empty_ledger("s1")
                 send(ledger, prompt)
                 self.assertEqual(declared(ledger), [name])
+        # A bare model-invocable Seams name is not the prompt's to read (`/grill`, and `/pr-review` since it
+        # became model-invocable): its expansion names it, and the lapse hint sends Claude to the Skill tool.
+        ledger = gate.empty_ledger("s1")
+        send(ledger, "/pr-review 42")
+        self.assertEqual(declared(ledger), [])
         ledger = gate.empty_ledger("s1")
         send(ledger, "/tdd add a test", ("tdd", "userSettings"))
         self.assertEqual(declared(ledger), ["tdd"], "a skill both expanded and parsed is recorded once")
@@ -560,28 +573,35 @@ class LapseHint(unittest.TestCase):
 
     def test_a_skill_only_the_user_can_type_is_named_as_such(self):
         # Claude Code refuses a Skill call for a skill whose SKILL.md says `disable-model-invocation:
-        # true` (the skills docs), so the hint must not send Claude there: Seams' `pr-review`, and Matt
-        # Pocock's user-only skills, among them his own `implement`, `to-spec` and `to-tickets`, which
-        # his files mark that way (checked on the installed copies, 2026-09-25). Claude Code loads a
-        # skill from the config directory or the project's .claude/skills, so both are read.
-        config, project = tempfile.mkdtemp(), tempfile.mkdtemp()
+        # true` (the skills docs), so the hint must not send Claude there: a manual-only Seams skill (a
+        # fixture plugin's, since none of Seams' own is), and Matt Pocock's user-only skills, among them
+        # his own `implement`, `to-spec` and `to-tickets`, which his files mark that way (checked on the
+        # installed copies, 2026-09-25). Claude Code loads a skill from the config directory or the
+        # project's .claude/skills, so both are read.
+        config, project, plugin = tempfile.mkdtemp(), tempfile.mkdtemp(), tempfile.mkdtemp()
         write_skill(config, "implement", manual=True)
         write_skill(config, "tdd", manual=False)
         write_skill(os.path.join(project, ".claude"), "wayfinder", manual=True)
-        for typed, name, source in [("/pr-review 42", "matt-pocock-workflow:pr-review", "plugin"),
-                                    ("/implement ticket 03", "implement", "userSettings"),
-                                    ("/wayfinder", "wayfinder", "projectSettings")]:
+        write_skill(plugin, "manual-review", manual=True)
+        with mock.patch.object(gate, "SKILLS_DIR", os.path.join(plugin, "skills")):
+            for typed, name, source in [("/manual-review 42", "matt-pocock-workflow:manual-review", "plugin"),
+                                        ("/implement ticket 03", "implement", "userSettings"),
+                                        ("/wayfinder", "wayfinder", "projectSettings")]:
+                with self.subTest(typed=typed):
+                    ledger = gate.empty_ledger("s1")
+                    send(ledger, typed, (name, source), config=config, cwd=project)
+                    hint = send(ledger, "now fix the failing test", prompt_id="p2", config=config, cwd=project)["context"]
+                    self.assertIn(f"`{name}` (only the user can type it)", hint)
+                    self.assertIn("the user types it again", hint)
+                    self.assertNotIn("with the Skill tool restores", hint)
+        # Seams' own skills are all model-invocable, `pr-review` included: invoking it again restores it.
+        for typed, name, source in [("/tdd add a test", "tdd", "userSettings"),
+                                    ("/pr-review 42", "matt-pocock-workflow:pr-review", "plugin")]:
             with self.subTest(typed=typed):
                 ledger = gate.empty_ledger("s1")
                 send(ledger, typed, (name, source), config=config, cwd=project)
-                hint = send(ledger, "now fix the failing test", prompt_id="p2", config=config, cwd=project)["context"]
-                self.assertIn(f"`{name}` (only the user can type it)", hint)
-                self.assertIn("the user types it again", hint)
-                self.assertNotIn("with the Skill tool restores", hint)
-        ledger = gate.empty_ledger("s1")
-        send(ledger, "/tdd add a test", ("tdd", "userSettings"), config=config, cwd=project)
-        hint = send(ledger, "now the label", prompt_id="p2", config=config, cwd=project)["context"]
-        self.assertIn("invoking `tdd` again with the Skill tool restores the declaration", hint)
+                hint = send(ledger, "now the label", prompt_id="p2", config=config, cwd=project)["context"]
+                self.assertIn(f"invoking `{name}` again with the Skill tool restores the declaration", hint)
 
     def test_only_plain_skill_names_reach_the_hint(self):
         # The hint puts ledger text into Claude's context, so a damaged or planted ledger must not be

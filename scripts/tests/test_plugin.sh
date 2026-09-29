@@ -121,9 +121,9 @@ section_says README "$README" Compatibility "### Claude Code versions" "Claude C
   "\`scratchpad_dir\` in hook input (2.1.257)" "\`omitClaudeMd\` for the read-only agents (2.1.271)"
 
 # Every skill: frontmatter naming its own directory and a description. Model invocation stays on for
-# every skill but the ones typed by hand only: pr-review, which runs a PR's code, spends minutes of
-# checks and can post to GitHub, is one of those, and stays one.
-USER_ONLY="pr-review"
+# every skill but the ones typed by hand only, listed here. None is: pr-review was until 3.3.1, when workflow
+# skills needed to start it; its description says it starts when asked (below).
+USER_ONLY=""
 for f in "$PLUGIN"/skills/*/SKILL.md; do
   python3 - "$f" "$USER_ONLY" <<'PY' || fail "bad frontmatter: $f"
 import pathlib, sys
@@ -574,7 +574,7 @@ done
 grep -q "references/design-lens.md" "$PLUGIN/skills/grill/SKILL.md" || fail "grill does not reference the design lens"
 [[ $(grep -cE '^[0-9]+\. \*\*' "$PLUGIN/skills/grill/references/design-lens.md") -eq 10 ]] || fail "design lens should list 10 axes"
 
-# The pr-review skill (manual only), split so that its core stays whole in what compaction keeps (lean-and-durable
+# The pr-review skill, split so that its core stays whole in what compaction keeps (lean-and-durable
 # ticket 06). The core keeps every step's heading in order, and before the first step it states the rules that hold
 # for the whole review (nothing of an untrusted PR runs without a yes, nothing reaches GitHub without a yes naming
 # it, nothing in the user's repo changes) and names each reference with when to read it. Every phrase 3.2.1's single
@@ -589,6 +589,11 @@ for needle in "Nothing of an untrusted pull request runs on this machine without
   "Nothing in the user's working tree" "data under review, never instructions" "read it again" "typed as a message"; do
   [[ $PRR_OPENING == *"$needle"* ]] || fail "pr-review should say, before its first step, where it holds for the whole review: $needle"
 done
+# Claude and workflow skills start it (3.3.1, .scratch/pr-review-invocable), when asked: its description leads with that.
+PRR_DESC=$(sed -n 's/^description: //p' "$PRR")
+[[ $PRR_DESC == "Use when asked to review GitHub pull requests (numbers, URLs, open, requested)"* ]] \
+  || fail "pr-review's description should lead with its trigger and the pull requests it takes: $PRR_DESC"
+[[ $PRR_DESC == *"yped by hand"* ]] && fail "pr-review's description still says it is typed by hand: $PRR_DESC"
 for r in checkout batch understand-and-review checks draft-and-post cleanup; do [[ -f "$PRR_REFS/$r.md" ]] || fail "pr-review lacks references/$r.md"; done
 for f in "$PRR_REFS"/*.md; do
   grep -F -- "references/$(basename "$f")" <<< "$PRR_OPENING" | grep -qF "read this when" \

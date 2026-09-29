@@ -466,8 +466,8 @@ PY
 # --- An unfinished pr-review batch (lean-and-durable ticket 07) ---------------------------------------------------------
 # A batch keeps its progress file beside its evidence, under ${TMPDIR:-/tmp}/seams-pr-review, and names the repository
 # the review ran in. The note lists the newest unfinished batch of the session's repository among its three entries,
-# with its count and next step, never another repository's and never a finished one. pr-review is typed by hand only,
-# so the note says that the user continues it.
+# with its count and next step, never another repository's and never a finished one. The note says how it continues:
+# through pr-review, which Claude may start once the user asks to go on.
 
 # batch <tmpdir> <repo> <status> <updated> <stage> <next> [file name]: a batch's progress file, in the shape evidence.py
 # writes.
@@ -492,8 +492,8 @@ for S in "${SOURCES[@]}"; do
   OUT=$(batch_out "$S" "$BREPO/src" "$BT"); C=$(out_field additionalContext <<< "$OUT")
   [[ $(entries_of "$C") == "- pr-review batch: stage $BATCH_STAGE, updated 2026-09-26; next: $BATCH_NEXT File: $BFILE" ]] \
     || fail "an unfinished batch of this repository should be listed with its count and next step ($S): $(entries_of "$C")"
-  [[ $(note_of "$C") == *"A \`pr-review\` batch continues only when the user types \`/pr-review\` again"* ]] \
-    || fail "the note should say that the user continues a pr-review batch ($S): $C"
+  [[ $(note_of "$C") == *"A \`pr-review\` batch continues through \`matt-pocock-workflow:pr-review\` with its pull requests, once the user asks"* ]] \
+    || fail "the note should say how a pr-review batch continues ($S): $C"
   [[ $(out_field systemMessage <<< "$OUT") == "Seams: resuming pr-review batch ($BATCH_STAGE): $BATCH_NEXT" ]] \
     || fail "the notice should name the batch ($S): $OUT"
 done
@@ -577,7 +577,7 @@ RREPO="$TMP/batch-real-repo"; mkdir -p "$RREPO/src"; git -C "$RREPO" init -q
   --pr https://github.com/acme/shop/pull/13 0f4e5e9a1b2c3d4e5f60718293a4b5c6d7e8f901 aea109b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f2 >/dev/null) \
   || fail "evidence.py pin failed"
 E=$(entries_of "$(out_field additionalContext <<< "$(batch_out startup "$RREPO" "$BT_REAL")")")
-[[ "$E" == "- pr-review batch: stage 2 pull requests: 2 pinned, updated "*"; next: The user types /pr-review again with pull requests 12 and 13 of acme/shop to continue it: 2 of 2 unfinished. File: $BT_REAL/seams-pr-review/progress-"*".md" ]] \
+[[ "$E" == "- pr-review batch: stage 2 pull requests: 2 pinned, updated "*"; next: Continue it with pr-review on pull requests 12 and 13 of acme/shop: 2 of 2 unfinished. File: $BT_REAL/seams-pr-review/progress-"*".md" ]] \
   || fail "the batch evidence.py wrote should be listed: $E"
 
 # Guard: three features with fields past their caps and a batch whose fields run past them too, in a repository with a

@@ -92,8 +92,8 @@ def settings(superpowers: bool) -> str:
     `ls`, `find`; the ticket-10 evidence set lost three runs to them), and what a parallel run
     resumes with: the reads of its worktrees, its branches and what the base branch holds, and its
     git steps (a worktree made or removed, a merge, a checkout) and its count of the machine's
-    cores, so a resumed run reaches its verdict; anything else the model runs is the platform's call to deny, and a denial makes the
-    run an error, not a miss.
+    cores, so a resumed run reaches its verdict, and starting pr-review, which Claude Code asks about before Claude starts it;
+    anything else the model runs is the platform's call to deny, and a denial makes the run an error, not a miss.
     Superpowers is forced off unless the run keeps the user's own setting."""
     allow = ["Read(~/.claude/skills/**)", "Read(~/.skills-manager/**)", f"Read(/{PLUGIN}/**)",
              "Bash(npm test:*)", "Bash(npm run typecheck:*)", "Bash(npx vitest:*)", "Bash(npx tsc:*)",
@@ -101,7 +101,8 @@ def settings(superpowers: bool) -> str:
              "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git -C:*)",
              "Bash(git worktree list:*)", "Bash(git branch:*)", "Bash(git rev-parse:*)", "Bash(git merge-base:*)",
              "Bash(git show:*)", "Bash(git worktree add:*)", "Bash(git worktree remove:*)", "Bash(git merge:*)",
-             "Bash(git checkout:*)", "Bash(getconf:*)", "Bash(nproc:*)", "Bash(echo:*)", "Bash(ls:*)", "Bash(find:*)"]
+             "Bash(git checkout:*)", "Bash(getconf:*)", "Bash(nproc:*)", "Bash(echo:*)", "Bash(ls:*)", "Bash(find:*)",
+             "Skill(matt-pocock-workflow:pr-review)"]
     config: dict = {"permissions": {"allow": allow}}
     if not superpowers:
         config["enabledPlugins"] = {"superpowers@claude-plugins-official": False}

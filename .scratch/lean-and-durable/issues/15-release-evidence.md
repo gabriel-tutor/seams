@@ -7,7 +7,7 @@
 **Status:** ready-for-agent
 
 - [ ] Every paid run is asked first, with its estimated cost.
-- [ ] The routing and gate evals: `claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write -j 3 --no-publish`, three runs per arm, with `--model claude-opus-5` and with `--model claude-sonnet-5`, as ticket 08 ran them (about $20 and $12.50, 25 minutes each). Every case scores at or above its recorded 1.00.
+- [ ] The routing and gate evals: `claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write -j 3 --no-publish`, three runs per arm, with `--model claude-opus-5` and with `--model claude-sonnet-5`, as ticket 08 ran them (about $20 and $12.50, 25 minutes each). Every case scores at or above its recorded 1.00; `pr-review-routing`, added in 3.3.1, has no recorded bar yet, so its first pass sets one.
 - [ ] The two `shell` cases through the harness, which the eval's sandbox can't run on this Mac: `python3 scripts/behavior_test.py run --scenario gate-shell-write --scenario gate-commit --arm plugin --runs 3 --assert`, 3 of 3 each.
 - [ ] Resume after `/clear`, a fresh session over the progress file: `resume-grill` and `resume-ticket` through the harness, 3 of 3 each; and a `pr-review` batch of closed pull requests #5, #6 and #7, killed after one draft and resumed in a fresh session, which reviews only #6 and #7 and reuses #5's draft byte for byte.
 - [ ] Resume after `/compact`, headless `--resume` as tickets 04 and 05 ran it: the grill and the ticket continue without starting over; and the same `pr-review` batch, killed after one draft, then `claude -p --resume <id> "/compact"` and a continuing prompt, reviews only the unfinished pull requests. The batch has never been resumed through `/compact`.

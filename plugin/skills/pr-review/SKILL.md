@@ -1,7 +1,6 @@
 ---
 name: pr-review
-description: Typed by hand only, for a deep review of GitHub pull requests with their checks run against the baseline, findings proven, and drafts posted only on your yes
-disable-model-invocation: true
+description: Use when asked to review GitHub pull requests (numbers, URLs, open, requested), with their checks run against the baseline, findings proven, and drafts posted only on your yes
 argument-hint: "<number | URL | owner/repo#number> [...] | open | requested [<n> slots] [afresh]"
 allowed-tools:
   - Bash(gh auth status:*)

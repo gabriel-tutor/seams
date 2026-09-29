@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (3.3.1)
+
+- **Claude and your workflow skills can start `pr-review`.** It was typed by hand only (`disable-model-invocation`), so a skill that called it got "cannot be used with Skill tool due to disable-model-invocation". Its description now leads with when to use it, "Use when asked to review GitHub pull requests (numbers, URLs, open, requested)", so Claude starts it when you, or a skill you run, ask for a review of GitHub pull requests; a local branch, commits or uncommitted work stay `code-review`'s. The review itself is unchanged: an untrusted pull request's code runs only after a yes, nothing is posted without one, and typing `/pr-review` works as before. A batch's next step reads "Continue it with pr-review on …", so Claude continues an unfinished batch itself when you ask, and the session-start note no longer says only you can start it. When Claude starts it, Claude Code may ask first ("Execute skill"); `Skill(matt-pocock-workflow:pr-review)` in `permissions.allow` starts it without asking, as a headless workflow needs, and the same rule in `permissions.deny` keeps it typed only: Claude's call is then refused, and typing it still works.
+
 ## 3.3.0 — 2026-09-27
 
 Lean and durable: the same workflow, lighter on tokens, faster, and nothing lost across `/clear` and compaction. This is phase 1 of the four-phase roadmap agreed on 2026-09-25; the spec is `.scratch/lean-and-durable/spec.md`, and every decision with its reason is in `.scratch/lean-and-durable/progress.md`. The plugin id and the marketplace name are unchanged, so `claude plugin update matt-pocock-workflow@my-workflow-agent-skills` is the whole upgrade. It supports Claude Code 2.1.269 or later.
