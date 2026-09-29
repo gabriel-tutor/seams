@@ -31,14 +31,16 @@ section_says() {   # $1 = skill name, $2 = file, $3 = heading text, $4... = phra
   body=$(section "$heading" "$file"); [[ -n "$body" ]] || fail "$name lacks the section: ## $heading"
   for needle in "$@"; do [[ $body == *"$needle"* ]] || fail "$name, under '## $heading', should say: $needle"; done
 }
-plugin_guards() {   # $1 = a plugin directory: a line for each SKILL.md over 11,000 bytes and each model or effort pin
+plugin_guards() {   # $1 = a plugin directory: a line for each SKILL.md over its bound (11,000 bytes; pr-review 11,200) and each model or effort pin
   python3 - "$1" <<'PY'
 import pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 skills = sorted(root.glob("skills/*/SKILL.md"))
+bounds = {"pr-review": 11200}   # its core measures about 3.5k tokens on invoke (.scratch/pr-review-invocable decision 10)
 for path in skills:
-    if path.stat().st_size > 11000:
-        print(f"{path.relative_to(root)} is {path.stat().st_size} bytes, over the 11,000-byte bound")
+    bound = bounds.get(path.parent.name, 11000)
+    if path.stat().st_size > bound:
+        print(f"{path.relative_to(root)} is {path.stat().st_size} bytes, over the {bound:,}-byte bound")
 for path in skills + sorted(root.glob("agents/**/*.md")):
     front = re.match(r"---\n(.*?)\n---\n", path.read_text(), re.S)
     keys = {line.split(":", 1)[0].strip() for line in (front.group(1) if front else "").splitlines() if ":" in line and line[:1].isalpha()}
@@ -410,6 +412,9 @@ done
 # or an effort level: a pin overrides the level the user chose, both ways, and a model that differs from the session's
 # costs a prompt-cache miss. A fixture that breaks each rule shows the guard catching what it is for.
 GUARD_FIX=$(mktemp -d); mkdir -p "$GUARD_FIX"/skills/{big,at-bound,pinned} "$GUARD_FIX/agents"
+# pr-review may take 11,200 bytes (3.3.1, .scratch/pr-review-invocable decision 10): its core measures about 3.5k
+# tokens on invoke by `claude plugin details`, well under the 4,000-token cap the bound stands for. Both sides of it:
+GUARD_BIG=$(mktemp -d); mkdir -p "$GUARD_BIG/skills/pr-review"
 for s in big at-bound; do
   printf -- '---\nname: %s\ndescription: x\n---\n' "$s" > "$GUARD_FIX/skills/$s/SKILL.md"
   n=$(( $([[ $s == big ]] && echo 11001 || echo 11000) - $(wc -c < "$GUARD_FIX/skills/$s/SKILL.md") ))
@@ -419,6 +424,13 @@ printf -- '---\nname: pinned\ndescription: x\nmodel: claude-opus-5\neffort: high
 printf -- '---\nname: scout\ndescription: x\neffort: low\n---\n' > "$GUARD_FIX/agents/scout.md"
 printf -- '---\nname: fine\ndescription: x\n---\n\nmodel: effort: lines in the body are not frontmatter\n' > "$GUARD_FIX/agents/fine.md"
 GUARD_OUT=$(plugin_guards "$GUARD_FIX"); rm -rf "$GUARD_FIX"
+for size in 11200 11201; do
+  printf -- '---\nname: pr-review\ndescription: x\n---\n' > "$GUARD_BIG/skills/pr-review/SKILL.md"
+  printf '%*s' "$(( size - $(wc -c < "$GUARD_BIG/skills/pr-review/SKILL.md") ))" '' >> "$GUARD_BIG/skills/pr-review/SKILL.md"
+  OUT_BIG=$(plugin_guards "$GUARD_BIG")
+  if [[ $size == 11200 ]]; then [[ -z $OUT_BIG ]] || fail "pr-review at its 11,200-byte allowance was flagged: $OUT_BIG"
+  else [[ $OUT_BIG == *"skills/pr-review/SKILL.md is 11201 bytes, over the 11,200-byte bound"* ]] || fail "pr-review over its allowance was missed: $OUT_BIG"; fi
+done; rm -rf "$GUARD_BIG"
 for want in "skills/big/SKILL.md is 11001 bytes, over the 11,000-byte bound" "skills/pinned/SKILL.md sets model" \
   "skills/pinned/SKILL.md sets effort" "agents/scout.md sets effort"; do
   [[ $GUARD_OUT == *"$want"* ]] || fail "the guard missed: $want (it said: $GUARD_OUT)"
@@ -608,9 +620,9 @@ step_says() {   # $1 = a step's heading text, $2 = the reference holding its det
   done
 }
 must_say pr-review "$PRR" "\$ARGUMENTS" "headRefOid" "author_association" "Bash(gh pr reopen:*)"
-step_says Gate "" "untrusted" "Static review only" "nothing of that PR runs" "--limit 1000" "requested" "\`afresh\`" \
+step_says Gate "" "untrusted" "Static review only" "nothing of that PR runs" "trusted only when the viewer can push to its repository" "viewerPermission" "an error or anything else counts as no" "--limit 1000" "requested" "\`afresh\`" \
   "one round of questions" "needs no declaration" "never declare \`trivial\`"
-step_says Checkout checkout "one PR at a time" "--detach" ".seams-pr-review" "merge-base" \
+step_says Checkout checkout "one PR at a time" "--detach" ".seams-pr-review" "merge-base" "-c core.hooksPath=/dev/null worktree add" \
   "once, before the first pull request's checkout" "earlier outputs" "a stale review can never stand in"
 step_says Batch batch "one subagent per PR" "all at once" "--slots" "Every question first" "services" \
   "brew install bash" "the same checks" "facts only" "No review hints" "never asks" "never posts" "error.txt" \

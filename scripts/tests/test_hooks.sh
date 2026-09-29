@@ -127,14 +127,12 @@ grep -q '`implement` (only the user can type it)' <<< "$OUT" || fail "a skill on
 grep -q 'with the Skill tool restores' <<< "$OUT" && fail "the hint must not send Claude to the Skill tool for it: $OUT"
 expand y3 pr-review projectSettings >/dev/null; say y3 "/pr-review 42" >/dev/null
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a project's own /pr-review should not declare Seams' skill: $OUT"
-# Seams' pr-review is model-invocable: typed bare, it declares through its expansion, and when a new request lapses
-# it the hint sends Claude to the Skill tool, which starts it now.
+# Seams' pr-review is model-invocable: typed bare, it declares through its expansion. A new request gets no hint for it:
+# a review needs no declaration, and invoking it again would re-arm its pre-approved scripts after the user's answer.
 expand y5 matt-pocock-workflow:pr-review plugin >/dev/null; say y5 "/pr-review 42" >/dev/null
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a typed bare /pr-review should declare through its expansion: $OUT"
 grep -q '"skill": *"matt-pocock-workflow:pr-review"' "$LEDGER" || fail "the bare /pr-review should be recorded under its full name"
-OUT=$(say y6 "now the next pull request")
-grep -q 'invoking `matt-pocock-workflow:pr-review` again with the Skill tool restores' <<< "$OUT" \
-  || fail "the hint should send Claude to the Skill tool for pr-review: $OUT"
+OUT=$(say y6 "post it"); [[ -z "$OUT" ]] || fail "the hint should leave pr-review out: $OUT"
 say y4 "/grill add coupons" >/dev/null; expand y4 matt-pocock-workflow:grill plugin >/dev/null
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "an expansion after its prompt hook should declare that prompt's request: $OUT"
 grep -q '"prompt"' "$LEDGER" && fail "the ledger keys a prompt by its id, never by a prompt field"

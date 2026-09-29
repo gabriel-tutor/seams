@@ -426,6 +426,14 @@ class TypedSkills(unittest.TestCase):
         send(ledger, "/pdf /tdd fix the coupon", ("pdf", "userSettings"), ("tdd", "userSettings"))
         self.assertEqual(declared(ledger), ["tdd"])
 
+    def test_a_bare_model_invocable_seams_name_without_its_event_records_nothing(self):
+        # A bare model-invocable Seams name is not the prompt's to read (`/grill`, and `/pr-review` since it became
+        # model-invocable): its expansion names it. Without the event, a review still needs no declaration: every
+        # write it makes is under the temp directory.
+        ledger = gate.empty_ledger("s1")
+        send(ledger, "/pr-review 42")
+        self.assertEqual(declared(ledger), [])
+
     def test_without_the_event_the_prompts_own_parse_still_records_it(self):
         for prompt, name in [("/tdd add a test", "tdd"),
                              ("/matt-pocock-workflow:grill add coupons", "matt-pocock-workflow:grill"),
@@ -434,11 +442,6 @@ class TypedSkills(unittest.TestCase):
                 ledger = gate.empty_ledger("s1")
                 send(ledger, prompt)
                 self.assertEqual(declared(ledger), [name])
-        # A bare model-invocable Seams name is not the prompt's to read (`/grill`, and `/pr-review` since it
-        # became model-invocable): its expansion names it, and the lapse hint sends Claude to the Skill tool.
-        ledger = gate.empty_ledger("s1")
-        send(ledger, "/pr-review 42")
-        self.assertEqual(declared(ledger), [])
         ledger = gate.empty_ledger("s1")
         send(ledger, "/tdd add a test", ("tdd", "userSettings"))
         self.assertEqual(declared(ledger), ["tdd"], "a skill both expanded and parsed is recorded once")
@@ -594,14 +597,24 @@ class LapseHint(unittest.TestCase):
                     self.assertIn(f"`{name}` (only the user can type it)", hint)
                     self.assertIn("the user types it again", hint)
                     self.assertNotIn("with the Skill tool restores", hint)
-        # Seams' own skills are all model-invocable, `pr-review` included: invoking it again restores it.
-        for typed, name, source in [("/tdd add a test", "tdd", "userSettings"),
-                                    ("/pr-review 42", "matt-pocock-workflow:pr-review", "plugin")]:
-            with self.subTest(typed=typed):
-                ledger = gate.empty_ledger("s1")
-                send(ledger, typed, (name, source), config=config, cwd=project)
-                hint = send(ledger, "now the label", prompt_id="p2", config=config, cwd=project)["context"]
-                self.assertIn(f"invoking `{name}` again with the Skill tool restores the declaration", hint)
+        ledger = gate.empty_ledger("s1")
+        send(ledger, "/tdd add a test", ("tdd", "userSettings"), config=config, cwd=project)
+        hint = send(ledger, "now the label", prompt_id="p2", config=config, cwd=project)["context"]
+        self.assertIn("invoking `tdd` again with the Skill tool restores the declaration", hint)
+
+    def test_the_hint_leaves_a_pull_request_review_out(self):
+        # A review needs no declaration (its writes are all under the temp directory), and invoking it again
+        # after the user's typed answer would re-arm its pre-approved scripts, posting included, where the
+        # user's own permission settings should decide (the security review of 3.3.1's build).
+        ledger = gate.empty_ledger("s1")
+        send(ledger, "/pr-review 42", ("matt-pocock-workflow:pr-review", "plugin"))
+        self.assertIsNone(send(ledger, "post it", prompt_id="p2")["context"])
+        ledger = gate.empty_ledger("s1")
+        send(ledger, "/grill /pr-review 42", ("matt-pocock-workflow:grill", "plugin"),
+             ("matt-pocock-workflow:pr-review", "plugin"))
+        hint = send(ledger, "now the next step", prompt_id="p2")["context"]
+        self.assertIn("`matt-pocock-workflow:grill`", hint)
+        self.assertNotIn("pr-review", hint)
 
     def test_only_plain_skill_names_reach_the_hint(self):
         # The hint puts ledger text into Claude's context, so a damaged or planted ledger must not be

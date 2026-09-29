@@ -836,12 +836,12 @@ SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file
 def manual_seams_skill(bare: str) -> Optional[str]:
     """The full name of this plugin's manual-only skill called exactly `bare`, or None.
 
-    Claude Code runs a plugin skill typed by its bare name (`/pr-review 42`) when no other command
+    Claude Code runs a plugin skill typed by its bare name (`/manual-review 42`) when no other command
     has that name, and a manual-only skill is only ever typed, so its bare form must declare. No
     other bare name does: a model-invocable Seams skill is declared through the Skill tool under its
     full name, and a bare name it shares with a Superpowers original or a project's own command may
     not be the Seams skill at all. The name is matched against the directory listing exactly, since
-    a case-insensitive file system would find `PR-REVIEW` too."""
+    a case-insensitive file system would find `MANUAL-REVIEW` too."""
     if not bare or "/" in bare or bare.startswith("."):
         return None
     try:
@@ -1130,6 +1130,10 @@ def submit_prompt(event: dict, ledger: dict, config_dir: Optional[str] = None) -
 
 
 LAPSE_NAMES = 5
+# Left out of the hint: a pull-request review needs no declaration (everything it writes is under the temp directory),
+# and invoking it again after the user's typed answer would re-arm its pre-approved scripts, posting included, where
+# the user's own permission settings should decide.
+HINT_EXEMPT = {PLUGIN_PREFIX + "pr-review"}
 
 
 def _lapse_hint(skills: list, config: Optional[str] = None, cwd: Optional[str] = None) -> Optional[str]:
@@ -1137,7 +1141,8 @@ def _lapse_hint(skills: list, config: Optional[str] = None, cwd: Optional[str] =
     invoking one again continues that work (or, for a skill only the user can type, that the user
     types it again or the work takes a route Claude can invoke), that new work routes afresh. None
     when nothing lapsed."""
-    names = list(dict.fromkeys(s for s in skills if isinstance(s, str) and SKILL_NAME.fullmatch(s)))[:LAPSE_NAMES]
+    names = list(dict.fromkeys(s for s in skills if isinstance(s, str) and SKILL_NAME.fullmatch(s)
+                               and s not in HINT_EXEMPT))[:LAPSE_NAMES]
     if not names:
         return None
     manual = {name for name in names if typed_only(name, config, cwd)}

@@ -1284,6 +1284,7 @@ class EvidenceTest(unittest.TestCase):
         self.assertEqual(header["Next"], "Continue it with pr-review on pull requests 12 and 13 of acme/shop: 1 of 2 "
                                          "unfinished.")
         self.assertIn("    /pr-review https://github.com/acme/shop/pull/12 https://github.com/acme/shop/pull/13\n", text)
+        self.assertIn("Typed again, or run again by Claude when asked, this command continues the batch", text)
         self.assertRegex(header["Updated"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d$")
         self.assertEqual(header["Repository"], str(self.repo.resolve()))
         self.assertIn("\n## Pull requests\n", text)

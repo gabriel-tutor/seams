@@ -361,7 +361,7 @@ def render(repo: Path, names: list, status: str, root: Path) -> str:
              f"Repository: {repo}",
              f"Evidence: {' '.join(names)}", "",
              "## Pull requests", ""] + [f"- {s['line']}" for s in states] + \
-            ["", "## Continue", "", "Typed again by the user, this command continues the batch: a review finished at the "
+            ["", "## Continue", "", "Typed again, or run again by Claude when asked, this command continues the batch: a review finished at the "
              "same head and baseline is reused, an unfinished one goes on from its last completed step, and a pull "
              "request whose head moved is reviewed afresh. With `afresh` added, every one is reviewed anew.", "",
              f"    {command}", "",
