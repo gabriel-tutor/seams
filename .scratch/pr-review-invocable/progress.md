@@ -1,8 +1,8 @@
 # Progress: pr-review invocable by Claude and by workflow skills
 
 Status: active
-Stage: built
-Next: Run the suites on macOS and Linux, commit the security fixes, then release 3.3.1 through release; set Status done in the commit that ships.
+Stage: integrated
+Next: Release 3.3.1: CI staging on a throwaway pull request, then main on the user's yes, then verify; set Status done in the record after it ships.
 Updated: 2026-09-30
 
 ## Decisions

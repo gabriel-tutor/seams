@@ -1486,3 +1486,43 @@ A `pr-review` batch has never been resumed through `/compact`, and no second mes
 - **What the push publishes:** every commit's diff and message since 3.2.1, scanned for credential patterns, client or organization names and email addresses. There were none, apart from a test fixture's address.
 - **Dependencies:** the plugin's Python imports only the standard library, and `npm audit` on the eval fixture found 0 vulnerabilities.
 - **What Seams builds on:** Matt Pocock's nine skills still match their recorded hashes (`3cca18b`). The four Superpowers skills Seams takes are byte-identical in Superpowers 6.3.0 and 6.4.1, the version enabled here.
+
+## 3.3.1: `pr-review` started by Claude and by workflow skills, 2026-09-30
+
+**What changed.** `pr-review` no longer carries `disable-model-invocation`, so Claude, or a workflow skill a user runs, can start it through the Skill tool; its description leads with its trigger ("Use when asked to review GitHub pull requests (numbers, URLs, open, requested)"). Its reviews found three security holes, which the user chose to fix: trust needs push access to the pull request's repository, the gate's lapse hint leaves `pr-review` out, and no git hook runs at checkout. The design, every decision and who made it: `.scratch/pr-review-invocable/progress.md`.
+
+**The suites.** `scripts/test.sh` passed 9 of 9, none skipped, with 239 unit tests on each of Python 3.14.6 and 3.9.6, and again with uv's 3.12.13 first on `PATH` and `CI=true`. In a Linux container (`python:3.12-slim` with git, Python 3.12.14), the hook suites and every unit test passed. CI on the release candidate is in the release's record.
+
+**The live probe.** Headless runs on Claude Code 2.1.285 with Haiku, this repository's plugin loaded in place and the shell denied, so no review could run anything; seven runs, $0.33 in all.
+
+| Run | What Claude Code did |
+| --- | --- |
+| Claude's Skill call to `matt-pocock-workflow:pr-review` with args `5`, the Skill tool allowed | launched it; the skill's text loaded with "The request: `5`" |
+| The same call with no permission rule | asked first ("Execute skill: matt-pocock-workflow:pr-review"), which a headless run takes as a no |
+| `Skill(matt-pocock-workflow:pr-review)` in `permissions.deny` | refused the call ("Skill execution blocked by permission rules"), and refused a call by the bare name `pr-review` too |
+| A typed `/matt-pocock-workflow:pr-review 5`, and a bare `/pr-review 5`, under that deny rule | loaded the skill, with its request |
+| The same rule in `permissions.ask`, the Skill tool otherwise allowed | launched it without asking |
+
+`code-review`'s Skill calls in the routing runs below were not asked about, so the ask is `pr-review`'s own; its pre-approved scripts are the likely reason, which the docs don't state.
+
+**Routing.** `scripts/behavior_test.py`, three runs of each scenario. The runs used the working tree that became `5a39821` (the report names the HEAD then, `7103d25`); `c0ba955` after it changes the trust rule, the lapse hint, checkout and docs, not the description routing reads. Every run loaded `superpowers@synced` (15 of its skills): the harness switches off only `superpowers@claude-plugins-official`.
+
+Candidate: `7103d25`; model: `claude-sonnet-5-5`; 6 runs.
+
+| Scenario | Expected first skill | Runs | Matched | Refused | Failed calls | Errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pr-review-routing` | `matt-pocock-workflow:pr-review` | 3 | 3 | 0 | 0 | 0 |
+| `review-scope` | `code-review` | 3 | 3 | 0 | 0 | 0 |
+
+The first three `pr-review-routing` runs also chose `pr-review` first, and counted as errors: the harness's headless settings denied Claude Code's ask. The settings now allow `Skill(matt-pocock-workflow:pr-review)`, the runs stop at their first skill call, and the three runs above are the ones after that change.
+
+**The reviews.** Matt Pocock's `code-review` (Standards and Spec) and a security reviewer on `5a39821`, then a security re-review of the fixes; `c0ba955` holds what they changed. The security findings, each checked before acting:
+- **Trust.** The rule read `author_association` from the pull request's own repository, so a stranger's pull request in the stranger's own repository counted as trusted (its author is `OWNER` there), and so did the viewer's own pull request to it, whose baseline is the stranger's code. A review of its URL ran their installs and checks unasked, and text Claude reads could now start one. Trust now also needs push access (`viewerPermission` `ADMIN`, `MAINTAIN` or `WRITE`; an error counts as no).
+- **The lapse hint** told Claude to invoke `pr-review` again after the user's typed answer, which re-arms its pre-approved scripts, posting included. It now leaves `pr-review` out.
+- **Hooks at checkout.** A local probe: in a throwaway repository whose hooks path points inside the tree, `git worktree add --detach` of a "pull request" commit ran the checkout-time hook with the new tree as its directory, and the hook read that tree's file ("CONFIG FROM THE PR"). So a hook runner that reads its config from the tree (lefthook, pre-commit) would run a command the pull request chose, even under static review. With `-c core.hooksPath=/dev/null`, no hook ran. The checkout reference now uses it.
+
+Not acted on: the Standards review's smells (style), and one low security note, that nothing in the skill forbids invoking it again to win back a pre-approval the user refused (recorded in the progress file).
+
+**The budgets.** `claude --plugin-dir plugin plugin details matt-pocock-workflow` on 2.1.285: `pr-review` about 3.6k tokens on invoke (its core may now take 11,200 bytes, under the 4,000-token cap the byte bound stands for), `implement` about 3.8k, always-on about 864.
+
+**Not exercised live.** An interactive session starting `pr-review` (the "Execute skill" prompt in a terminal), auto mode's decision on that call, a review Claude starts carried through to the end (the probes stop once it launches), a workflow skill calling it from a subagent, and the trust rule's permission check on a real repository the viewer can't push to (its wording is held by the static test). One timing test (`test_each_minute_stays_under_the_content_budget`) failed once, right after this Mac's upgrade to macOS 27, and did not recur in 41 runs; it is noted in the progress file.

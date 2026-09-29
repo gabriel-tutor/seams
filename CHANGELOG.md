@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (3.3.1)
+## 3.3.1 — 2026-09-30
 
 - **Claude and your workflow skills can start `pr-review`.** It was typed by hand only (`disable-model-invocation`), so a skill that called it got "cannot be used with Skill tool due to disable-model-invocation". Its description now leads with when to use it, "Use when asked to review GitHub pull requests (numbers, URLs, open, requested)", which tells Claude to start it when you, or a skill you run, ask for a review of GitHub pull requests; a local branch, commits or uncommitted work stay `code-review`'s. The review is otherwise unchanged: an untrusted pull request's code runs only after a yes, nothing is posted without one, and typing `/pr-review` works as before. A batch's next step reads "Continue it with pr-review on …", so Claude continues an unfinished batch itself when you ask, and the resume note no longer says only you can start it.
 - **Trust needs push access.** A pull request's code runs without a question only in a repository you can push to (`viewerPermission` `WRITE`, `MAINTAIN` or `ADMIN`; an error counts as no), and only when you opened it or a collaborator opened it from a branch of that repository. In 3.3.0 a stranger's pull request in the stranger's own repository counted as trusted, since its author owns that repository, and so did your own pull request to it, whose baseline is the stranger's code: a review of its URL ran their installs and checks unasked. With Claude able to start a review, text it reads could have led there.
