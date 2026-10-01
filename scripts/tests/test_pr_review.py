@@ -23,6 +23,7 @@ RUN_CHECKS = SCRIPTS / "run_checks.py"
 REVIEW_PAYLOAD = SCRIPTS / "review_payload.py"
 BATCH_REPORT = SCRIPTS / "batch_report.py"
 POST_REVIEWS = SCRIPTS / "post_reviews.py"
+REQUIREMENTS = SCRIPTS / "requirements.py"
 EVIDENCE = SCRIPTS / "evidence.py"
 
 
@@ -428,7 +429,8 @@ def review(number: int = 12, author: str = "author", verdict: str = "comment", f
 
 def build(findings, event: str = "COMMENT", viewer: str = "reviewer", author: str = "author",
           verdict: str = "comment", not_verified: "list | None" = None, diff: "str | bytes" = DIFF,
-          checks: "str | None" = CHECKS_MD, checks_rows: "list | None" = None, **pr_extra) -> "tuple[int, dict, str, str]":
+          checks: "str | None" = CHECKS_MD, checks_rows: "list | None" = None, reference: "list | None" = None,
+          requirements: "list | None" = None, **pr_extra) -> "tuple[int, dict, str, str]":
     """review_payload.py on a diff and a review.json holding these findings: exit status, payload,
     preview, stderr. checks_rows, when given, is the checks.json run_checks.py writes beside checks.md."""
     with tempfile.TemporaryDirectory() as d:
@@ -436,6 +438,11 @@ def build(findings, event: str = "COMMENT", viewer: str = "reviewer", author: st
         (tmp / "pr.diff").write_bytes(diff if isinstance(diff, bytes) else diff.encode())
         data = review(author=author, verdict=verdict, not_verified=not_verified, **pr_extra)
         data["findings"] = findings
+        if requirements is not None:
+            data["requirements"] = requirements
+        if reference is not None:                       # what requirements.py extract writes beside review.json
+            (tmp / "reference.json").write_text(json.dumps({"sources": [{"label": "ticket 03", "sha256": "0" * 64}],
+                                                            "requirements": reference, "verify": []}))
         (tmp / "review.json").write_text(json.dumps(data))
         args = [sys.executable, str(REVIEW_PAYLOAD), "--diff", str(tmp / "pr.diff"), "--review", str(tmp / "review.json"),
                 "--event", event, "--viewer", viewer, "--out", str(tmp / "payload.json"), "--preview", str(tmp / "review.md")]
@@ -454,6 +461,37 @@ def build(findings, event: str = "COMMENT", viewer: str = "reviewer", author: st
 class ReviewPayloadTest(unittest.TestCase):
     """Findings become one GitHub review: inline where GitHub accepts a comment, in the review's body
     where it would reject one, and only under an event GitHub and the verdict allow."""
+
+    LONG = "The batch progress file sits at the evidence root, in the progress-file shape, updated as each step ends"
+
+    def test_the_body_shows_each_requirement_by_number_status_and_a_short_title(self):
+        # Decision 22: a private ticket's text and path must not leak into a public pull request.
+        reference = [{"id": "R1", "kind": "criterion", "text": self.LONG, "source": "ticket 03"},
+                     {"id": "R2", "kind": "must-not", "text": "a review is posted twice", "source": "ticket 03"},
+                     {"id": "R3", "kind": "criterion", "text": "docs say so", "source": "ticket 03"}]
+        code, payload, preview, err = build([], reference=reference,
+                                            requirements=[{"id": "R1", "status": "met", "evidence": "SECRET-EVIDENCE"},
+                                                          {"id": "R2", "status": "unmet"}])
+        self.assertEqual(code, 0, err)
+        body = payload["body"]
+        self.assertIn("### Requirements", body)
+        self.assertIn("**R1** (met) The batch progress file sits at the evidence root, in the…", body)   # cut at a word
+        self.assertIn("**R2** (unmet) must not: a review is posted twice", body)
+        self.assertIn("**R3** (not verified) docs say so", body)            # a line the review did not answer
+        self.assertNotIn(self.LONG, body)                                    # never the reference's full text
+        self.assertNotIn("SECRET-EVIDENCE", body)
+        self.assertNotIn("ticket 03", body)                                  # nor which file it came from
+        self.assertNotIn("reference.json", body)
+
+    def test_a_review_without_a_reference_has_no_requirements_section(self):
+        code, payload, preview, err = build([], requirements=[{"id": "R1", "status": "met"}])
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("Requirements", payload["body"])
+
+    def test_the_footer_says_a_person_read_it_first(self):
+        # True of a review a person posts; the poster says otherwise when it posts one by itself.
+        code, payload, preview, err = build([])
+        self.assertIn("posted by a person who read it first", payload["body"])
 
     def test_a_finding_on_a_line_inside_a_hunk_is_an_inline_comment_on_the_right_side(self):
         code, payload, preview, err = build([finding("blocking", "tier threshold", "src/pricing.ts", 5),
@@ -997,26 +1035,158 @@ URL = "https://github.com/acme/shop/pull/12"
 
 
 
+class RequirementsTest(unittest.TestCase):
+    """`requirements.py extract` turns a reference (a ticket, a spec, an issue's text) into numbered requirement
+    lines in reference.json, by script, so that coverage does not rest on the model
+    (.scratch/pr-review-autopost, decisions 20 to 23)."""
+
+    TICKET = """# 07: A batch resumes
+
+**Status:** done
+
+- [x] The batch progress file sits at the evidence root. It is updated as each pull request is checked.
+- [ ] Re-invoking with the same pull requests reuses finished ones at the same head.
+- [x] Must not happen:
+  - a pull request whose head moved reuses old evidence;
+  - a review is posted twice (the existing duplicate check still runs).
+- [x] Readiness on the candidate:
+  - CI is green on macOS and Ubuntu.
+  - `scripts/test.sh` is green.
+
+**How to verify:**
+- `scripts/test.sh`.
+- The live run on throwaway pull requests.
+
+## Comments
+
+- [x] a checkbox in the comments is build history, not a requirement
+"""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp = Path(self.tmp_dir.name)
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def extract(self, *sources: "tuple[str, str]", out: "Path | None" = None) -> "tuple[int, str, dict | None]":
+        out = out or self.tmp / "reference.json"
+        args = []
+        for n, (label, text) in enumerate(sources):
+            source = self.tmp / f"source-{n}.md"
+            source.write_text(text)
+            args += ["--source", label, str(source)]
+        done = subprocess.run([sys.executable, str(REQUIREMENTS), "extract", "--out", str(out), *args],
+                              capture_output=True, text=True, timeout=60)
+        return done.returncode, done.stdout + done.stderr, (json.loads(out.read_text()) if out.exists() else None)
+
+    def lines(self, reference: dict) -> list:
+        return [(r["id"], r["kind"], r["text"]) for r in reference["requirements"]]
+
+    def test_a_tickets_checkboxes_are_its_requirements_numbered_in_order(self):
+        code, out, ref = self.extract(("ticket 07", self.TICKET))
+        self.assertEqual(code, 0, out)
+        kinds = [(i, k) for i, k, _ in self.lines(ref)]
+        self.assertEqual(kinds, [("R1", "criterion"), ("R2", "criterion"), ("R3", "must-not"), ("R4", "must-not"),
+                                 ("R5", "criterion")])      # nothing under ## Comments: that is the build's history
+        self.assertTrue(ref["requirements"][0]["text"].startswith("The batch progress file sits at the evidence root."))
+
+    def test_must_not_happen_items_are_requirements_of_their_own_and_the_heading_item_is_not(self):
+        _, _, ref = self.extract(("t", self.TICKET))
+        texts = [text for _, kind, text in self.lines(ref) if kind == "must-not"]
+        self.assertEqual(texts, ["a pull request whose head moved reuses old evidence",
+                                 "a review is posted twice (the existing duplicate check still runs)"])
+        self.assertFalse(any(text.lower().startswith("must not happen") for _, _, text in self.lines(ref)))
+
+    def test_an_inline_must_not_happen_is_one_requirement(self):
+        _, _, ref = self.extract(("t", "- [ ] Must not happen: the key is logged\n"))
+        self.assertEqual(self.lines(ref), [("R1", "must-not", "the key is logged")])
+
+    def test_nested_bullets_under_a_criterion_belong_to_that_one_line(self):
+        _, _, ref = self.extract(("t", self.TICKET))
+        text = ref["requirements"][4]["text"]
+        self.assertIn("Readiness on the candidate", text)
+        self.assertIn("CI is green on macOS and Ubuntu", text)
+        self.assertIn("`scripts/test.sh` is green", text)
+
+    def test_how_to_verify_is_kept_apart_from_the_requirements(self):
+        _, _, ref = self.extract(("t", self.TICKET))
+        self.assertEqual(ref["verify"], ["`scripts/test.sh`.", "The live run on throwaway pull requests."])
+        self.assertFalse(any("How to verify" in text for _, _, text in self.lines(ref)))
+        _, _, inline = self.extract(("t", "- [ ] one\n\n**How to verify:** `npm test` and a manual run\n"))
+        self.assertEqual(inline["verify"], ["`npm test` and a manual run"])
+
+    def test_an_issue_in_the_github_template_extracts_the_same_way(self):
+        issue = ("## Parent\n\n#12\n\n## What to build\n\nA thing.\n\n## Acceptance criteria\n\n"
+                 "- [ ] Criterion 1\n- [ ] Criterion 2\n\n**How to verify:** run it\n\n## Blocked by\n\n- None\n")
+        _, _, ref = self.extract(("issue #13", issue))
+        self.assertEqual(self.lines(ref), [("R1", "criterion", "Criterion 1"), ("R2", "criterion", "Criterion 2")])
+        self.assertEqual(ref["verify"], ["run it"])
+
+    def test_a_reference_with_no_checkbox_has_no_requirement_lines(self):
+        # A prose spec cannot support an auto-approval: nothing in it can be checked line by line.
+        code, out, ref = self.extract(("spec", "# Spec\n\nAs a user, I want coupons, so that I save money.\n\n- a plain bullet\n"))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(ref["requirements"], [])
+        self.assertIn("no requirement lines", out)
+
+    def test_several_sources_number_their_lines_in_one_run_and_say_which_each_came_from(self):
+        _, _, ref = self.extract(("ticket 03", "- [ ] first\n"), ("issue #9", "- [ ] second\n- [ ] third\n"))
+        self.assertEqual([(r["id"], r["source"]) for r in ref["requirements"]],
+                         [("R1", "ticket 03"), ("R2", "issue #9"), ("R3", "issue #9")])
+
+    def test_sources_are_recorded_by_label_and_hash_never_by_path(self):
+        _, _, ref = self.extract(("ticket 03 at baseline", "- [ ] first\n"))
+        self.assertEqual([s["label"] for s in ref["sources"]], ["ticket 03 at baseline"])
+        self.assertEqual(len(ref["sources"][0]["sha256"]), 64)
+        self.assertNotIn(str(self.tmp), json.dumps(ref))
+
+    def test_the_numbered_lines_are_printed_for_the_review_to_work_through(self):
+        _, out, _ = self.extract(("t", "- [ ] first thing\n- [ ] Must not happen: second thing\n"))
+        self.assertIn("R1", out)
+        self.assertIn("first thing", out)
+        self.assertIn("R2", out)
+        self.assertIn("must not: second thing", out)
+
+    def test_an_unreadable_source_is_a_usage_error_and_writes_nothing(self):
+        out_file = self.tmp / "reference.json"
+        done = subprocess.run([sys.executable, str(REQUIREMENTS), "extract", "--out", str(out_file),
+                               "--source", "t", str(self.tmp / "missing.md")], capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 2, done.stdout + done.stderr)
+        self.assertFalse(out_file.exists())
+
+
 class AutoPostTest(PosterHarness, unittest.TestCase):
     """`post_reviews.py --auto` posts a review without a yes only when it is fully verified at the head
     (CONTEXT.md, Fully verified) and the viewer can push to the repository. The rule is code, read from the
     evidence on disk, so a review the model calls verified posts only if the evidence says so
     (.scratch/pr-review-autopost, decisions 1, 7 and 21)."""
 
-    OWN = {"independent": False, "sources": []}
-
     def verified(self, number: int = 1, event: str = "COMMENT", **changes) -> Path:
         """A review that is fully verified: a check that passed on both trees, nothing under not verified, no
-        unverified finding, an independent reference. `changes` overrides review.json's keys."""
+        unverified finding, an independent reference with one requirement line that is met. `changes` overrides
+        review.json's keys."""
         folder = self.evidence(number)
         review = json.loads((folder / "review.json").read_text())
-        review.update({"findings": [], "not_verified": [], "intent": {"independent": True, "sources": ["docs/spec.md"]}})
+        review.update({"findings": [], "not_verified": [], "intent": {"sources": ["ticket 03"]},
+                       "requirements": [{"id": "R1", "status": "met", "evidence": "the check passes"}]})
         review.update(changes)
         (folder / "review.json").write_text(json.dumps(review))
         self.event(folder, event)
+        self.reference(folder, [{"id": "R1", "kind": "criterion", "text": "one", "source": "ticket 03"}])
         (folder / "checks").mkdir()
         self.checks(folder, [{"name": "test", "verdict": "ok", "base": {"status": "pass"}, "head": {"status": "pass"}}])
         return folder
+
+    def reference(self, folder: Path, lines: list) -> None:
+        """reference.json as requirements.py extract writes it."""
+        (folder / "reference.json").write_text(json.dumps({
+            "sources": [{"label": "ticket 03", "sha256": "0" * 64}], "requirements": lines, "verify": []}))
+
+    def no_reference(self, folder: Path) -> None:
+        """The pull request's own description is all the spec there is."""
+        (folder / "reference.json").unlink(missing_ok=True)
+        self.change(folder, intent={"sources": []}, requirements=[])
 
     def checks(self, folder: Path, rows: list) -> None:
         (folder / "checks" / "checks.json").write_text(json.dumps(rows))
@@ -1078,9 +1248,19 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
              lambda f: self.change(f, findings=[{**blocking, "proof": "I am sure"}], **request_changes)),
             ("a viewer who cannot push to the repository", "cannot push", lambda f: self.deny_push("o/r")),
             ("an approval with only the pull request's own description as its spec", "independent reference",
-             lambda f: (self.change(f, intent=self.OWN), self.event(f, "APPROVE"))),
-            ("an approval whose review has no intent at all", "independent reference",
-             lambda f: (self.change(f, intent=None), self.event(f, "APPROVE"))),
+             lambda f: (self.no_reference(f), self.event(f, "APPROVE"))),
+            ("an approval whose reference has no requirement line", "independent reference",
+             lambda f: (self.reference(f, []), self.change(f, requirements=[]), self.event(f, "APPROVE"))),
+            ("a reference the review names but never extracted", "reference.json is missing",
+             lambda f: (f / "reference.json").unlink()),
+            ("a requirement line with no status", "requirement R1 has no status", lambda f: self.change(f, requirements=[])),
+            ("a requirement line left not verified", "requirement R1 is not verified",
+             lambda f: self.change(f, requirements=[{"id": "R1", "status": "not verified"}])),
+            ("an unmet requirement with no blocking finding citing it", "no blocking finding",
+             lambda f: self.change(f, requirements=[{"id": "R1", "status": "unmet", "evidence": "e"}])),
+            ("an approval with an unmet requirement", "unmet requirement",
+             lambda f: (self.change(f, requirements=[{"id": "R1", "status": "unmet", "evidence": "e"}]),
+                        self.event(f, "APPROVE"))),
         ]
         for label, reason, damage in cases:
             with self.subTest(label):
@@ -1097,9 +1277,13 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
 
     def test_a_comment_posts_without_an_independent_reference_but_an_approval_does_not(self):
         # Decision 21: the author's own description cannot approve itself; it can still be commented on.
-        self.assertEqual(self.auto(self.verified(1, intent=self.OWN))[0], 0)
+        alone = self.verified(1)
+        self.no_reference(alone)
+        self.assertEqual(self.auto(alone)[0], 0)
         self.assertEqual(len(self.reviews(1)), 1)
-        code, out = self.auto(self.verified(2, event="APPROVE", intent=self.OWN))
+        approve = self.verified(2, event="APPROVE")
+        self.no_reference(approve)
+        code, out = self.auto(approve)
         self.assertEqual(code, 1, out)
         self.assertEqual(self.reviews(2), [])
 
@@ -1118,6 +1302,31 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
                 code, out = self.auto(self.verified(1, findings=[finding], verdict="request changes"))
                 self.assertEqual(code, 0, out)
 
+    def test_an_unmet_requirement_with_a_proven_blocking_finding_posts_as_a_request_for_changes(self):
+        # A review that finds the pull request short of its reference is still fully verified: every line has a
+        # determined status. It just cannot approve (decision 23).
+        finding = {"severity": "blocking", "title": "R1 not met", "body": "b", "path": "a.py", "line": 1,
+                   "verified": True, "proof": "check", "evidence": "e", "requirement": "R1"}
+        folder = self.verified(1, findings=[finding], verdict="request changes",
+                               requirements=[{"id": "R1", "status": "unmet", "evidence": "the check fails"}])
+        self.event(folder, "REQUEST_CHANGES")
+        code, out = self.auto(folder)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.reviews(1)[0]["state"], "REQUEST_CHANGES")
+
+    def test_a_not_applicable_requirement_is_covered_and_a_line_the_review_invented_is_ignored(self):
+        folder = self.verified(1, requirements=[{"id": "R1", "status": "not applicable", "evidence": "docs only"},
+                                                {"id": "R9", "status": "met"}])
+        self.assertEqual(self.auto(folder)[0], 0)
+
+    def test_every_line_of_a_longer_reference_needs_a_status(self):
+        folder = self.verified(1)
+        self.reference(folder, [{"id": "R1", "kind": "criterion", "text": "one", "source": "s"},
+                                {"id": "R2", "kind": "must-not", "text": "two", "source": "s"}])
+        code, out = self.auto(folder)                      # the review answered R1 only
+        self.assertEqual(code, 1, out)
+        self.assertIn("requirement R2 has no status", out)
+
     def test_a_question_and_praise_need_no_verification_but_a_nit_does(self):
         question = {"severity": "question", "title": "t", "body": "b"}
         praise = {"severity": "praise", "title": "t", "body": "b"}
@@ -1126,6 +1335,31 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
         code, out = self.auto(self.verified(2, findings=[nit]))
         self.assertEqual(code, 1, out)
         self.assertIn("not verified at the head", out)
+
+    def test_an_auto_posted_review_says_no_person_read_it_first(self):
+        # review_payload.py's footer says a person read it first: false when the poster posts it by itself.
+        code, payload, _, err = build([])
+        self.assertEqual(code, 0, err)
+        folder = self.verified()
+        (folder / "payload.json").write_text(json.dumps({**payload, "commit_id": "a" * 40}))
+        code, out = self.auto(folder)
+        self.assertEqual(code, 0, out)
+        for body in (self.reviews(1)[0]["body"], json.loads((folder / "payload.json").read_text())["body"]):
+            self.assertIn("posted automatically", body)
+            self.assertIn("no person read it first", body)
+            self.assertNotIn("posted by a person who read it first", body)
+
+    def test_without_auto_the_footer_is_left_as_the_person_read_it(self):
+        code, payload, _, err = build([])
+        folder = self.verified()
+        (folder / "payload.json").write_text(json.dumps({**payload, "commit_id": "a" * 40}))
+        self.assertEqual(self.post(folder)[0], 0)
+        self.assertIn("posted by a person who read it first", self.reviews(1)[0]["body"])
+
+    def test_a_payload_with_no_footer_gets_the_disclosure_appended(self):
+        folder = self.verified()                      # its body is "Review of #1", with no footer to correct
+        self.assertEqual(self.auto(folder)[0], 0)
+        self.assertIn("posted automatically", self.reviews(1)[0]["body"])
 
     def test_what_is_not_eligible_does_not_stop_the_eligible_ones_after_it(self):
         bad, good = self.verified(1), self.verified(2)

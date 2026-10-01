@@ -25,7 +25,8 @@ With --auto a review posts without a person's yes only when it is fully verified
 viewer can push to the repository; the rule is read from the evidence on disk, never from the model's say-so:
 checks/checks.json lists at least one check and none "could not run" or "flaky", review.json's not_verified is empty,
 every finding but a question or praise is verified at the head, every blocking one has a proof (a check, a probe,
-a reproduction or a citation), and an APPROVE needs an independent reference (intent.independent). A review that
+a reproduction or a citation), and the reference's requirement lines (reference.json) each have a status, an unmet one
+a blocking finding citing it; an APPROVE needs a reference with at least one line, none unmet. A review that
 falls short is not posted: `needs your yes: <review>: <why>` is printed, it counts as not on GitHub (exit 1), and
 the reviews after it are still tried. Without --auto the poster posts what the person chose, as it always did.
 
@@ -73,6 +74,25 @@ def load(folder: Path) -> dict:
                          f"the review for {head[:7]}; rebuild it with review_payload.py")
     return {"folder": folder, "repo": repo, "number": number, "head": head, "payload": payload, "review": review,
             "name": f"{repo}#{number} at {head[:7]} as {payload.get('event')}"}
+
+
+READ_FIRST = "posted by a person who read it first"          # review_payload.py's footer; false for an auto-post
+POSTED_AUTO = ("posted automatically, because every check ran on both trees and every finding was verified at "
+               "this head: no person read it first")
+
+
+def disclose_auto(review: dict) -> None:
+    """A review posted by itself says so: review_payload.py's footer claims a person read it first, which is not
+    true here. The footer's sentence is replaced (or one appended when the body has none) and payload.json is
+    rewritten, so what GitHub receives is what was written down."""
+    payload = review["payload"]
+    body = payload.get("body") or ""
+    if READ_FIRST in body:
+        body = body.replace(READ_FIRST, POSTED_AUTO)
+    elif POSTED_AUTO not in body:
+        body += f"\n\n<sub>Drafted with Claude Code (Seams `pr-review`) and {POSTED_AUTO}.</sub>"
+    payload["body"] = body
+    (review["folder"] / "payload.json").write_text(json.dumps(payload, indent=2) + "\n")
 
 
 PROOFS = ("check", "probe", "reproduction", "citation")      # what a blocking finding may rest on (CONTEXT.md, Finding)
@@ -123,9 +143,50 @@ def shortfalls(review: dict, can_push: bool) -> list:
             reasons.append(f"blocking finding has no proof (one of {', '.join(PROOFS)}): {title}")
     if not can_push:
         reasons.append(f"the viewer cannot push to {review['repo']}")
-    intent = data.get("intent")
-    if review["payload"].get("event") == "APPROVE" and not (isinstance(intent, dict) and intent.get("independent") is True):
-        reasons.append("an approval needs an independent reference, and the pull request's own description is not one")
+    reasons += reference_shortfalls(review, findings)
+    return reasons
+
+
+STATUSES = ("met", "unmet", "not applicable")
+
+
+def reference_shortfalls(review: dict, findings: list) -> list:
+    """What the reference (reference.json, written by requirements.py, never by the model) asks of this review:
+    every requirement line has a determined status (met, unmet or not applicable); an unmet one has a blocking
+    finding that cites it; and an APPROVE has at least one line to stand on, with none unmet. The pull
+    request's own description is no reference."""
+    data, reasons, path = review["review"], [], review["folder"] / "reference.json"
+    lines = []
+    if path.exists():
+        try:
+            lines = json.loads(path.read_text())["requirements"]
+            if not isinstance(lines, list) or not all(isinstance(line, dict) and line.get("id") for line in lines):
+                raise ValueError("requirements is not a list of lines")
+        except (OSError, ValueError, KeyError, TypeError):
+            lines = []
+            reasons.append("reference.json is unreadable")
+    elif isinstance(data.get("intent"), dict) and data["intent"].get("sources"):
+        reasons.append("review.json names a reference but reference.json is missing (requirements.py extract writes it)")
+    approve = review["payload"].get("event") == "APPROVE"
+    if approve and not lines:
+        reasons.append("an approval needs an independent reference with at least one requirement line, "
+                       "and the pull request's own description is not one")
+    answers = {a.get("id"): a for a in data.get("requirements") or [] if isinstance(a, dict)}
+    for line in lines:
+        number, answer = line["id"], answers.get(line["id"])
+        status = answer.get("status") if answer else None
+        if status is None:
+            reasons.append(f"requirement {number} has no status")
+        elif status == "not verified":
+            reasons.append(f"requirement {number} is not verified")
+        elif status not in STATUSES:
+            reasons.append(f"requirement {number} has a status that is none of {', '.join(STATUSES)}")
+        elif status == "unmet":
+            if approve:
+                reasons.append(f"an approval with unmet requirement {number}")
+            if not any(isinstance(f, dict) and f.get("severity") == "blocking" and f.get("requirement") == number
+                       for f in findings):
+                reasons.append(f"unmet requirement {number} has no blocking finding that cites it")
     return reasons
 
 
@@ -274,6 +335,7 @@ def main(argv: "list | None" = None) -> int:
                 print(f"needs your yes: {review['name']}: {'; '.join(why)}")
                 missing += 1
                 continue
+            disclose_auto(review)
         try:
             on_github, stopped = post_one(review, viewer, pace, args)
         except (GhError, ValueError, KeyError, TypeError) as err:

@@ -196,11 +196,35 @@ def comment_body(finding: dict, side: str) -> str:
     return _cap("\n\n".join(parts))
 
 
+READ_FIRST = "posted by a person who read it first"      # the footer's claim; post_reviews.py --auto corrects it
+
+
+def short(text) -> str:
+    """A requirement's short title: its text up to 60 characters, cut at a word. A posted review names a requirement
+    by number and this, never by its full text (a private ticket must not leak into a public pull request)."""
+    text = " ".join(str(text).split())
+    if len(text) <= 60:
+        return text
+    cut = text[:61].rsplit(" ", 1)[0] if " " in text[:61] else text[:60]
+    return cut.rstrip(",;:") + "…"
+
+
+def requirements_section(review: dict, reference: list) -> list:
+    """The reference's requirement lines, each with the status this review gave it ("not verified" when it gave
+    none): number, status and short title only."""
+    answers = {a.get("id"): a.get("status") for a in review.get("requirements") or [] if isinstance(a, dict)}
+    lines = ["### Requirements", ""]
+    for line in reference:
+        kind = "must not: " if line.get("kind") == "must-not" else ""
+        lines.append(f"- **{line['id']}** ({answers.get(line['id']) or 'not verified'}) {kind}{short(line.get('text', ''))}")
+    return lines + [""]
+
+
 def _cap(text: str) -> str:
     return text if len(text) <= LIMIT else text[:LIMIT] + "\n\n…(cut to fit GitHub's limit; the full text is in the local draft)"
 
 
-def body(review: dict, checks: str, outside: list) -> str:
+def body(review: dict, checks: str, outside: list, reference: "list | None" = None) -> str:
     counts = {s: sum(1 for f in review["findings"] if f["severity"] == s) for s in SEVERITIES}
     head = str(review["pr"].get("head") or "")[:7]
     lines = [f"**Verdict: {VERDICTS[review['verdict']]}** · reviewed at `{head}`", ""]
@@ -209,6 +233,8 @@ def body(review: dict, checks: str, outside: list) -> str:
     plural = {"nit": "nits", "question": "questions"}
     shown = [f"{counts[s]} {plural.get(s, s) if counts[s] != 1 else s}" for s in SEVERITIES if s != "praise"]
     lines += ["**Findings:** " + " · ".join(shown) + ". Inline on the diff unless listed under *Outside the diff*.", ""]
+    if reference:
+        lines += requirements_section(review, reference)
     if checks.strip():
         lines += ["### Checks: baseline against candidate", "", checks.strip(), ""]
     if outside:
@@ -230,8 +256,7 @@ def body(review: dict, checks: str, outside: list) -> str:
         lines += ["### Not verified", ""] + [f"- {item}" for item in review["not_verified"]] + [""]
     ran = ("Checks ran locally on the merge-base and on the head." if checks.strip()
            else "No checks were run on this machine: a static review reads the code only.")
-    lines.append(f"<sub>{ran} Drafted with Claude Code (Seams `pr-review`) and posted by a person who "
-                 "read it first.</sub>")
+    lines.append(f"<sub>{ran} Drafted with Claude Code (Seams `pr-review`) and {READ_FIRST}.</sub>")
     return _cap("\n".join(lines))
 
 
@@ -277,7 +302,8 @@ def validate(review: dict, event: str, viewer: str, broken: list) -> None:
             raise Refused(f"APPROVE needs the verdict approve, and this review's is {review['verdict']!r}")
 
 
-def build(review: dict, diff: str, checks: str, event: str, viewer: str, broken: "list | None" = None) -> "tuple[dict, str]":
+def build(review: dict, diff: str, checks: str, event: str, viewer: str, broken: "list | None" = None,
+          reference: "list | None" = None) -> "tuple[dict, str]":
     validate(review, event, viewer, broken or [])
     files = parse_diff(diff)
     comments, outside = [], []
@@ -287,7 +313,7 @@ def build(review: dict, diff: str, checks: str, event: str, viewer: str, broken:
             outside.append(f)
         else:
             comments.append({**spot, "body": comment_body(f, spot["side"])})
-    payload = {"commit_id": review["pr"]["head"], "event": event, "body": body(review, checks, outside),
+    payload = {"commit_id": review["pr"]["head"], "event": event, "body": body(review, checks, outside, reference),
                "comments": comments}
     pr = review["pr"]
     preview = [f"# Draft review: {pr.get('repo', '')}#{pr.get('number', '')} at `{str(pr['head'])[:7]}`, as {event}", "",
@@ -296,6 +322,16 @@ def build(review: dict, diff: str, checks: str, event: str, viewer: str, broken:
         span = f"{c['start_line']}-{c['line']}" if "start_line" in c else str(c["line"])
         preview += [f"### `{c['path']}:{span}` ({c['side']})", "", c["body"], ""]
     return payload, "\n".join(preview)
+
+
+def reference_lines(folder: Path) -> list:
+    """The requirement lines in the reference.json beside review.json (requirements.py extract wrote it): none when
+    there is no reference, or it cannot be read."""
+    try:
+        lines = json.loads((folder / "reference.json").read_text())["requirements"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    return [l for l in lines if isinstance(l, dict) and l.get("id")] if isinstance(lines, list) else []
 
 
 def main(argv: "list | None" = None) -> int:
@@ -320,7 +356,7 @@ def main(argv: "list | None" = None) -> int:
                 broken = [r["name"] for r in json.loads(rows_file.read_text())
                           if r.get("verdict") in ("broken by the PR", "removed by the PR")]
         diff = args.diff.read_bytes().decode("utf-8", "replace")
-        payload, preview = build(review, diff, checks, args.event, args.viewer, broken)
+        payload, preview = build(review, diff, checks, args.event, args.viewer, broken, reference_lines(args.review.parent))
     except Refused as err:
         print(f"review_payload.py: refused: {err}", file=sys.stderr)
         return 1
