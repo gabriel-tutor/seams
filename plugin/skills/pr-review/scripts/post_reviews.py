@@ -30,6 +30,10 @@ a blocking finding citing it; an APPROVE needs a reference with at least one lin
 falls short is not posted: `needs your yes: <review>: <why>` is printed, it counts as not on GitHub (exit 1), and
 the reviews after it are still tried. Without --auto the poster posts what the person chose, as it always did.
 
+A review posted also leaves a label on its pull request, in the prefix `pr-review:` (commented, changes requested
+or approved), created in the repository once and replacing an older one of the prefix; a label the repository
+uses is never touched, and a label that cannot be applied is reported and never undoes the review.
+
 Each review posted is recorded in EVID/posted.json, and the progress file of a batch listing EVID brought up to
 date (evidence.py), and its link printed. Exits 0 when every review
 is on GitHub, 1 when any is not (each says why), and 2 on a usage error, before anything is posted.
@@ -42,6 +46,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # beside this script, even under PYTHONSAFEPATH
@@ -93,6 +98,60 @@ def disclose_auto(review: dict) -> None:
         body += f"\n\n<sub>Drafted with Claude Code (Seams `pr-review`) and {POSTED_AUTO}.</sub>"
     payload["body"] = body
     (review["folder"] / "payload.json").write_text(json.dumps(payload, indent=2) + "\n")
+
+
+LABEL_PREFIX = "pr-review:"
+LABELS = {"COMMENT": ("pr-review: commented", "FBCA04", "A review was posted, with nothing in it that blocks the pull request"),
+          "REQUEST_CHANGES": ("pr-review: changes requested", "D93F0B", "A review was posted that asks for changes"),
+          "APPROVE": ("pr-review: approved", "0E8A16", "A review was posted that approves the pull request")}
+
+
+def api(method: str, path: str, body=None) -> "tuple[int, dict, object]":
+    """One `gh api` call, with a JSON body on stdin when there is one: status, lower-cased headers, parsed body."""
+    command = ["gh", "api", "--include", "--method", method, path] + (["--input", "-"] if body is not None else [])
+    feed = {"input": json.dumps(body)} if body is not None else {"stdin": subprocess.DEVNULL}
+    return read_response(subprocess.run(command, capture_output=True, text=True, **feed))
+
+
+def label_review(review: dict) -> "tuple[str | None, str | None]":
+    """Leave this review's label on its pull request: (the label, None), or (None, why not). One label, in the
+    prefix `pr-review:`, created in the repository once and replacing any older one of the prefix on the pull
+    request; a label the repository itself uses is never touched. Whatever goes wrong here is reported and
+    never stops anything: the review is already on GitHub."""
+    try:
+        event = review["payload"].get("event")
+        if event not in LABELS:
+            return None, f"no label for the event {event}"
+        name, color, description = LABELS[event]
+        repo, number = review["repo"], review["number"]
+        status, _, body = api("GET", f"repos/{repo}/labels/{quote(name, safe='')}")
+        if status == 404:
+            status, _, body = api("POST", f"repos/{repo}/labels",
+                                  {"name": name, "color": color, "description": description})
+            if status == 422:                       # a review started at the same time made it first
+                status = 201
+        if status >= 300:
+            return None, f"HTTP {status}: {message(body)}"
+        status, _, body = api("GET", f"repos/{repo}/issues/{number}/labels?per_page=100")
+        if status >= 300 or not isinstance(body, list):
+            return None, f"HTTP {status}: {message(body)}"
+        on_pr = [label.get("name") for label in body if isinstance(label, dict)]
+        for older in on_pr:
+            if isinstance(older, str) and older.startswith(LABEL_PREFIX) and older != name:
+                api("DELETE", f"repos/{repo}/issues/{number}/labels/{quote(older, safe='')}")
+        if name not in on_pr:
+            status, _, body = api("POST", f"repos/{repo}/issues/{number}/labels", {"labels": [name]})
+            if status >= 300:
+                return None, f"HTTP {status}: {message(body)}"
+        return name, None
+    except Exception as err:                        # noqa: BLE001  never a reason for the poster to stop
+        return None, str(err) or type(err).__name__
+
+
+def label_line(review: dict, label: "tuple[str | None, str | None]") -> str:
+    name, why = label
+    return (f"label: {review['name']}: {name}" if name
+            else f"label not applied: {review['name']}: {why} (the review is posted)")
 
 
 PROOFS = ("check", "probe", "reproduction", "citation")      # what a blocking finding may rest on (CONTEXT.md, Finding)
@@ -241,6 +300,11 @@ def submit(review: dict) -> "tuple[int, dict, object]":
                            f"repos/{review['repo']}/pulls/{review['number']}/reviews",
                            "--input", str(review["folder"] / "payload.json")],
                           capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    return read_response(done)
+
+
+def read_response(done) -> "tuple[int, dict, object]":
+    """What `gh api --include` printed: the HTTP status, the response headers (lower-cased names) and the body."""
     head, _, text = done.stdout.replace("\r\n", "\n").partition("\n\n")
     lines = head.split("\n")
     try:
@@ -264,15 +328,17 @@ class Pace:
     at a time, a second apart. A review counts 1 plus its inline comments, and this stays at half
     of each limit. Once GitHub has blocked a post, the posts that follow are `slow` seconds apart."""
 
-    def __init__(self, per_minute: int, per_hour: int, minute: float, slow: float):
+    def __init__(self, per_minute: int, per_hour: int, minute: float, slow: float,
+                 clock=time.monotonic, sleep=time.sleep):
         self.per_minute, self.per_hour, self.minute, self.slow = per_minute, per_hour, minute, slow
+        self.clock, self.sleep = clock, sleep         # a test drives these without waiting
         self.sent: list = []              # (monotonic time, units)
         self.blocked = False
 
     def wait(self, units: int, name: str) -> None:
-        told, started = False, time.monotonic()
+        told, started = False, self.clock()
         while True:
-            now = time.monotonic()
+            now = self.clock()
             gap = self.slow if self.blocked else self.minute / 60
             in_minute = sum(u for t, u in self.sent if now - t < self.minute)
             in_hour = sum(u for t, u in self.sent if now - t < self.minute * 60)
@@ -283,16 +349,19 @@ class Pace:
             if not told and now - started > self.minute / 30:
                 print(f"waiting before {name}, to stay under GitHub's limits for creating content", flush=True)
                 told = True
-            time.sleep(max(0.01, min(self.minute / 120, 1.0)))
+            self.sleep(max(0.01, min(self.minute / 120, 1.0)))
 
     def sent_now(self, units: int) -> None:
-        self.sent.append((time.monotonic(), units))
+        self.sent.append((self.clock(), units))
 
 
-def record(review: dict, posted: dict, auto: bool = False) -> str:
+def record(review: dict, posted: dict, auto: bool = False, label: "tuple | None" = None) -> str:
+    extra = {}
+    if label:
+        extra = {"label": label[0]} if label[0] else {"label_error": label[1]}
     (review["folder"] / "posted.json").write_text(json.dumps(
         {"html_url": posted.get("html_url"), "id": posted.get("id"), "event": review["payload"].get("event"),
-         "commit_id": review["head"], **({"auto": True} if auto else {})}, indent=2) + "\n")
+         "commit_id": review["head"], **({"auto": True} if auto else {}), **extra}, indent=2) + "\n")
     if evidence is not None:
         evidence.update_batches(review["folder"])
     return posted.get("html_url") or ""
@@ -365,7 +434,9 @@ def post_one(review: dict, viewer: str, pace: Pace, args) -> "tuple[bool, str | 
         status, headers, body = submit(review)
         pace.sent_now(units)                  # counted from when GitHub answered
         if 200 <= status < 300 and isinstance(body, dict):
-            print(f"posted: {review['name']}: {record(review, body, args.auto)}")
+            label = label_review(review)
+            print(f"posted: {review['name']}: {record(review, body, args.auto, label)}")
+            print(label_line(review, label))
             return True, None
         if not rate_limited(status, headers, body):
             print(f"not posted: {review['name']}: HTTP {status}: {message(body)}")
@@ -387,7 +458,9 @@ def post_one(review: dict, viewer: str, pace: Pace, args) -> "tuple[bool, str | 
         time.sleep(wait)
         posted = already_posted(review, viewer)
         if posted:                            # refused, yet kept
-            print(f"posted: {review['name']}: {record(review, posted, args.auto)}")
+            label = label_review(review)
+            print(f"posted: {review['name']}: {record(review, posted, args.auto, label)}")
+            print(label_line(review, label))
             return True, None
 
 

@@ -2,7 +2,8 @@
 """Run a pull request's checks on its baseline and on its candidate, and say whose each failure is.
 
   run_checks.py --base DIR --head DIR --out DIR --check NAME=COMMAND [--check ...] [--timeout SECONDS]
-                [--merge] [--slots N] [--slot-dir DIR] [--bash PATH]
+                [--merge] [--slots N] [--slot-dir DIR] [--bash PATH] [--serial NAME ...] [--sequential]
+                [--share DIR] [--share-age SECONDS] [--load-limit N]
   run_checks.py --base DIR --head DIR --out DIR --recheck NAME [--recheck ...]
 
 Each check runs with `bash -c COMMAND`, in the newest bash on PATH or in the usual install places
@@ -16,7 +17,22 @@ have that no earlier run's check left (a probe left behind) is a usage error, be
 what checks leave (a report, a build cache git does not ignore) is kept in <out>/left.json. The run waits for one of the machine's check slots (--slots, half
 its cores by default, shared through --slot-dir), so reviews started together take turns. --merge
 keeps the checks already in checks.json and adds or replaces these; --recheck runs a check broken by
-the PR once more on the candidate, alone after a batch, and calls it flaky when it passes. The verdicts:
+the PR once more on the candidate, alone after a batch, and calls it flaky when it passes.
+
+The two trees of a check run at the same time ("schedule": "together"), except a check that needs a service (a
+database, a port: docker, postgres, redis, e2e, playwright and the like by name or command, or --serial NAME),
+which runs them one after the other, as does --sequential for every check, and so does a machine with no room:
+slots count reviews, not the cores a suite spends, so once the load average is over --load-limit (three quarters
+of the cores by default) running both trees at once could only slow every review. Only a pass is believed from a run that
+shared the machine, or what the command and the tree settle (absent, unsupported): a failure or a timeout in it is
+run again with the trees one after the other, and that run is the one that counts, so two runs colliding on a
+port can neither blame the pull request nor hide a real failure. --share DIR is a folder the reviews of one batch
+share: a passing baseline run of a check is kept there by baseline commit, check, command and shell, and a later
+review of the same commit uses it ("shared": its baseline tree did not run that check) instead of running it
+again; two reviews starting the same one together run it once, the second waiting for the first. Only a pass is
+shared (a failing baseline is run by each review, none queuing behind another), never an install or a check
+that builds, generates or prepares files a later check may read, and not one older than --share-age seconds
+(three hours). The verdicts:
 
   ok                 passes on both
   broken by the PR   passes on the baseline, fails on the candidate twice (a timeout is a failure)
@@ -41,13 +57,16 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.dont_write_bytecode = True                 # the plugin folder is loaded in place: no __pycache__ in it
@@ -205,17 +224,117 @@ def verdict(base: str, head: str) -> "tuple[str, str | None]":
     return "already broken", None
 
 
-def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout: float, shell: dict) -> dict:
-    """Both runs of one check, the second run when the two disagree, and the verdict."""
+# What marks a check as needing a service (a database, a port), whose two trees must not run at the same time, and
+# one whose baseline run must not be shared: an install, or a check that makes files a later check may read.
+SERVICE = re.compile(r"docker|compose|postgres|psql|pg_|mysql|maria|mongo|redis|rabbit|kafka|elastic|e2e|"
+                     r"playwright|cypress|selenium|testcontainers|supabase|database|\bdb\b", re.I)
+NOT_SHARED = re.compile(r"install|\bci\b|build|compile|generate|codegen|prepare|migrat|seed|setup|bootstrap|"
+                        r"compose|docker", re.I)
+SHARE_AGE = 3 * 3600
+
+
+def needs_service(name: str, command: str) -> bool:
+    return bool(SERVICE.search(f"{name} {command}"))
+
+
+def shareable(name: str, command: str) -> bool:
+    return not NOT_SHARED.search(f"{name} {command}")
+
+
+def baseline_commit(tree: Path) -> "str | None":
+    done = subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL)
+    return done.stdout.strip() if done.returncode == 0 and done.stdout.strip() else None
+
+
+def read_shared(path: Path, age: float) -> "dict | None":
+    """A shared result still fresh enough to use, or None."""
+    try:
+        entry = json.loads(path.read_text())
+        if (isinstance(entry, dict) and isinstance(entry.get("result"), dict)
+                and time.time() - float(entry["at"]) <= age):
+            return entry
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def shared_run(share: Path, age: float, tree: Path, name: str, command: str, log: Path, timeout: float,
+               shell: dict) -> dict:
+    """One run of a baseline check, taken from the batch's shared results when a review of the same commit already
+    passed it. The first review to ask runs it, holding the check's lock, so a second one asking meanwhile waits for
+    the result instead of running it too. A failing first run is recorded and trusted by nobody: the others find it,
+    let go of the lock at once and run their own, side by side."""
+    commit = baseline_commit(tree)
+    if commit is None:
+        return run_side(command, tree, log, timeout, shell)
+    key = hashlib.sha256(json.dumps([commit, name, command, shell.get("path"), shell.get("version")]).encode()).hexdigest()[:40]
+    try:
+        share.mkdir(parents=True, exist_ok=True)
+        handle = open(share / f"{key}.lock", "a")
+    except OSError:
+        return run_side(command, tree, log, timeout, shell)
+    with handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        entry = read_shared(share / f"{key}.json", age)
+        if entry is not None:
+            if entry["result"].get("status") == "pass":
+                try:
+                    shutil.copyfile(share / f"{key}.log", log)
+                    return {**entry["result"], "shared": True, "log": log.name}
+                except OSError:
+                    pass
+            fcntl.flock(handle, fcntl.LOCK_UN)
+            return run_side(command, tree, log, timeout, shell)
+        result = run_side(command, tree, log, timeout, shell)
+        try:
+            if result["status"] == "pass":
+                shutil.copyfile(log, share / f"{key}.log")
+            scratch = share / f"{key}.json.{os.getpid()}"
+            scratch.write_text(json.dumps({"at": time.time(), "result": result}))
+            os.replace(scratch, share / f"{key}.json")
+        except OSError:
+            pass                                    # nothing shared this time: the result stands for this review
+        return result
+
+
+def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout: float, shell: dict,
+            together: bool = False, share: "Path | None" = None, share_age: float = SHARE_AGE) -> dict:
+    """Both runs of one check (at the same time when `together`), the second run when the two disagree, and the
+    verdict."""
+    base_log, head_log = out / f"{name}.base.log", out / f"{name}.head.log"
+
+    def first_base() -> dict:
+        if share is not None and shareable(name, command):
+            return shared_run(share, share_age, base, name, command, base_log, timeout, shell)
+        return run_side(command, base, base_log, timeout, shell)
+
+    def first_head() -> dict:
+        return run_side(command, head, head_log, timeout, shell)
+
+    if together:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            pending = (pool.submit(first_base), pool.submit(first_head))
+            base_run, head_run = (future.result() for future in pending)
+    else:
+        base_run = first_base()
+        head_run = first_head()
     result = {"name": name, "command": command, "shell": shell,
-              "base": run_side(command, base, out / f"{name}.base.log", timeout, shell),
-              "head": run_side(command, head, out / f"{name}.head.log", timeout, shell),
-              "rerun": None}
+              "schedule": "together" if together else "one after the other",
+              "base": base_run, "head": head_run, "rerun": None}
     first, again = verdict(result["base"]["status"], result["head"]["status"])
-    if again:
-        tree = base if again == "base" else head
-        second = run_side(command, tree, out / f"{name}.{again}.rerun.log", timeout, shell)
-        result["rerun"] = {"side": again, **second}
+    sides = [again] if again else []
+    if together and first != "removed by the PR":
+        # Only a pass is believed from a run that shared the machine: each side that failed (or timed out) in it
+        # runs again alone, one after the other, as its second run. Passing then, the check is flaky, as ever.
+        sides = [side for side, run in (("base", base_run), ("head", head_run)) if run["status"] in ("fail", "timeout")]
+        if sides:
+            result["schedule"] = "together, a failure run again alone"
+    for side in sides:
+        tree = base if side == "base" else head
+        second = run_side(command, tree, out / f"{name}.{side}.rerun.log", timeout, shell)
+        if result["rerun"] is None or second["status"] == "pass" or side == "head":
+            result["rerun"] = {"side": side, **second}
         if second["status"] == "pass":
             first = "flaky"
     result["verdict"] = first
@@ -225,7 +344,7 @@ def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout:
 def cell(run: dict, rerun: "dict | None") -> str:
     """One side of one check, as the table shows it."""
     if run["status"] == "pass":
-        text = f"pass ({run['seconds']} s)"
+        text = f"pass ({run['seconds']} s{', shared' if run.get('shared') else ''})"
     elif run["status"] in ("absent", "timeout", "unsupported"):
         text = run["reason"]
     else:
@@ -278,6 +397,19 @@ def parse_check(text: str) -> "tuple[str, str]":
 
 def default_slots() -> int:
     return max(1, (os.cpu_count() or 2) // 2)
+
+
+def default_load_limit() -> float:
+    return (os.cpu_count() or 2) * 0.75
+
+
+def has_room(limit: float) -> bool:
+    """Whether the machine is quiet enough to run both trees of a check at once: its one-minute load average is
+    under the limit. A machine that cannot say has no room."""
+    try:
+        return os.getloadavg()[0] < limit
+    except (OSError, AttributeError):
+        return False
 
 
 def take_slot(folder: Path, slots: int):
@@ -382,7 +514,21 @@ def main(argv: "list | None" = None) -> int:
     parser.add_argument("--recheck", action="append", default=[], metavar="NAME",
                         help="run a check broken by the PR again, alone, on the candidate (repeatable)")
     parser.add_argument("--slots", type=int, default=default_slots(),
-                        help="checks the machine runs at once, across every review (default: half its cores)")
+                        help="reviews the machine runs checks for at once, each running both trees at once "
+                             "(default: half its cores)")
+    parser.add_argument("--serial", action="append", default=[], metavar="NAME",
+                        help="a check that needs a service (a database, a port): its trees run one after the other "
+                             "(repeatable; the names docker, postgres, e2e and the like are taken as such)")
+    parser.add_argument("--sequential", action="store_true",
+                        help="run every check's two trees one after the other")
+    parser.add_argument("--load-limit", type=float, default=default_load_limit(),
+                        help="run both trees of a check at once only while the one-minute load average is below "
+                             "this (default: three quarters of the cores)")
+    parser.add_argument("--share", type=Path,
+                        help="a folder the reviews of one batch share: a passing baseline run is not run again by a "
+                             "later review of the same commit")
+    parser.add_argument("--share-age", type=float, default=SHARE_AGE,
+                        help="seconds a shared result may be used (default 10800)")
     parser.add_argument("--bash", help="run the checks with this bash (default: the newest one found)")
     parser.add_argument("--slot-dir", type=Path,
                         default=Path(os.environ.get("TMPDIR") or "/tmp") / "seams-pr-review" / "slots",
@@ -429,7 +575,11 @@ def main(argv: "list | None" = None) -> int:
     if rechecks:
         results = merged(earlier, [run_alone(r, args.head, args.out, args.timeout, shell) for r in rechecks])
     else:
-        results = [compare(name, command, args.base, args.head, args.out, args.timeout, shell)
+        serial = {name.casefold() for name in args.serial}
+        results = [compare(name, command, args.base, args.head, args.out, args.timeout, shell,
+                           together=not (args.sequential or name.casefold() in serial or needs_service(name, command))
+                           and has_room(args.load_limit),
+                           share=args.share, share_age=args.share_age)
                    for name, command in checks]
         if args.merge:
             results = merged(earlier, results)

@@ -58,6 +58,216 @@ def gone(pid_file: Path, within: float = 3.0) -> bool:
     return False
 
 
+class CheckSchedulingTest(unittest.TestCase):
+    """The two trees of a check run at the same time, except a check that needs a service, and a baseline's passing
+    result is shared inside a batch (.scratch/pr-review-autopost, decisions 9, 10 and 25). Time is never asserted:
+    each case is a command that can only pass, or only be seen, if the runs overlapped or did not."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp = Path(self.tmp_dir.name)
+        self.base, self.head, self.out = self.tmp / "base", self.tmp / "head", self.tmp / "out"
+        self.base.mkdir()
+        self.head.mkdir()
+        self.rv = self.tmp / "rendezvous"
+        self.rv.mkdir()
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def meet(self, seconds: int = 8) -> str:
+        """A command that passes only when the other tree's run is going at the same time: each side touches
+        its own file (named for its tree's directory) and waits for the other's."""
+        return (f'touch "{self.rv}/$(basename "$PWD")"; for i in $(seq {seconds * 10}); do '
+                f'[ -e "{self.rv}/base" ] && [ -e "{self.rv}/head" ] && exit 0; sleep 0.1; done; exit 1')
+
+    def alone(self) -> str:
+        """A command that fails when the other tree's run overlaps it: one claims a lock directory for a moment."""
+        return f'mkdir "{self.rv}/lock" 2>/dev/null || exit 1; sleep 0.5; rmdir "{self.rv}/lock"'
+
+    def count(self, name: str = "COUNT") -> int:
+        path = self.tmp / name
+        return len(path.read_text().splitlines()) if path.exists() else 0
+
+    def test_both_trees_of_a_check_run_at_the_same_time(self):
+        code, checks, table = self.go(self.out, f"unit={self.meet()}")
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["unit"]["verdict"], "ok")
+        self.assertEqual(checks["unit"]["schedule"], "together")
+
+    def go(self, out: Path, *checks: str, extra: tuple = ()) -> "tuple[int, dict, str]":
+        """run_checks.py with room declared on the machine: how loaded this one is must not decide a test."""
+        return run_checks(self.base, self.head, out, *checks, extra=("--load-limit", "1000000") + extra)
+
+    def test_a_loaded_machine_has_no_room_for_both_trees_at_once(self):
+        # Slots count reviews, not the cores a suite spends: with the load average above the limit a check's trees
+        # run one after the other, as they always did. (Seen on this Mac: load 64 on 14 cores from a batch of
+        # reviews, where doubling each review's load could only have slowed every one of them.)
+        code, checks, table = run_checks(self.base, self.head, self.out, f"unit={self.alone()}",
+                                         extra=("--load-limit", "0"))
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["unit"]["verdict"], "ok")
+        self.assertEqual(checks["unit"]["schedule"], "one after the other")
+
+    def test_sequential_runs_one_tree_after_the_other(self):
+        code, checks, table = run_checks(self.base, self.head, self.out, f"unit={self.alone()}", extra=("--sequential",))
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["unit"]["verdict"], "ok")
+        self.assertEqual(checks["unit"]["schedule"], "one after the other")
+
+    def test_a_check_named_serial_or_that_looks_like_it_needs_a_service_runs_one_tree_after_the_other(self):
+        for label, name, command, extra in [("--serial", "unit", self.alone(), ("--serial", "unit")),
+                                            ("an e2e name", "e2e", self.alone(), ()),
+                                            ("a database in the command", "unit", f": postgres; {self.alone()}", ()),
+                                            ("docker in the command", "suite", f": docker compose up; {self.alone()}", ())]:
+            with self.subTest(label):
+                out = self.tmp / f"out-{label}"
+                code, checks, table = self.go(out, f"{name}={command}", extra=extra)
+                self.assertEqual(code, 0, table)
+                self.assertEqual(checks[name]["verdict"], "ok")
+                self.assertEqual(checks[name]["schedule"], "one after the other")
+
+    def test_a_failure_in_a_run_that_shared_the_machine_is_run_again_alone_and_a_pass_then_makes_it_flaky(self):
+        # `alone` collides when the two overlap; run one tree after the other it passes on both. The collision must
+        # not blame the pull request, and it must not read as ok either: failing once and passing the second time is
+        # what flaky has always meant, and a flaky check never posts by itself.
+        code, checks, table = self.go(self.out, f"unit={self.alone()}")
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["unit"]["verdict"], "flaky")
+        self.assertEqual(checks["unit"]["schedule"], "together, a failure run again alone")
+        self.assertEqual(checks["unit"]["rerun"]["status"], "pass")
+
+    def test_a_real_failure_is_still_the_pull_requests_after_it_ran_alone(self):
+        (self.base / "OK").write_text("")
+        fail_on_head = f'echo x >> "{self.tmp}/COUNT-$(basename "$PWD")"; test -f OK'
+        code, checks, table = self.go(self.out, f"unit={fail_on_head}")
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["unit"]["verdict"], "broken by the PR")
+        self.assertEqual(checks["unit"]["base"]["status"], "pass")
+        self.assertEqual(self.count("COUNT-base"), 1)                  # a pass is believed from the shared run
+        self.assertEqual(self.count("COUNT-head"), 2)                  # together, then alone: no third run
+
+    def test_a_check_failing_on_both_trees_is_called_already_broken_only_after_each_failed_alone(self):
+        fails = f'echo x >> "{self.tmp}/COUNT"; exit 1'
+        code, checks, table = self.go(self.out, f"unit={fails}")
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["unit"]["verdict"], "already broken")
+        self.assertEqual(self.count(), 4)                              # together, then each alone
+
+    def test_a_removed_check_is_never_turned_into_flaky_by_a_baseline_failure(self):
+        # `removed by the PR` blocks an approval; a flaky verdict would not. A baseline that fails once while the
+        # head lacks the check must stay removed.
+        (self.base / "old.sh").write_text('test -f .ran || { touch .ran; exit 1; }\n')
+        code, checks, table = self.go(self.out, "old=bash old.sh")
+        self.assertEqual(code, 0, table)
+        self.assertEqual(checks["old"]["verdict"], "removed by the PR")
+
+    def test_what_the_command_and_tree_settle_is_not_run_again(self):
+        # Absent is a property of the tree, not of the machine: no second run to confirm it.
+        code, checks, table = self.go(self.out, f'unit=echo x >> "{self.tmp}/COUNT"; no-such-command-here')
+        self.assertEqual(code, 0, table)
+        self.assertEqual(self.count(), 2)
+
+    def test_a_pass_on_the_baseline_is_shared_with_the_next_review_of_the_same_commit(self):
+        first, second = self.reviews_of_one_baseline(f'test -f OK; touch RAN', ok=True)
+        self.assertEqual(first["unit"]["verdict"], "ok")
+        self.assertNotIn("shared", first["unit"]["base"])
+        self.assertTrue((self.tmp / "base-a" / "RAN").exists())
+        self.assertEqual(second["unit"]["verdict"], "ok")
+        self.assertIs(second["unit"]["base"]["shared"], True)
+        self.assertEqual(second["unit"]["base"]["status"], "pass")
+        self.assertFalse((self.tmp / "base-b" / "RAN").exists(), "the second baseline tree never ran it")
+        self.assertTrue((self.tmp / "out-b" / "unit.base.log").exists())       # the evidence still holds a log
+        self.assertIn("shared", (self.tmp / "out-b" / "checks.md").read_text())
+
+    def test_a_failing_baseline_is_never_shared(self):
+        first, second = self.reviews_of_one_baseline("touch RAN; test -f OK", ok=False)
+        self.assertEqual(first["unit"]["base"]["status"], "fail")
+        self.assertNotIn("shared", second["unit"]["base"])
+        self.assertTrue((self.tmp / "base-b" / "RAN").exists(), "each review runs its own failing baseline")
+
+    def test_an_install_and_a_producer_of_files_are_never_shared(self):
+        for name in ("install", "build"):
+            with self.subTest(name):
+                self.setUp()
+                first, second = self.reviews_of_one_baseline("touch RAN", ok=True, name=name)
+                self.assertNotIn("shared", second[name]["base"])
+                self.assertTrue((self.tmp / "base-b" / "RAN").exists())
+
+    def test_a_different_baseline_commit_shares_nothing(self):
+        first, second = self.reviews_of_one_baseline("touch RAN", ok=True, second_commit=True)
+        self.assertNotIn("shared", second["unit"]["base"])
+        self.assertTrue((self.tmp / "base-b" / "RAN").exists())
+
+    def test_without_a_share_folder_every_review_runs_its_own_baseline(self):
+        first, second = self.reviews_of_one_baseline("touch RAN", ok=True, share=False)
+        self.assertNotIn("shared", second["unit"]["base"])
+        self.assertTrue((self.tmp / "base-b" / "RAN").exists())
+
+    def test_a_shared_result_older_than_the_limit_is_not_used(self):
+        first, second = self.reviews_of_one_baseline("touch RAN", ok=True, share_age="0.2", pause=0.6)
+        self.assertNotIn("shared", second["unit"]["base"])
+        self.assertTrue((self.tmp / "base-b" / "RAN").exists())
+
+    def test_two_reviews_that_start_together_run_a_shared_baseline_check_once(self):
+        repo = self.baseline_repo()
+        for n in "ab":
+            subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(self.tmp / f"base-{n}")],
+                           capture_output=True, check=True)
+            (self.tmp / f"head-{n}").mkdir()
+        command = f'case "$PWD" in *base*) echo x >> "{self.tmp}/COUNT";; esac; sleep 1'
+        procs = [subprocess.Popen([sys.executable, str(RUN_CHECKS), "--base", str(self.tmp / f"base-{n}"),
+                                   "--head", str(self.tmp / f"head-{n}"), "--out", str(self.tmp / f"out-{n}"),
+                                   "--slot-dir", str(self.tmp / "slots"), "--slots", "4", "--timeout", "30",
+                                   "--share", str(self.tmp / "shared"), "--load-limit", "1000000",
+                                   "--check", f"unit={command}"],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for n in "ab"]
+        self.assertEqual([proc.wait(timeout=120) for proc in procs], [0, 0])
+        self.assertEqual(self.count(), 1)
+        shared = [json.loads((self.tmp / f"out-{n}" / "checks.json").read_text())[0]["base"].get("shared") for n in "ab"]
+        self.assertEqual(sorted(map(bool, shared)), [False, True])
+
+    # -- fixtures for the sharing cases: one git repository, a worktree for each review's baseline
+
+    def baseline_repo(self, message: str = "base") -> Path:
+        repo = self.tmp / "repo"
+        if not repo.exists():
+            repo.mkdir()
+            for cmd in (["init", "-q"], ["config", "user.email", "t@example.com"], ["config", "user.name", "t"]):
+                subprocess.run(["git", "-C", str(repo), *cmd], capture_output=True, check=True)
+            (repo / "OK").write_text("")
+        (repo / "f.txt").write_text(message)
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", message], capture_output=True, check=True)
+        return repo
+
+    def reviews_of_one_baseline(self, command: str, ok: bool, name: str = "unit", second_commit: bool = False,
+                                share: bool = True, share_age: "str | None" = None, pause: float = 0.0):
+        """Two reviews, one after the other, each with a worktree of the baseline commit (the second's at another
+        commit when asked) and its own candidate tree. Returns each review's checks.json by name."""
+        repo = self.baseline_repo()
+        if not ok:
+            subprocess.run(["git", "-C", str(repo), "rm", "-qf", "OK"], capture_output=True, check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "no OK"], capture_output=True, check=True)
+        results = []
+        for n in "ab":
+            if n == "b" and second_commit:
+                self.baseline_repo("a later commit")
+            tree = self.tmp / f"base-{n}"
+            subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(tree)], capture_output=True, check=True)
+            (self.tmp / f"head-{n}").mkdir(exist_ok=True)
+            (self.tmp / f"head-{n}" / "OK").write_text("")
+            extra = ("--share", str(self.tmp / "shared")) if share else ()
+            extra += ("--share-age", share_age) if share_age else ()
+            code, checks, table = run_checks(tree, self.tmp / f"head-{n}", self.tmp / f"out-{n}", f"{name}={command}",
+                                             extra=extra + ("--sequential",))
+            self.assertEqual(code, 0, table)
+            results.append(checks)
+            if n == "a" and pause:
+                time.sleep(pause)
+        return results
+
+
 class RunChecksTest(unittest.TestCase):
     """Every check runs on the baseline and on the candidate; its verdict says whose a failure is."""
 
@@ -765,6 +975,7 @@ class BatchReportTest(unittest.TestCase):
 # listed from then on, as GitHub would list it) and logs every call with the time it came.
 FAKE_GH = r'''#!/usr/bin/env python3
 import json, os, sys, time
+from urllib.parse import unquote
 state_path, log_path = os.environ["FAKE_GH_STATE"], os.environ["FAKE_GH_LOG"]
 args = sys.argv[1:]
 with open(log_path, "a") as log:
@@ -801,6 +1012,40 @@ if path == "user":
     answer(200, {"login": state["viewer"]})
 if method == "GET" and len(parts) == 3:        # repos/<owner>/<repo>: what the viewer may do there
     answer(200, {"permissions": state.get("perms", {}).get(f"{parts[1]}/{parts[2]}", {"push": True})})
+repo = f"{parts[1]}/{parts[2]}"
+repo_labels = state.setdefault("labels", {}).setdefault(repo, {})
+def body_in():
+    return json.load(sys.stdin if payload_path == "-" else open(payload_path))
+if len(parts) >= 4 and parts[3] == "labels":              # the repository's own label list
+    fail = state.get("label_fail", {}).get(repo)
+    if fail:
+        answer(fail["status"], {"message": fail["message"]})
+    if method == "POST" and len(parts) == 4:
+        made = body_in()
+        if made["name"] in repo_labels:
+            answer(422, {"message": "Validation Failed", "errors": [{"code": "already_exists"}]})
+        repo_labels[made["name"]] = made
+        answer(201, made)
+    name = unquote("/".join(parts[4:]))
+    answer(200, repo_labels[name]) if name in repo_labels else answer(404, {"message": "Not Found"})
+if len(parts) >= 6 and parts[3] == "issues" and parts[5] == "labels":      # the labels on one pull request
+    issue = f"{repo}#{parts[4]}"
+    fail = state.get("label_fail", {}).get(issue)
+    if fail:
+        answer(fail["status"], {"message": fail["message"]})
+    on_issue = state.setdefault("issue_labels", {}).setdefault(issue, [])
+    if method == "GET":
+        answer(200, [{"name": n} for n in on_issue])
+    if method == "POST":
+        for n in body_in()["labels"]:
+            if n not in on_issue:
+                on_issue.append(n)
+        answer(200, [{"name": n} for n in on_issue])
+    name = unquote("/".join(parts[6:]))
+    if name not in on_issue:
+        answer(404, {"message": "Label does not exist"})
+    on_issue.remove(name)
+    answer(200, [{"name": n} for n in on_issue])
 key = f"{parts[1]}/{parts[2]}#{parts[4]}"
 if method == "GET" and key in state.get("fail_gets", {}):
     print("gh: " + state["fail_gets"][key], file=sys.stderr)
@@ -826,6 +1071,29 @@ if step["status"] < 300:
     answer(step["status"], review)
 answer(step["status"], {"message": step.get("message", "refused")}, step.get("headers"))
 '''
+
+
+class FakeClock:
+    """A clock a test moves: time.monotonic and time.sleep for a Pace that is driven without waiting."""
+
+    def __init__(self):
+        self.now, self.slept = 0.0, 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+        self.slept += seconds
+
+
+def load_script(path: Path):
+    """A script of the skill as a module, for the rules that are better tested without a process."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(f"seams_test_{path.stem}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class PosterHarness:
@@ -876,7 +1144,7 @@ class PosterHarness:
         for line in (self.tmp / "calls.log").read_text().splitlines():
             call = json.loads(line)
             path = next((a.split("?")[0] for a in call["args"] if a.startswith("repos/")), None)
-            if path is None or ("POST" in call["args"]) != (method == "POST"):
+            if path is None or "/pulls/" not in path or ("POST" in call["args"]) != (method == "POST"):
                 continue
             if method == "POST" or path.endswith("/reviews") == listing:
                 out.append((call["at"], int(path.split("/")[4])))
@@ -903,14 +1171,29 @@ class PostReviewsTest(PosterHarness, unittest.TestCase):
                 self.assertIn(posted["html_url"], out)
 
     def test_each_minute_stays_under_the_content_budget(self):
-        # GitHub blocked a batch after 10 reviews in 34 seconds, far under 80 requests: a review's
-        # inline comments count too. Here each review is 1 + 4 comments, and a minute allows 10.
+        # GitHub blocked a batch after 10 reviews in 34 seconds, far under 80 requests: a review's inline comments
+        # count too. Here each review is 1 + 4 comments, and a minute allows 10. Pace is driven on a clock the test
+        # moves, so that nothing depends on how fast this machine starts a process (a wall-clock version failed at a
+        # load average of 47 and again at 64).
+        post_reviews = load_script(POST_REVIEWS)
+        clock = FakeClock()
+        pace = post_reviews.Pace(per_minute=10, per_hour=250, minute=60.0, slow=45.0, clock=clock, sleep=clock.sleep)
+        pace.wait(5, "first")
+        pace.sent_now(5)
+        clock.now += 1.0                                # the posts are a second apart at least
+        slept = clock.slept
+        pace.wait(5, "second")                          # 5 + 5 is the whole minute's budget: no wait
+        pace.sent_now(5)
+        self.assertEqual(clock.slept, slept)
+        pace.wait(5, "third")                           # over the budget: waits for the first to leave the minute
+        self.assertGreaterEqual(clock.now, 60.0)
+        self.assertLess(clock.now, 62.0)
+
+    def test_the_posts_all_go_out_in_order_under_a_tight_budget(self):
         folders = [self.evidence(n, comments=4) for n in (1, 2, 3)]
         code, out = self.post(*folders, pacing=("--minute", "1", "--per-minute", "10", "--backoff", "0.2"))
         self.assertEqual(code, 0, out)
-        (first, _), (second, _), (third, _) = self.calls()
-        self.assertLess(second - first, 0.6)            # the first two fit in one minute
-        self.assertGreaterEqual(third - first, 0.95)    # the third waits for the first to leave it
+        self.assertEqual([n for _, n in self.calls()], [1, 2, 3])
 
     SECONDARY = ("You have exceeded a secondary rate limit and have been temporarily blocked from content "
                  "creation. Please retry your request again later.")
@@ -1154,6 +1437,106 @@ class RequirementsTest(unittest.TestCase):
                                "--source", "t", str(self.tmp / "missing.md")], capture_output=True, text=True, timeout=60)
         self.assertEqual(done.returncode, 2, done.stdout + done.stderr)
         self.assertFalse(out_file.exists())
+
+
+class LabelTest(PosterHarness, unittest.TestCase):
+    """A review the poster posts leaves one label on its pull request, in the prefix `pr-review:`
+    (.scratch/pr-review-autopost, decision 8): created once per repository, replacing the one an earlier review
+    left, never touching a label the repository uses, and never able to undo or block a posted review."""
+
+    NAMES = {"COMMENT": "pr-review: commented", "REQUEST_CHANGES": "pr-review: changes requested",
+             "APPROVE": "pr-review: approved"}
+
+    def on_pr(self, number: int = 1) -> list:
+        return json.loads((self.tmp / "state.json").read_text()).get("issue_labels", {}).get(f"o/r#{number}", [])
+
+    def in_repo(self) -> dict:
+        return json.loads((self.tmp / "state.json").read_text()).get("labels", {}).get("o/r", {})
+
+    def posted(self, event: str = "COMMENT", number: int = 1) -> Path:
+        folder = self.evidence(number)
+        payload = json.loads((folder / "payload.json").read_text())
+        payload["event"] = event
+        (folder / "payload.json").write_text(json.dumps(payload))
+        return folder
+
+    def test_a_posted_review_leaves_the_label_for_its_event(self):
+        for event, name in self.NAMES.items():
+            with self.subTest(event):
+                self.tearDown()
+                self.setUp()
+                folder = self.posted(event)
+                code, out = self.post(folder)
+                self.assertEqual(code, 0, out)
+                self.assertEqual(self.on_pr(), [name])
+                self.assertIn(name, self.in_repo())                       # created, once
+                self.assertEqual(json.loads((folder / "posted.json").read_text())["label"], name)
+
+    def test_the_label_is_created_with_a_colour_and_a_description_and_only_once(self):
+        self.assertEqual(self.post(self.posted("COMMENT", 1), self.posted("COMMENT", 2))[0], 0)
+        made = self.in_repo()["pr-review: commented"]
+        self.assertRegex(made["color"], r"^[0-9A-Fa-f]{6}$")
+        self.assertTrue(made["description"])
+        creations = [c for c in (json.loads(l) for l in (self.tmp / "calls.log").read_text().splitlines())
+                     if "POST" in c["args"] and "repos/o/r/labels" in c["args"]]
+        self.assertEqual(len(creations), 1)
+        self.assertEqual((self.on_pr(1), self.on_pr(2)), (["pr-review: commented"], ["pr-review: commented"]))
+
+    def test_a_newer_review_replaces_the_older_label_and_leaves_the_repositorys_own(self):
+        self.state["issue_labels"] = {"o/r#1": ["bug", "ready to merge", "pr-review: commented"]}
+        self.save()
+        self.assertEqual(self.post(self.posted("APPROVE"))[0], 0)
+        self.assertEqual(self.on_pr(), ["bug", "ready to merge", "pr-review: approved"])
+
+    def test_a_label_already_on_the_pull_request_is_not_added_twice(self):
+        self.state["issue_labels"] = {"o/r#1": ["pr-review: commented"]}
+        self.save()
+        self.assertEqual(self.post(self.posted("COMMENT"))[0], 0)
+        self.assertEqual(self.on_pr(), ["pr-review: commented"])
+
+    def test_a_label_that_cannot_be_applied_never_undoes_the_posted_review(self):
+        self.state["label_fail"] = {"o/r#1": {"status": 403, "message": "Resource not accessible by integration"}}
+        self.save()
+        folder = self.posted("COMMENT")
+        code, out = self.post(folder)
+        self.assertEqual(code, 0, out)                               # the review is on GitHub: that is the exit status
+        self.assertEqual(len(self.reviews(1)), 1)
+        self.assertIn("label not applied", out)
+        self.assertIn("Resource not accessible", out)
+        posted = json.loads((folder / "posted.json").read_text())
+        self.assertIn("Resource not accessible", posted["label_error"])
+        self.assertNotIn("label", posted)
+
+    def test_a_label_that_cannot_be_created_is_reported_and_the_review_stands(self):
+        self.state["label_fail"] = {"o/r": {"status": 403, "message": "You do not have permission to create labels"}}
+        self.save()
+        code, out = self.post(self.posted("COMMENT"))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(self.reviews(1)), 1)
+        self.assertIn("label not applied", out)
+
+    def test_no_label_without_a_posted_review(self):
+        # An ineligible review under --auto, and one whose head moved, are not posted and so are not labelled.
+        bad = self.posted("COMMENT", 1)
+        code, out = self.post("--auto", bad)                         # no checks, no reference: needs your yes
+        self.assertEqual(code, 1, out)
+        moved = self.posted("COMMENT", 2)
+        self.state["heads"]["o/r#2"] = "b" * 40
+        self.save()
+        self.assertEqual(self.post(moved)[0], 1)
+        self.assertEqual((self.on_pr(1), self.on_pr(2)), ([], []))
+        self.assertEqual(self.in_repo(), {})
+
+    def test_a_review_found_already_posted_is_not_labelled_again(self):
+        folder = self.posted("COMMENT")
+        self.assertEqual(self.post(folder)[0], 0)
+        self.state = json.loads((self.tmp / "state.json").read_text())     # what the fake gh has kept
+        self.state["issue_labels"]["o/r#1"] = []                     # someone took the label off
+        self.save()
+        code, out = self.post(folder)
+        self.assertEqual(code, 0, out)
+        self.assertIn("already posted", out)
+        self.assertEqual(self.on_pr(), [])
 
 
 class AutoPostTest(PosterHarness, unittest.TestCase):
