@@ -24,6 +24,7 @@ REVIEW_PAYLOAD = SCRIPTS / "review_payload.py"
 BATCH_REPORT = SCRIPTS / "batch_report.py"
 POST_REVIEWS = SCRIPTS / "post_reviews.py"
 REQUIREMENTS = SCRIPTS / "requirements.py"
+TAKEOVER = SCRIPTS / "takeover.py"
 EVIDENCE = SCRIPTS / "evidence.py"
 
 
@@ -1316,6 +1317,208 @@ MOVED_BASE = "3a234bd0e1f2a3b4c5d6e7f8091a2b3c4d5e6f70"
 PUSHED = "0f4e5e9a1b2c3d4e5f60718293a4b5c6d7e8f901"
 URL = "https://github.com/acme/shop/pull/12"
 
+
+
+class TakeoverTest(unittest.TestCase):
+    """Taking over a pull request: where the fixes may go, decided from facts (`takeover.py target`), and a push that
+    only ever does what the user was asked about (`takeover.py push`): never a force, never another commit, never
+    without the author's credit (.scratch/pr-review-autopost, decisions 6 and 12)."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp = Path(self.tmp_dir.name)
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    @staticmethod
+    def facts(**changes) -> dict:
+        """What the review gathers with gh: a pull request from a fork whose author allowed edits, and a viewer who
+        can push to the base repository."""
+        pr = {"number": 5, "title": "Fix the coupon", "url": "https://github.com/o/r/pull/5", "author": {"login": "them"},
+              "isCrossRepository": True, "maintainerCanModify": True, "headRefName": "fix-x", "headRefOid": "a" * 40,
+              "headRepository": {"name": "r"}, "headRepositoryOwner": {"login": "them"}, "baseRefName": "main"}
+        facts = {"viewer": "me", "viewerPermission": "WRITE", "headOwnerType": "User", "authorId": 4242, "pr": pr}
+        for key, value in changes.items():
+            if key in pr:
+                pr[key] = value
+            else:
+                facts[key] = value
+        return facts
+
+    def target(self, **changes) -> dict:
+        path = self.tmp / "facts.json"
+        path.write_text(json.dumps(self.facts(**changes)))
+        done = subprocess.run([sys.executable, str(TAKEOVER), "target", "--facts", str(path)], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        return json.loads(done.stdout)
+
+    def test_the_authors_branch_when_github_lets_the_user_push_there(self):
+        got = self.target()
+        self.assertEqual((got["mode"], got["repo"], got["branch"]), ("author-branch", "them/r", "fix-x"))
+
+    def test_a_branch_of_the_same_repository_is_the_authors_when_the_user_can_push_to_it(self):
+        got = self.target(isCrossRepository=False, headRepository={"name": "r"}, headRepositoryOwner={"login": "o"},
+                          maintainerCanModify=False)
+        self.assertEqual((got["mode"], got["repo"], got["branch"]), ("author-branch", "o/r", "fix-x"))
+
+    def test_otherwise_a_new_branch_in_the_base_repository_that_names_the_authors(self):
+        for label, changes in [("edits not allowed", {"maintainerCanModify": False}),
+                               ("an organisation's fork, which maintainers cannot edit", {"headOwnerType": "Organization"})]:
+            with self.subTest(label):
+                got = self.target(**changes)
+                self.assertEqual((got["mode"], got["repo"]), ("new-branch", "o/r"))
+                self.assertEqual(got["branch"], "takeover/5-fix-x")
+                self.assertEqual(got["base"], "main")
+                self.assertIn("#5", got["pr_title"])
+                self.assertIn("@them", got["pr_body"])
+
+    def test_a_branch_name_is_made_safe(self):
+        got = self.target(maintainerCanModify=False, headRefName="feat/x y..z")
+        self.assertEqual(got["branch"], "takeover/5-feat-x-y-z")
+
+    def test_a_user_who_cannot_push_to_the_repository_needs_a_fork_of_their_own(self):
+        for permission in ("READ", "TRIAGE", None, "SOMETHING-NEW"):
+            with self.subTest(permission):
+                got = self.target(viewerPermission=permission)
+                self.assertEqual(got["mode"], "fork")
+                self.assertIsNone(got["repo"])
+                self.assertIn("fork", got["reason"])
+
+    def test_the_users_own_pull_request_is_theirs_to_push_to_and_needs_no_credit_line(self):
+        got = self.target(author={"login": "ME"})
+        self.assertEqual((got["mode"], got["repo"], got["branch"]), ("author-branch", "them/r", "fix-x"))
+        self.assertIsNone(got["trailer"])
+
+    def test_the_author_keeps_credit_by_a_co_authored_by_line_with_their_noreply_address(self):
+        self.assertEqual(self.target()["trailer"], "Co-authored-by: them <4242+them@users.noreply.github.com>")
+        self.assertEqual(self.target(authorId=None)["trailer"], "Co-authored-by: them <them@users.noreply.github.com>")
+
+    def test_the_decision_says_why(self):
+        self.assertIn("allowed edits", self.target()["reason"])
+        self.assertIn("did not allow edits", self.target(maintainerCanModify=False)["reason"])
+
+    # -- the guarded push, against a real bare repository standing in for GitHub
+
+    def git(self, cwd: Path, *args: str) -> str:
+        done = subprocess.run(["git", "-C", str(cwd), "-c", "user.email=t@example.com", "-c", "user.name=t", *args],
+                              capture_output=True, text=True, check=True)
+        return done.stdout.strip()
+
+    def remote_with_a_pull_request(self) -> "tuple[Path, Path, str]":
+        """A bare repository holding the pull request's branch `fix-x` at its head, and a worktree of it."""
+        remote, work = self.tmp / "remote.git", self.tmp / "work"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+        subprocess.run(["git", "init", "-q", "-b", "fix-x", str(work)], check=True)
+        (work / "a.txt").write_text("one\n")
+        self.git(work, "add", "-A")
+        self.git(work, "commit", "-qm", "the pull request's head")
+        head = self.git(work, "rev-parse", "HEAD")
+        self.git(work, "push", "-q", str(remote), "fix-x")
+        return remote, work, head
+
+    def fix(self, work: Path, trailer: "str | None" = "Co-authored-by: them <4242+them@users.noreply.github.com>") -> str:
+        (work / "a.txt").write_text("two\n")
+        self.git(work, "add", "-A")
+        self.git(work, "commit", "-qm", "Fix what the review found" + (f"\n\n{trailer}" if trailer else ""))
+        return self.git(work, "rev-parse", "HEAD")
+
+    def push(self, work: Path, remote: Path, head: str, commit: str, **target) -> "tuple[int, str]":
+        decided = {"mode": "author-branch", "repo": "them/r", "branch": "fix-x", "head": head, "number": 5,
+                   "trailer": "Co-authored-by: them <4242+them@users.noreply.github.com>", **target}
+        (self.tmp / "target.json").write_text(json.dumps(decided))
+        done = subprocess.run([sys.executable, str(TAKEOVER), "push", "--target", str(self.tmp / "target.json"),
+                               "--worktree", str(work), "--commit", commit, "--remote-url", str(remote)],
+                              capture_output=True, text=True)
+        return done.returncode, done.stdout + done.stderr
+
+    def remote_tip(self, remote: Path, branch: str) -> "str | None":
+        done = subprocess.run(["git", "-C", str(remote), "rev-parse", "--verify", "-q", f"refs/heads/{branch}"],
+                              capture_output=True, text=True)
+        return done.stdout.strip() or None
+
+    def test_the_commit_the_user_was_asked_about_goes_to_the_authors_branch_and_is_recorded(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        commit = self.fix(work)
+        code, out = self.push(work, remote, head, commit)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.remote_tip(remote, "fix-x"), commit)
+        record = json.loads((self.tmp / "pushed.json").read_text())
+        self.assertEqual((record["commit"], record["branch"], record["mode"]), (commit, "fix-x", "author-branch"))
+
+    def test_a_new_branch_is_made_in_the_base_repository(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        commit = self.fix(work)
+        code, out = self.push(work, remote, head, commit, mode="new-branch", branch="takeover/5-fix-x")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.remote_tip(remote, "takeover/5-fix-x"), commit)
+        self.assertEqual(self.remote_tip(remote, "fix-x"), head)               # the author's branch is untouched
+
+    def test_only_the_commit_the_user_was_asked_about_may_be_pushed(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        asked = self.fix(work)
+        (work / "a.txt").write_text("three\n")                                  # a later change, never shown
+        self.git(work, "add", "-A")
+        self.git(work, "commit", "-qm", "Another thing\n\nCo-authored-by: them <4242+them@users.noreply.github.com>")
+        code, out = self.push(work, remote, head, asked)
+        self.assertEqual(code, 1, out)
+        self.assertIn("not the commit", out)
+        self.assertEqual(self.remote_tip(remote, "fix-x"), head)
+
+    def test_a_push_without_the_authors_credit_is_refused(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        commit = self.fix(work, trailer=None)
+        code, out = self.push(work, remote, head, commit)
+        self.assertEqual(code, 1, out)
+        self.assertIn("Co-authored-by", out)
+        self.assertEqual(self.remote_tip(remote, "fix-x"), head)
+
+    def test_a_push_that_does_not_continue_the_pull_requests_head_is_refused(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        subprocess.run(["git", "-C", str(work), "checkout", "-q", "--orphan", "rewritten"], check=True)
+        (work / "a.txt").write_text("rewritten history\n")
+        self.git(work, "add", "-A")
+        self.git(work, "commit", "-qm", "unrelated\n\nCo-authored-by: them <4242+them@users.noreply.github.com>")
+        code, out = self.push(work, remote, head, self.git(work, "rev-parse", "HEAD"))
+        self.assertEqual(code, 1, out)
+        self.assertIn("does not continue", out)
+        self.assertEqual(self.remote_tip(remote, "fix-x"), head)
+
+    def test_there_must_be_something_to_push(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        code, out = self.push(work, remote, head, head, trailer=None)
+        self.assertEqual(code, 1, out)
+        self.assertIn("nothing to push", out)
+
+    def test_it_never_forces_a_branch_the_author_moved_meanwhile(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        commit = self.fix(work)
+        author = self.tmp / "author"
+        subprocess.run(["git", "clone", "-q", str(remote), str(author)], check=True)
+        self.git(author, "checkout", "-q", "fix-x")
+        (author / "b.txt").write_text("the author's own new work\n")
+        self.git(author, "add", "-A")
+        self.git(author, "commit", "-qm", "the author pushed meanwhile")
+        self.git(author, "push", "-q", "origin", "fix-x")
+        theirs = self.remote_tip(remote, "fix-x")
+        code, out = self.push(work, remote, head, commit)
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.remote_tip(remote, "fix-x"), theirs, "the author's commit must still be the tip")
+
+    def test_force_is_not_an_option(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        (self.tmp / "target.json").write_text(json.dumps({"mode": "author-branch", "repo": "o/r", "branch": "fix-x",
+                                                          "head": head, "trailer": None}))
+        done = subprocess.run([sys.executable, str(TAKEOVER), "push", "--target", str(self.tmp / "target.json"),
+                               "--worktree", str(work), "--commit", head, "--remote-url", str(remote), "--force"],
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 2, done.stdout + done.stderr)
+
+    def test_a_fork_is_not_somewhere_to_push(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        code, out = self.push(work, remote, head, self.fix(work), mode="fork", repo=None)
+        self.assertEqual(code, 1, out)
+        self.assertIn("fork", out)
 
 
 class RequirementsTest(unittest.TestCase):
