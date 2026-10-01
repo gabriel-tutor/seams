@@ -143,11 +143,11 @@ The closing message of a pull request review: whether each pull request is ready
 _Avoid_: summary, report
 
 **Fully verified**:
-A review is fully verified at a pull request's head when every check ran on both trees (none "could not run"), every finding is verified at that head and every blocking finding is proven, nothing is left under "not verified", and the head is unchanged at the moment of posting. The poster tests it against the evidence on disk, not the model's judgement.
+A review is fully verified at a pull request's head when at least one check ran and every check ran on both trees (none "could not run", none flaky), every finding but a question or praise is verified at that head and every blocking finding is proven, nothing is left under "not verified", every requirement line of the reference has an answer, and the head is unchanged at the moment of posting. The poster tests it against the evidence on disk, not the model's judgement.
 _Avoid_: reviewed, checked (a review can be both and still not be this)
 
 **Auto-post**:
-Posting a review to GitHub, with its label, without asking: for any event, when the review is fully verified and the viewer can push to the repository. A review that is not fully verified, or is in a repository the viewer cannot push to, is drafted and asked about, and `draft only` in the request turns auto-post off.
+Posting a review to GitHub, with its label, without asking: for any event, when the review is fully verified and the viewer can push to the repository (an approval also needs an independent reference with a requirement met, none unmet, and nothing blocking or broken, and no review posts that mentions a local path or a secret). A review that is not fully verified, or is in a repository the viewer cannot push to, is drafted and asked about, and `draft only` in the request turns auto-post off.
 _Avoid_: automatic review (the review always runs; only the posting is automatic)
 
 **Review label**:

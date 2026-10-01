@@ -2,7 +2,8 @@
 """Take a pull request over: where the fixes may go, and a push that only ever does what the user was asked about.
 
   takeover.py target --facts FACTS.json
-  takeover.py push --target TARGET.json --worktree DIR --commit SHA [--remote-url URL]
+  takeover.py push --target TARGET.json --worktree DIR --commit SHA --repo OWNER/REPO --branch BRANCH [--remote-url URL]
+  takeover.py open --target TARGET.json
 
 `target` decides, from facts the review gathered with gh, where the user's fixes go. FACTS.json:
 
@@ -20,11 +21,19 @@ where to push; "trailer" is the line that keeps the author's credit (none on the
 says why. Anything gh could not say is no.
 
 `push` pushes one commit of the take-over worktree to that target, and refuses unless it is exactly what the user was
-asked about: the commit is the worktree's HEAD; it continues the pull request's head (history rewritten, or another
-line, is refused); there is something to push; every commit it adds carries the trailer; and the push is not a force:
-a branch the author moved meanwhile is left alone and the push is refused. There is no option to force. It records
-what it pushed in pushed.json beside TARGET.json. Exits 0 when pushed, 1 when refused or failed (it says why), and 2
-on a usage error.
+asked about. TARGET.json is written by the model, so the repository and the branch are also given on the command
+line, where Claude Code's permission prompt shows them, and must be the ones the file says. It refuses unless: the
+commit is the worktree's HEAD; it continues the pull request's head (history rewritten, or another line, is
+refused); there is something to push; a new branch is under `takeover/` (never `main`, never the author's branch);
+every commit it adds carries the trailer, unless the pull request is the user's own; and the push is not a force:
+a branch the author moved meanwhile is left alone and the push is refused. There is no option to force, and a
+--remote-url that looks like an option is refused. It records what it pushed in pushed.json beside TARGET.json.
+
+`open` opens the pull request for a "new-branch" take-over once it was pushed (pushed.json says so), with `gh pr
+create` run from an argument list: the title is the author's text and never goes through a shell. It is not
+pre-approved either.
+
+Exits 0 when done, 1 when refused or failed (it says why), and 2 on a usage error.
 """
 from __future__ import annotations
 
@@ -71,10 +80,13 @@ def decide(facts: dict) -> dict:
         ident = facts.get("authorId")
         trailer = f"Co-authored-by: {author} <{ident}+{author}@users.noreply.github.com>" if ident \
             else f"Co-authored-by: {author} <{author}@users.noreply.github.com>"
-    answer = {"mode": None, "repo": None, "branch": pr.get("headRefName"), "base": pr.get("baseRefName"),
+    answer = {"own": mine, "mode": None, "repo": None, "branch": pr.get("headRefName"), "base": pr.get("baseRefName"),
               "head": pr.get("headRefOid"), "number": number, "trailer": trailer, "reason": "",
               "pr_title": None, "pr_body": None}
-    if mine and head_repo:
+    if not mine and not author:
+        answer.update(reason="the author of the pull request is unknown (a deleted account?), so a take-over could not "
+                             "credit them with Co-authored-by")
+    elif mine and head_repo:
         answer.update(mode="author-branch", repo=head_repo, reason="it is your own pull request")
     elif not cross and can_push:
         answer.update(mode="author-branch", repo=base, reason=f"the branch is in {base}, which you can push to")
@@ -117,6 +129,13 @@ def push(args) -> int:
         return 2
     if mode not in ("author-branch", "new-branch"):
         return refuse(f"the decision is {mode!r}: there is nowhere to push (a fork of your own comes first)")
+    if (args.repo, args.branch) != (target.get("repo"), branch):
+        return refuse(f"the repository and branch on the command line ({args.repo} {args.branch}) does not match the "
+                      f"decision's ({target.get('repo')} {branch}): that is not what you were asked about")
+    if mode == "new-branch" and not (branch.startswith("takeover/") and len(branch) > len("takeover/")):
+        return refuse(f"a new branch must be under takeover/, not {branch!r}: it must not be a branch that exists")
+    if args.remote_url and args.remote_url.startswith("-"):
+        return refuse("the remote looks like an option, not an address")
     code, here = git(args.worktree, "rev-parse", "HEAD")
     code2, asked = git(args.worktree, "rev-parse", "--verify", f"{args.commit}^{{commit}}")
     if code or code2:
@@ -131,12 +150,15 @@ def push(args) -> int:
     if code or not commits:
         return refuse(f"nothing to push: {asked[:7]} adds nothing to the pull request's head")
     trailer = target.get("trailer")
+    if not trailer and target.get("own") is not True:
+        return refuse("the decision has no Co-authored-by line, and the pull request is not yours: the author's credit "
+                      "cannot be dropped")
     for commit in commits:
         message = git(args.worktree, "log", "-1", "--format=%B", commit)[1]
         if trailer and trailer not in message.splitlines():
             return refuse(f"commit {commit[:7]} lacks the line {trailer!r}: Co-authored-by keeps the author's credit")
     url = args.remote_url or f"https://github.com/{target['repo']}.git"
-    code, said = git(args.worktree, "push", url, f"{asked}:refs/heads/{branch}")
+    code, said = git(args.worktree, "push", "--", url, f"{asked}:refs/heads/{branch}")
     if code != 0:
         return refuse(f"git push did not go through (a branch the author moved meanwhile is never forced): {said}")
     (args.target.parent / "pushed.json").write_text(json.dumps(
@@ -144,6 +166,27 @@ def push(args) -> int:
         indent=2) + "\n")
     print(f"pushed: {asked[:7]} to {target.get('repo')} {branch} ({mode}): {len(commits)} commit(s) on top of the "
           f"pull request's head {pr_head[:7]}")
+    return 0
+
+
+def open_pull_request(args) -> int:
+    try:
+        target = json.loads(args.target.read_text())
+        pushed = json.loads((args.target.parent / "pushed.json").read_text())
+    except FileNotFoundError:
+        return refuse("nothing was pushed yet (no pushed.json beside the target): push first")
+    except (OSError, ValueError) as err:
+        return refuse(f"cannot read the target or what was pushed: {err}")
+    if target.get("mode") != "new-branch" or not target.get("pr_title"):
+        return refuse("only a take-over on a new branch opens a pull request: the author's own is already there")
+    if (pushed.get("repo"), pushed.get("branch")) != (target.get("repo"), target.get("branch")):
+        return refuse("what was pushed is not the target's repository and branch")
+    done = subprocess.run(["gh", "pr", "create", "--repo", target["repo"], "--head", target["branch"],
+                           "--base", target["base"], "--title", target["pr_title"], "--body", target.get("pr_body") or ""],
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    if done.returncode != 0:
+        return refuse(f"gh pr create failed: {(done.stdout + done.stderr).strip()}")
+    print(done.stdout.strip())
     return 0
 
 
@@ -156,8 +199,14 @@ def main(argv: "list | None" = None) -> int:
     sending.add_argument("--target", type=Path, required=True, help="the output of `target`, saved")
     sending.add_argument("--worktree", type=Path, required=True, help="the take-over worktree")
     sending.add_argument("--commit", required=True, help="the commit the user was asked about")
+    sending.add_argument("--repo", required=True, help="the repository the decision names (shown in the prompt)")
+    sending.add_argument("--branch", required=True, help="the branch the decision names (shown in the prompt)")
     sending.add_argument("--remote-url", help="push here instead of https://github.com/<repo>.git (tests)")
+    opening = sub.add_parser("open", help="open the pull request of a take-over on a new branch, after the push")
+    opening.add_argument("--target", type=Path, required=True, help="the output of `target`, saved")
     args = parser.parse_args(argv)
+    if args.command == "open":
+        return open_pull_request(args)
     if args.command == "target":
         try:
             print(json.dumps(decide(json.loads(args.facts.read_text())), indent=2))

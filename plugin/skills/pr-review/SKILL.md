@@ -1,7 +1,7 @@
 ---
 name: pr-review
 description: Use when asked to review GitHub pull requests (numbers, URLs, open, requested), with checks run against the baseline, findings proven, and posted by itself only when fully verified
-argument-hint: "<number | URL | owner/repo#number> [...] | open | requested [<n> slots] [afresh] [against <file|url>] [draft only]"
+argument-hint: "<number | URL | owner/repo#number> [...] | open | requested [<n> slots] [afresh] [against <path|url>] [draft only]"
 allowed-tools:
   - Bash(gh auth status:*)
   - Bash(gh repo view:*)

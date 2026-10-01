@@ -1423,12 +1423,17 @@ class TakeoverTest(unittest.TestCase):
         self.git(work, "commit", "-qm", "Fix what the review found" + (f"\n\n{trailer}" if trailer else ""))
         return self.git(work, "rev-parse", "HEAD")
 
-    def push(self, work: Path, remote: Path, head: str, commit: str, **target) -> "tuple[int, str]":
+    def push(self, work: Path, remote: Path, head: str, commit: str, cli: "dict | None" = None,
+             remote_url: "str | None" = None, **target) -> "tuple[int, str]":
         decided = {"mode": "author-branch", "repo": "them/r", "branch": "fix-x", "head": head, "number": 5,
                    "trailer": "Co-authored-by: them <4242+them@users.noreply.github.com>", **target}
         (self.tmp / "target.json").write_text(json.dumps(decided))
+        # The permission prompt shows the command line, so the repository and the branch are on it, and must match.
+        named = {"repo": decided["repo"], "branch": decided["branch"], **(cli or {})}
+        flags = [f"--{key}={value}" for key, value in named.items() if value is not None]
         done = subprocess.run([sys.executable, str(TAKEOVER), "push", "--target", str(self.tmp / "target.json"),
-                               "--worktree", str(work), "--commit", commit, "--remote-url", str(remote)],
+                               "--worktree", str(work), "--commit", commit, *flags,
+                               "--remote-url", remote_url or str(remote)],
                               capture_output=True, text=True)
         return done.returncode, done.stdout + done.stderr
 
@@ -1514,9 +1519,98 @@ class TakeoverTest(unittest.TestCase):
                               capture_output=True, text=True)
         self.assertEqual(done.returncode, 2, done.stdout + done.stderr)
 
+    def test_the_repository_and_branch_the_prompt_shows_must_be_the_ones_decided(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        commit = self.fix(work)
+        for cli in ({"branch": "main"}, {"repo": "evil/r"}):
+            with self.subTest(cli):
+                code, out = self.push(work, remote, head, commit, cli=cli)
+                self.assertEqual(code, 1, out)
+                self.assertIn("does not match", out)
+                self.assertEqual(self.remote_tip(remote, "fix-x"), head)
+        code, out = self.push(work, remote, head, commit, cli={"repo": None})       # no repository on the line at all
+        self.assertEqual(code, 2, out)
+
+    def test_a_new_branch_must_be_under_takeover_and_never_a_branch_that_exists(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        commit = self.fix(work)
+        for branch in ("main", "fix-x", "release/3.4", "takeover"):
+            with self.subTest(branch):
+                code, out = self.push(work, remote, head, commit, mode="new-branch", branch=branch)
+                self.assertEqual(code, 1, out)
+                self.assertIn("takeover/", out)
+        self.assertIsNone(self.remote_tip(remote, "main"))
+        self.assertEqual(self.remote_tip(remote, "fix-x"), head)
+
+    def test_the_authors_credit_is_required_unless_the_pull_request_is_the_users_own(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        commit = self.fix(work, trailer=None)
+        for target in ({"trailer": None}, {}):                      # a null line, and no word on whose pull request it is
+            with self.subTest(target):
+                code, out = self.push(work, remote, head, commit, **target)
+                self.assertEqual(code, 1, out)
+                self.assertIn("Co-authored-by", out)
+        self.assertEqual(self.remote_tip(remote, "fix-x"), head)
+        code, out = self.push(work, remote, head, commit, trailer=None, own=True)
+        self.assertEqual(code, 0, out)
+
+    def test_a_remote_that_looks_like_an_option_is_refused(self):
+        remote, work, head = self.remote_with_a_pull_request()
+        marker = self.tmp / "ran"
+        code, out = self.push(work, remote, head, self.fix(work), remote_url=f"--receive-pack=touch {marker}")
+        self.assertEqual(code, 1, out)
+        self.assertFalse(marker.exists())
+
+    def test_the_decision_says_whether_the_pull_request_is_the_users_own(self):
+        self.assertIs(self.target()["own"], False)
+        self.assertIs(self.target(viewer="them")["own"], True)
+
+    def test_a_pull_request_of_someone_else_whose_author_is_unknown_has_nowhere_to_go(self):
+        # A deleted account gives no login, so no credit line: a take-over would drop the author's credit.
+        answer = self.target(author={"login": ""})
+        self.assertIsNone(answer["mode"])
+        self.assertIn("author", answer["reason"])
+
+    def test_the_pull_request_is_opened_by_the_script_with_the_title_as_one_argument(self):
+        # The title is the author's text. It goes to gh as one argv entry, never through a shell.
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "gh").write_text("#!/usr/bin/env python3\nimport json, os, sys\n"
+                                    "open(os.environ['FAKE_GH_LOG'], 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                                    "print('https://github.com/o/r/pull/9')\n")
+        (bin_dir / "gh").chmod(0o755)
+        env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", FAKE_GH_LOG=str(self.tmp / "gh.log"))
+        title = 'Take over #5: $(touch /tmp/x) "quoted" `tick`'
+        target = {"mode": "new-branch", "repo": "o/r", "branch": "takeover/5-fix-x", "base": "main", "head": "a" * 40,
+                  "number": 5, "pr_title": title, "pr_body": "Continues #5 by @them"}
+        (self.tmp / "target.json").write_text(json.dumps(target))
+        (self.tmp / "pushed.json").write_text(json.dumps({"branch": "takeover/5-fix-x", "repo": "o/r", "commit": "b" * 40}))
+        done = subprocess.run([sys.executable, str(TAKEOVER), "open", "--target", str(self.tmp / "target.json")],
+                              capture_output=True, text=True, env=env)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        argv = json.loads((self.tmp / "gh.log").read_text().splitlines()[0])
+        self.assertEqual(argv[:2], ["pr", "create"])
+        self.assertEqual(argv[argv.index("--title") + 1], title)
+        self.assertEqual(argv[argv.index("--head") + 1], "takeover/5-fix-x")
+        self.assertIn("pull/9", done.stdout)
+
+    def test_a_pull_request_is_opened_only_after_the_push_and_only_for_a_new_branch(self):
+        target = {"mode": "new-branch", "repo": "o/r", "branch": "takeover/5-fix-x", "base": "main", "head": "a" * 40,
+                  "number": 5, "pr_title": "t", "pr_body": "b"}
+        (self.tmp / "target.json").write_text(json.dumps(target))
+        done = subprocess.run([sys.executable, str(TAKEOVER), "open", "--target", str(self.tmp / "target.json")],
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("pushed", done.stdout + done.stderr)
+        (self.tmp / "target.json").write_text(json.dumps({**target, "mode": "author-branch"}))
+        (self.tmp / "pushed.json").write_text(json.dumps({"branch": "takeover/5-fix-x", "repo": "o/r"}))
+        done = subprocess.run([sys.executable, str(TAKEOVER), "open", "--target", str(self.tmp / "target.json")],
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+
     def test_a_fork_is_not_somewhere_to_push(self):
         remote, work, head = self.remote_with_a_pull_request()
-        code, out = self.push(work, remote, head, self.fix(work), mode="fork", repo=None)
+        code, out = self.push(work, remote, head, self.fix(work), mode="fork", repo=None, cli={"repo": "them/r"})
         self.assertEqual(code, 1, out)
         self.assertIn("fork", out)
 
@@ -1555,9 +1649,10 @@ class RequirementsTest(unittest.TestCase):
     def tearDown(self):
         self.tmp_dir.cleanup()
 
-    def extract(self, *sources: "tuple[str, str]", out: "Path | None" = None) -> "tuple[int, str, dict | None]":
+    def extract(self, *sources: "tuple[str, str]", out: "Path | None" = None,
+                by: "tuple | None" = None) -> "tuple[int, str, dict | None]":
         out = out or self.tmp / "reference.json"
-        args = []
+        args = [arg for label, login in (by or ()) for arg in ("--by", label, login)]
         for n, (label, text) in enumerate(sources):
             source = self.tmp / f"source-{n}.md"
             source.write_text(text)
@@ -1601,6 +1696,17 @@ class RequirementsTest(unittest.TestCase):
         self.assertFalse(any("How to verify" in text for _, _, text in self.lines(ref)))
         _, _, inline = self.extract(("t", "- [ ] one\n\n**How to verify:** `npm test` and a manual run\n"))
         self.assertEqual(inline["verify"], ["`npm test` and a manual run"])
+
+    def test_a_source_records_who_wrote_it_so_the_poster_can_tell_the_authors_own_issue(self):
+        # An approval needs a reference the pull request's author did not write; a script that only counts checkboxes
+        # cannot tell, so a source carries the login of whoever wrote it (an issue's author).
+        _, _, ref = self.extract(("issue #4", "- [ ] one\n"), ("ticket 03", "- [ ] two\n"), by=[("issue #4", "them")])
+        self.assertEqual([s.get("by") for s in ref["sources"]], ["them", None])
+
+    def test_a_by_for_a_source_that_was_not_given_is_a_usage_error(self):
+        code, out, ref = self.extract(("ticket 03", "- [ ] two\n"), by=[("issue #9", "them")])
+        self.assertEqual(code, 2, out)
+        self.assertIsNone(ref)
 
     def test_an_issue_in_the_github_template_extracts_the_same_way(self):
         issue = ("## Parent\n\n#12\n\n## What to build\n\nA thing.\n\n## Acceptance criteria\n\n"
@@ -1691,6 +1797,12 @@ class LabelTest(PosterHarness, unittest.TestCase):
         self.assertEqual(self.post(self.posted("APPROVE"))[0], 0)
         self.assertEqual(self.on_pr(), ["bug", "ready to merge", "pr-review: approved"])
 
+    def test_a_label_of_the_repository_that_merely_starts_like_ours_is_left_alone(self):
+        self.state["issue_labels"] = {"o/r#1": ["pr-review: legacy gate", "pr-review: commented"]}
+        self.save()
+        self.assertEqual(self.post(self.posted("APPROVE"))[0], 0)
+        self.assertEqual(self.on_pr(), ["pr-review: legacy gate", "pr-review: approved"])
+
     def test_a_label_already_on_the_pull_request_is_not_added_twice(self):
         self.state["issue_labels"] = {"o/r#1": ["pr-review: commented"]}
         self.save()
@@ -1754,7 +1866,8 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
         review.json's keys."""
         folder = self.evidence(number)
         review = json.loads((folder / "review.json").read_text())
-        review.update({"findings": [], "not_verified": [], "intent": {"sources": ["ticket 03"]},
+        review.update({"verdict": {"APPROVE": "approve", "REQUEST_CHANGES": "request changes"}.get(event, "comment"),
+                       "findings": [], "not_verified": [], "intent": {"sources": ["ticket 03"]},
                        "requirements": [{"id": "R1", "status": "met", "evidence": "the check passes"}]})
         review.update(changes)
         (folder / "review.json").write_text(json.dumps(review))
@@ -1797,6 +1910,51 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
 
     def auto(self, *folders: Path) -> "tuple[int, str]":
         return self.post("--auto", *folders)
+
+    def source(self, folder: Path, label: str, by: "str | None" = None) -> None:
+        """The reference's one source, as requirements.py wrote it."""
+        data = json.loads((folder / "reference.json").read_text())
+        data["sources"] = [{"label": label, "sha256": "0" * 64, **({"by": by} if by else {})}]
+        (folder / "reference.json").write_text(json.dumps(data))
+
+    def body(self, folder: Path, text: "str | None", comment: "str | None" = None) -> None:
+        payload = json.loads((folder / "payload.json").read_text())
+        if text is not None:
+            payload["body"] = text
+        if comment is not None:
+            payload["comments"] = [{"path": "a.py", "line": 1, "side": "RIGHT", "body": comment}]
+        (folder / "payload.json").write_text(json.dumps(payload))
+
+    def test_an_approval_against_an_issue_someone_else_wrote_posts_by_itself(self):
+        folder = self.verified(1, event="APPROVE")
+        self.source(folder, label="issue #4", by="somebody-else")
+        self.assertEqual(self.auto(folder)[0], 0)
+        self.assertEqual(self.reviews(1)[0]["state"], "APPROVE")
+
+    def test_the_poster_records_what_it_read_to_decide(self):
+        # Decision 16: posted.json records that the post was automatic and on what evidence.
+        import hashlib
+        folder = self.verified()
+        self.assertEqual(self.auto(folder)[0], 0)
+        posted = json.loads((folder / "posted.json").read_text())
+        for name, path in (("review.json", folder / "review.json"), ("checks.json", folder / "checks" / "checks.json")):
+            self.assertEqual(posted["evidence"][name], hashlib.sha256(path.read_bytes()).hexdigest())
+
+    def test_a_review_whose_pull_request_cannot_be_read_is_not_posted_and_nothing_else_is_either(self):
+        # repo, number and head go into gh's paths: a value that is not what GitHub calls them stops the run before any post.
+        for n, (key, value) in enumerate((("number", "1; rm -rf /"), ("repo", "o/r/../../x"), ("head", "not-a-sha")), 1):
+            with self.subTest(key):
+                folder = self.verified(n)
+                self.change(folder, pr={**json.loads((folder / "review.json").read_text())["pr"], key: value})
+                code, out = self.auto(folder)
+                self.assertEqual(code, 2, out)
+                self.assertIn("unreadable", out)
+                self.assertEqual(self.reviews(n), [])
+
+    def test_clean_text_with_paths_inside_the_repository_still_posts(self):
+        folder = self.verified()
+        self.body(folder, "src/app/main.py:12 reads /etc/hosts nowhere; see docs/Users/guide.md", comment="a.py needs a guard")
+        self.assertEqual(self.auto(folder)[0], 0)
 
     def test_a_fully_verified_review_posts_by_itself_and_says_so(self):
         folder = self.verified()
@@ -1847,6 +2005,34 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
             ("an approval with an unmet requirement", "unmet requirement",
              lambda f: (self.change(f, requirements=[{"id": "R1", "status": "unmet", "evidence": "e"}]),
                         self.event(f, "APPROVE"))),
+            ("an approval whose verdict is not approve", "verdict",
+             lambda f: (self.change(f, verdict="request changes"), self.event(f, "APPROVE"))),
+            ("an approval beside a blocking finding", "blocking",
+             lambda f: (self.change(f, findings=[blocking]), self.event(f, "APPROVE"))),
+            ("an approval beside a check the pull request broke", "broken by the PR",
+             lambda f: (self.checks(f, [{"name": "test", "verdict": "broken by the PR"}]), self.event(f, "APPROVE"))),
+            ("an approval beside a check the pull request removed", "removed by the PR",
+             lambda f: (self.checks(f, [{"name": "test", "verdict": "removed by the PR"}]), self.event(f, "APPROVE"))),
+            ("an approval whose every requirement is not applicable", "none is met",
+             lambda f: (self.change(f, requirements=[{"id": "R1", "status": "not applicable", "evidence": "n/a"}]),
+                        self.event(f, "APPROVE"))),
+            ("an approval of a pull request that has a merge conflict", "conflict",
+             lambda f: (self.event(f, "APPROVE"), self.change(f, pr={**json.loads((f / "review.json").read_text())["pr"],
+                                                                    "mergeable": "CONFLICTING"}))),
+            ("an approval against a requirement list taken from the author's own issue", "independent",
+             lambda f: (self.event(f, "APPROVE"), self.source(f, label="issue #4", by="them"))),
+            ("an approval against the pull request's own body", "independent",
+             lambda f: (self.event(f, "APPROVE"), self.source(f, label="the PR body"))),
+            ("a payload with a local path in its body", "local path",
+             lambda f: self.body(f, "see /Users/gabriel/secret/notes.txt for details")),
+            ("a payload with a home-directory path in an inline comment", "local path",
+             lambda f: self.body(f, None, comment="it fails at /home/runner/work/x.py")),
+            ("a payload carrying a GitHub token", "secret",
+             lambda f: self.body(f, "token ghp_" + "a1B2c3D4e5" * 4)),
+            ("a payload carrying a private key", "secret",
+             lambda f: self.body(f, "-----BEGIN RSA PRIVATE KEY-----")),
+            ("a requirement id that is not text", "requirement R1 has no status",
+             lambda f: self.change(f, requirements=[{"id": ["R1"], "status": "met"}])),
         ]
         for label, reason, damage in cases:
             with self.subTest(label):

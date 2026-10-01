@@ -41,7 +41,10 @@ is on GitHub, 1 when any is not (each says why), and 2 on a usage error, before 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
+import re
 import subprocess
 import sys
 import time
@@ -73,7 +76,12 @@ def load(folder: Path) -> dict:
     review = json.loads((folder / "review.json").read_text())
     payload = json.loads((folder / "payload.json").read_text())
     pr = review["pr"]
-    repo, number, head = pr["repo"], int(pr["number"]), pr["head"]
+    repo, number, head = pr["repo"], pr["number"], pr["head"]
+    if not (isinstance(repo, str) and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) and repo not in (".", "..")
+            and isinstance(number, int) and not isinstance(number, bool) and number > 0
+            and isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}", head)):
+        raise ValueError(f"{folder}: review.json's pull request is unreadable (repo, number and head go into gh's "
+                         "paths: owner/repo, a number and a full commit)")
     if payload.get("commit_id") != head:
         raise ValueError(f"{folder}: payload.json is for {str(payload.get('commit_id'))[:7]}, "
                          f"the review for {head[:7]}; rebuild it with review_payload.py")
@@ -136,8 +144,9 @@ def label_review(review: dict) -> "tuple[str | None, str | None]":
         if status >= 300 or not isinstance(body, list):
             return None, f"HTTP {status}: {message(body)}"
         on_pr = [label.get("name") for label in body if isinstance(label, dict)]
-        for older in on_pr:
-            if isinstance(older, str) and older.startswith(LABEL_PREFIX) and older != name:
+        ours = {label for label, _, _ in LABELS.values()}      # only the three this poster makes: a repository's own
+        for older in on_pr:                                         # "pr-review: ..." label is its own
+            if older in ours and older != name:
                 api("DELETE", f"repos/{repo}/issues/{number}/labels/{quote(older, safe='')}")
         if name not in on_pr:
             status, _, body = api("POST", f"repos/{repo}/issues/{number}/labels", {"labels": [name]})
@@ -203,6 +212,77 @@ def shortfalls(review: dict, can_push: bool) -> list:
     if not can_push:
         reasons.append(f"the viewer cannot push to {review['repo']}")
     reasons += reference_shortfalls(review, findings)
+    if review["payload"].get("event") == "APPROVE":
+        reasons += approval_shortfalls(review, rows, findings)
+    reasons += leak_shortfalls(review["payload"])
+    return reasons
+
+
+def approval_shortfalls(review: dict, rows, findings: list) -> list:
+    """What an approval needs beyond the rest, asserted here again: review_payload.py refuses some of it when it builds
+    the payload, but a payload built earlier or edited since still posts, and an approval cannot be taken back."""
+    data, reasons = review["review"], []
+    if data.get("verdict") != "approve":
+        reasons.append(f"an approval needs the verdict approve, not {data.get('verdict')!r}")
+    for finding in findings:
+        if isinstance(finding, dict) and finding.get("severity") == "blocking":
+            reasons.append(f"an approval beside a blocking finding: {finding.get('title')}")
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and row.get("verdict") in ("broken by the PR", "removed by the PR"):
+            reasons.append(f"an approval beside a check {row['verdict']}: {row.get('name')}")
+    if (data.get("pr") or {}).get("mergeable") == "CONFLICTING":
+        reasons.append("an approval of a pull request with a merge conflict")
+    answers = data.get("requirements") if isinstance(data.get("requirements"), list) else []
+    if not any(isinstance(a, dict) and a.get("status") == "met" for a in answers):
+        reasons.append("an approval needs a requirement met, and none is met")
+    reasons += independence_shortfalls(review)
+    return reasons
+
+
+NEEDS_A_WRITER = ("issue", "pull", "pr ", "discussion")      # a source from GitHub: whoever opened it may be the author
+AUTHORS_OWN = re.compile(r"\b(body|description)\b", re.I)
+
+
+def independence_shortfalls(review: dict) -> list:
+    """An approval stands on a reference its pull request's author did not write: a file, a ticket read from the
+    baseline, or an issue someone else opened. A script only counts the checkboxes it is given, so the sources carry
+    their writers (requirements.py --by), and the author's own issue or the pull request's own body is not one."""
+    author = str(review["review"].get("pr", {}).get("author") or "").casefold()
+    try:
+        sources = json.loads((review["folder"] / "reference.json").read_text())["sources"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []                                       # reference_shortfalls says what is wrong with the file
+    for source in sources if isinstance(sources, list) else []:
+        label = str(source.get("label") or "") if isinstance(source, dict) else ""
+        writer = str(source.get("by") or "").casefold() if isinstance(source, dict) else ""
+        if AUTHORS_OWN.search(label):
+            continue
+        if label.casefold().startswith(NEEDS_A_WRITER) and (not writer or writer == author):
+            continue
+        if writer and writer == author:
+            continue
+        return []
+    return ["an approval needs an independent reference: every source is the pull request's author's own "
+            "(their issue or description), or does not say who wrote it"]
+
+
+LOCAL_PATHS = re.compile(r"/Users/[^/\s]+/|/home/[^/\s]+/|/private/(?:var|tmp)/|/var/folders/|/tmp/seams-pr-review")
+SECRETS = re.compile(r"gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|"
+                     r"-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[abprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{32,}")
+
+
+def leak_shortfalls(payload: dict) -> list:
+    """No person reads a review that posts by itself, so the poster reads it for what must never reach GitHub: a
+    path on this machine and anything shaped like a secret. It never repeats what it found."""
+    texts = [str(payload.get("body") or "")]
+    texts += [str(c.get("body") or "") for c in payload.get("comments") or [] if isinstance(c, dict)]
+    text = "\n".join(texts)
+    home = os.path.expanduser("~")
+    reasons = []
+    if LOCAL_PATHS.search(text) or (len(home) > 1 and home in text):
+        reasons.append("the review mentions a local path of this machine")
+    if SECRETS.search(text):
+        reasons.append("the review holds something that looks like a secret (a token or a key)")
     return reasons
 
 
@@ -230,7 +310,7 @@ def reference_shortfalls(review: dict, findings: list) -> list:
     if approve and not lines:
         reasons.append("an approval needs an independent reference with at least one requirement line, "
                        "and the pull request's own description is not one")
-    answers = {a.get("id"): a for a in data.get("requirements") or [] if isinstance(a, dict)}
+    answers = {a["id"]: a for a in data.get("requirements") or [] if isinstance(a, dict) and isinstance(a.get("id"), str)}
     for line in lines:
         number, answer = line["id"], answers.get(line["id"])
         status = answer.get("status") if answer else None
@@ -355,13 +435,25 @@ class Pace:
         self.sent.append((self.clock(), units))
 
 
+def hashes(folder: Path) -> dict:
+    """What an automatic post read to decide, by hash: the evidence it stood on can be told from what is on disk later."""
+    out = {}
+    for name, path in (("review.json", folder / "review.json"), ("checks.json", folder / "checks" / "checks.json")):
+        try:
+            out[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            pass
+    return out
+
+
 def record(review: dict, posted: dict, auto: bool = False, label: "tuple | None" = None) -> str:
     extra = {}
     if label:
         extra = {"label": label[0]} if label[0] else {"label_error": label[1]}
     (review["folder"] / "posted.json").write_text(json.dumps(
         {"html_url": posted.get("html_url"), "id": posted.get("id"), "event": review["payload"].get("event"),
-         "commit_id": review["head"], **({"auto": True} if auto else {}), **extra}, indent=2) + "\n")
+         "commit_id": review["head"], **({"auto": True, "evidence": hashes(review["folder"])} if auto else {}),
+         **extra}, indent=2) + "\n")
     if evidence is not None:
         evidence.update_batches(review["folder"])
     return posted.get("html_url") or ""
@@ -399,7 +491,10 @@ def main(argv: "list | None" = None) -> int:
             missing += 1
             continue
         if args.auto:
-            why = shortfalls(review, may_push(review["repo"], rights))
+            try:
+                why = shortfalls(review, may_push(review["repo"], rights))
+            except Exception as err:                    # noqa: BLE001  evidence that cannot be read is evidence of nothing
+                why = [f"the evidence is unreadable ({type(err).__name__})"]
             if why:
                 print(f"needs your yes: {review['name']}: {'; '.join(why)}")
                 missing += 1

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn a reference (what a pull request is meant to do) into numbered requirement lines, by script.
 
-  requirements.py extract --out EVID/reference.json --source LABEL FILE [--source LABEL FILE ...]
+  requirements.py extract --out EVID/reference.json --source LABEL FILE [--source LABEL FILE ...] [--by LABEL LOGIN ...]
 
 Each FILE is the text of one reference: a Seams ticket or spec, a GitHub issue's body, a document the user named.
 The review reads it from where it must (a ticket in the pull request's own branch from the baseline, never the
@@ -20,7 +20,8 @@ approval, because nothing in it can be checked line by line.
 
 Writes reference.json: {"sources": [{"label", "sha256"}], "requirements": [{"id", "kind", "text", "source"}],
 "verify": [...]}. A source is named by its label and the hash of its text, never by a path: a posted review
-must not leak a private file's location. Ids are R1, R2, ... across all sources, in order. Prints the lines.
+must not leak a private file's location. `--by LABEL LOGIN` records who wrote a source (an issue's author) as "by":
+the poster refuses an approval resting on a source its pull request's own author wrote. Ids are R1, R2, ... across all sources, in order. Prints the lines.
 Exits 0 when written, 2 on a usage error or a source it cannot read, before anything is written.
 """
 from __future__ import annotations
@@ -97,7 +98,15 @@ def main(argv: "list | None" = None) -> int:
     extract.add_argument("--out", type=Path, required=True, help="where reference.json goes (the evidence directory)")
     extract.add_argument("--source", nargs=2, action="append", metavar=("LABEL", "FILE"), required=True,
                          help="a reference: what it is, and a file holding its text (repeatable)")
+    extract.add_argument("--by", nargs=2, action="append", metavar=("LABEL", "LOGIN"), default=[],
+                         help="who wrote a source, by its label (repeatable)")
     args = parser.parse_args(argv)
+    given = {label for label, _ in args.source}
+    for label, _ in args.by:
+        if label not in given:
+            print(f"requirements.py: --by names {label!r}, which is not a --source", file=sys.stderr)
+            return 2
+    writers = dict(args.by)
     sources, requirements, verify = [], [], []
     for label, name in args.source:
         try:
@@ -106,7 +115,8 @@ def main(argv: "list | None" = None) -> int:
             print(f"requirements.py: cannot read the reference {label!r}: {err}", file=sys.stderr)
             return 2
         lines, how = parse(text, label)
-        sources.append({"label": label, "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()})
+        sources.append({"label": label, "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                        **({"by": writers[label]} if label in writers else {})})
         requirements += lines
         verify += how
     for number, line in enumerate(requirements, 1):

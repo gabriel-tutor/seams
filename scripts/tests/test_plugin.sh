@@ -673,7 +673,7 @@ step_says Batch batch "The fan-out ends this turn" "--share" "Shared baseline re
 # text the core used to hold, and the reason it moved out (lean-and-durable's size bound, and the tokens a fan-out pays).
 grep -F -- "references/post.md" "$PRR_REFS/batch.md" | grep -qF "never" \
   || fail "batch.md should say that a subagent never reads references/post.md"
-# Its four scripts run without a permission prompt from any directory (lean-and-durable ticket 06): the core runs each as
+# Its scripts run without a permission prompt from any directory (lean-and-durable ticket 06): the core runs each as
 # `python3 ${CLAUDE_SKILL_DIR}/scripts/<name>.py` and its allowed-tools pre-approves exactly that command, as the skills
 # docs show. Claude Code fills in ${CLAUDE_SKILL_DIR} only in SKILL.md and its allowed-tools, so a reference writes a
 # path in the skill as <skill-dir>/..., which the core defines, and nothing names the directory the old way.
@@ -699,6 +699,9 @@ ref_says() {   # $1 = a reference's name, $2... = phrases it must contain
   body=$(cat "$PRR_REFS/$name.md") || fail "pr-review lacks references/$name.md"
   for needle in "$@"; do [[ $body == *"$needle"* ]] || fail "references/$name.md should say: $needle"; done
 }
+ref_says takeover "takeover.py open" "--repo <owner/repo> --branch <branch>" "outside \`takeover/\`"
+ref_says reference "--by" "never a source"
+ref_says handover "label_error" "each requirement's status"
 ref_says takeover "takeover.py target" "takeover.py push" "AskUserQuestion" "Co-authored-by" "never a force" "worktree" \
   "the author's branch" "new branch" "Merging stays"
 ref_says reference "requirements.py extract" "never the head" "against" "the baseline" "Reference" "short title" \
