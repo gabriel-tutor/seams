@@ -25,7 +25,7 @@ A new app starts with `foundations` (the run and verify commands, CI, the produc
 - **Down or degraded for users now** → `incident`. Impact, then the safest reversible containing action behind a yes, restore, and only then `diagnosing-bugs`.
 - **A huge, foggy effort** → `/wayfinder` (user-only). It charts a map of decision tickets and resolves one per session. When the way is clear, it hands off to `to-spec`.
 - **Unsure where to start** → suggest `/ask-matt` (user-only), Matt's own routing.
-- **A GitHub pull request to review, or several** → `matt-pocock-workflow:pr-review` with their numbers, URLs or `owner/repo#n`, when the user or a skill they run asks for it (the user can type `/matt-pocock-workflow:pr-review` or bare `/pr-review` too, and `open` or `requested` take a batch); a local branch, commits or uncommitted work go to `code-review`. It runs the repo's checks on each pull request's head and baseline, reviews with `code-review` and a risk reviewer, proves its findings, posts nothing without a yes, and ends by saying which pull requests are ready to merge.
+- **A GitHub pull request to review, or several** → `matt-pocock-workflow:pr-review` with their numbers, URLs or `owner/repo#n`, when the user or a skill they run asks for it (the user can type `/matt-pocock-workflow:pr-review` or bare `/pr-review` too, and `open` or `requested` take a batch); a local branch, commits or uncommitted work go to `code-review`. It runs the repo's checks on each pull request's head and baseline, reviews with `code-review` and a risk reviewer, proves its findings, posts by itself only a review that is fully verified at its head (otherwise it asks), and ends by saying which pull requests are ready to merge.
 
 ## Upkeep
 
