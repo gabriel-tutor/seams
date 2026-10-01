@@ -761,6 +761,8 @@ def answer(status, body, headers=None):
 parts = path.split("/")
 if path == "user":
     answer(200, {"login": state["viewer"]})
+if method == "GET" and len(parts) == 3:        # repos/<owner>/<repo>: what the viewer may do there
+    answer(200, {"permissions": state.get("perms", {}).get(f"{parts[1]}/{parts[2]}", {"push": True})})
 key = f"{parts[1]}/{parts[2]}#{parts[4]}"
 if method == "GET" and key in state.get("fail_gets", {}):
     print("gh: " + state["fail_gets"][key], file=sys.stderr)
@@ -788,9 +790,8 @@ answer(step["status"], {"message": step.get("message", "refused")}, step.get("he
 '''
 
 
-class PostReviewsTest(unittest.TestCase):
-    """post_reviews.py posts the reviews the user chose, one at a time, paced under GitHub's limits
-    for creating content, never twice, and stops to ask on any refusal that is not a rate limit."""
+class PosterHarness:
+    """The poster's fixtures: a fake gh on PATH, evidence directories, and post_reviews.py run against them."""
 
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()
@@ -845,6 +846,11 @@ class PostReviewsTest(unittest.TestCase):
 
     def reviews(self, number: int) -> list:
         return json.loads((self.tmp / "state.json").read_text())["reviews"].get(f"o/r#{number}", [])
+
+
+class PostReviewsTest(PosterHarness, unittest.TestCase):
+    """post_reviews.py posts the reviews the user chose, one at a time, paced under GitHub's limits
+    for creating content, never twice, and stops to ask on any refusal that is not a rate limit."""
 
     def test_the_chosen_reviews_post_one_at_a_time_in_order_and_each_link_is_shown(self):
         folders = [self.evidence(n) for n in (7, 3, 12)]
@@ -989,6 +995,154 @@ MOVED_BASE = "3a234bd0e1f2a3b4c5d6e7f8091a2b3c4d5e6f70"
 PUSHED = "0f4e5e9a1b2c3d4e5f60718293a4b5c6d7e8f901"
 URL = "https://github.com/acme/shop/pull/12"
 
+
+
+class AutoPostTest(PosterHarness, unittest.TestCase):
+    """`post_reviews.py --auto` posts a review without a yes only when it is fully verified at the head
+    (CONTEXT.md, Fully verified) and the viewer can push to the repository. The rule is code, read from the
+    evidence on disk, so a review the model calls verified posts only if the evidence says so
+    (.scratch/pr-review-autopost, decisions 1, 7 and 21)."""
+
+    OWN = {"independent": False, "sources": []}
+
+    def verified(self, number: int = 1, event: str = "COMMENT", **changes) -> Path:
+        """A review that is fully verified: a check that passed on both trees, nothing under not verified, no
+        unverified finding, an independent reference. `changes` overrides review.json's keys."""
+        folder = self.evidence(number)
+        review = json.loads((folder / "review.json").read_text())
+        review.update({"findings": [], "not_verified": [], "intent": {"independent": True, "sources": ["docs/spec.md"]}})
+        review.update(changes)
+        (folder / "review.json").write_text(json.dumps(review))
+        self.event(folder, event)
+        (folder / "checks").mkdir()
+        self.checks(folder, [{"name": "test", "verdict": "ok", "base": {"status": "pass"}, "head": {"status": "pass"}}])
+        return folder
+
+    def checks(self, folder: Path, rows: list) -> None:
+        (folder / "checks" / "checks.json").write_text(json.dumps(rows))
+
+    def change(self, folder: Path, **keys) -> None:
+        review = json.loads((folder / "review.json").read_text())
+        for key, value in keys.items():
+            if value is None:
+                review.pop(key, None)
+            else:
+                review[key] = value
+        (folder / "review.json").write_text(json.dumps(review))
+
+    def event(self, folder: Path, event: str) -> None:
+        payload = json.loads((folder / "payload.json").read_text())
+        payload["event"] = event
+        (folder / "payload.json").write_text(json.dumps(payload))
+
+    def deny_push(self, repo: str) -> None:
+        self.state.setdefault("perms", {})[repo] = {"pull": True, "triage": True, "push": False}
+        self.save()
+
+    def auto(self, *folders: Path) -> "tuple[int, str]":
+        return self.post("--auto", *folders)
+
+    def test_a_fully_verified_review_posts_by_itself_and_says_so(self):
+        folder = self.verified()
+        code, out = self.auto(folder)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(self.reviews(1)), 1)
+        self.assertIs(json.loads((folder / "posted.json").read_text())["auto"], True)
+
+    def test_without_auto_the_poster_posts_what_the_person_chose_whatever_the_evidence(self):
+        folder = self.evidence(1)                      # no checks, no intent: the person said yes
+        code, out = self.post(folder)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(self.reviews(1)), 1)
+        self.assertNotIn("auto", json.loads((folder / "posted.json").read_text()))
+
+    def test_every_way_a_review_falls_short_of_fully_verified_refuses_to_post_by_itself(self):
+        blocking = {"severity": "blocking", "title": "breaks X", "body": "b", "path": "a.py", "line": 1,
+                    "verified": True, "proof": "probe", "evidence": "the probe fails on the head"}
+        request_changes = {"verdict": "request changes"}
+        cases = [
+            ("static review leaves no checks.json", "no check ran", lambda f: (f / "checks" / "checks.json").unlink()),
+            ("a checks list with no check in it", "no check ran", lambda f: self.checks(f, [])),
+            ("an unreadable checks file", "no check ran", lambda f: (f / "checks" / "checks.json").write_text("not json")),
+            ("a check that could not run", "could not run",
+             lambda f: self.checks(f, [{"name": "e2e", "verdict": "could not run", "head": {"status": "absent"}}])),
+            ("a check that came out flaky", "flaky",
+             lambda f: self.checks(f, [{"name": "unit", "verdict": "flaky", "head": {"status": "fail"}}])),
+            ("something left under not verified", "left under not verified",
+             lambda f: self.change(f, not_verified=["the e2e suite needs a database"])),
+            ("a finding nobody verified at the head", "not verified at the head",
+             lambda f: self.change(f, findings=[{**blocking, "verified": False}], **request_changes)),
+            ("a blocking finding with no proof", "no proof",
+             lambda f: self.change(f, findings=[{k: v for k, v in blocking.items() if k != "proof"}], **request_changes)),
+            ("a blocking finding whose proof is not one of the four kinds", "no proof",
+             lambda f: self.change(f, findings=[{**blocking, "proof": "I am sure"}], **request_changes)),
+            ("a viewer who cannot push to the repository", "cannot push", lambda f: self.deny_push("o/r")),
+            ("an approval with only the pull request's own description as its spec", "independent reference",
+             lambda f: (self.change(f, intent=self.OWN), self.event(f, "APPROVE"))),
+            ("an approval whose review has no intent at all", "independent reference",
+             lambda f: (self.change(f, intent=None), self.event(f, "APPROVE"))),
+        ]
+        for label, reason, damage in cases:
+            with self.subTest(label):
+                self.tearDown()                        # a fresh fake gh and directory for each case
+                self.setUp()
+                folder = self.verified()
+                damage(folder)
+                code, out = self.auto(folder)
+                self.assertEqual(code, 1, out)
+                self.assertEqual(self.reviews(1), [], "it must not have posted")
+                self.assertIn("needs your yes", out)
+                self.assertIn(reason, out)
+                self.assertFalse((folder / "posted.json").exists())
+
+    def test_a_comment_posts_without_an_independent_reference_but_an_approval_does_not(self):
+        # Decision 21: the author's own description cannot approve itself; it can still be commented on.
+        self.assertEqual(self.auto(self.verified(1, intent=self.OWN))[0], 0)
+        self.assertEqual(len(self.reviews(1)), 1)
+        code, out = self.auto(self.verified(2, event="APPROVE", intent=self.OWN))
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.reviews(2), [])
+
+    def test_an_approval_with_an_independent_reference_posts_by_itself(self):
+        code, out = self.auto(self.verified(1, event="APPROVE"))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.reviews(1)[0]["state"], "APPROVE")
+
+    def test_a_blocking_finding_proven_by_each_kind_of_evidence_may_post(self):
+        for proof in ("check", "probe", "reproduction", "citation"):
+            with self.subTest(proof=proof):
+                self.tearDown()
+                self.setUp()
+                finding = {"severity": "blocking", "title": "t", "body": "b", "path": "a.py", "line": 1,
+                           "verified": True, "proof": proof, "evidence": "e"}
+                code, out = self.auto(self.verified(1, findings=[finding], verdict="request changes"))
+                self.assertEqual(code, 0, out)
+
+    def test_a_question_and_praise_need_no_verification_but_a_nit_does(self):
+        question = {"severity": "question", "title": "t", "body": "b"}
+        praise = {"severity": "praise", "title": "t", "body": "b"}
+        nit = {"severity": "nit", "title": "t", "body": "b", "path": "a.py", "line": 1}
+        self.assertEqual(self.auto(self.verified(1, findings=[question, praise]))[0], 0)
+        code, out = self.auto(self.verified(2, findings=[nit]))
+        self.assertEqual(code, 1, out)
+        self.assertIn("not verified at the head", out)
+
+    def test_what_is_not_eligible_does_not_stop_the_eligible_ones_after_it(self):
+        bad, good = self.verified(1), self.verified(2)
+        self.change(bad, not_verified=["unchecked"])
+        code, out = self.auto(bad, good)
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.reviews(1), [])
+        self.assertEqual(len(self.reviews(2)), 1)
+
+    def test_a_head_that_moved_is_still_not_posted_by_itself(self):
+        folder = self.verified()
+        self.state["heads"]["o/r#1"] = "b" * 40
+        self.save()
+        code, out = self.auto(folder)
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.reviews(1), [])
+        self.assertIn("moved", out)
 
 class EvidenceTest(unittest.TestCase):
     """evidence.py pin names each pull request's evidence directory and says where its review starts: what an

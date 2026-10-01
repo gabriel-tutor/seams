@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Post the reviews a person chose, one at a time, paced under GitHub's limits, and say where each landed.
 
-  post_reviews.py [--per-minute N] [--per-hour N] [--minute SECONDS] [--backoff SECONDS] [--slow SECONDS]
-                  [--tries N] EVID [EVID ...]
+  post_reviews.py [--auto] [--per-minute N] [--per-hour N] [--minute SECONDS] [--backoff SECONDS]
+                  [--slow SECONDS] [--tries N] EVID [EVID ...]
 
 Each EVID is one pull request's evidence directory: review.json (which pull request, at which
 commit) and payload.json (the review GitHub receives, from review_payload.py), posted in the order
@@ -20,6 +20,14 @@ A wait longer than all the tries' backoff together (a primary limit resetting wi
 not taken: the run says when to post again. Any other refusal, a failure of gh itself, or a block
 that does not lift ends the run: the reviews after it are not tried, so the person can decide, and
 running it again finds what is already posted. --minute shortens the budget's minute for tests.
+
+With --auto a review posts without a person's yes only when it is fully verified at its head (CONTEXT.md) and the
+viewer can push to the repository; the rule is read from the evidence on disk, never from the model's say-so:
+checks/checks.json lists at least one check and none "could not run" or "flaky", review.json's not_verified is empty,
+every finding but a question or praise is verified at the head, every blocking one has a proof (a check, a probe,
+a reproduction or a citation), and an APPROVE needs an independent reference (intent.independent). A review that
+falls short is not posted: `needs your yes: <review>: <why>` is printed, it counts as not on GitHub (exit 1), and
+the reviews after it are still tried. Without --auto the poster posts what the person chose, as it always did.
 
 Each review posted is recorded in EVID/posted.json, and the progress file of a batch listing EVID brought up to
 date (evidence.py), and its link printed. Exits 0 when every review
@@ -63,8 +71,62 @@ def load(folder: Path) -> dict:
     if payload.get("commit_id") != head:
         raise ValueError(f"{folder}: payload.json is for {str(payload.get('commit_id'))[:7]}, "
                          f"the review for {head[:7]}; rebuild it with review_payload.py")
-    return {"folder": folder, "repo": repo, "number": number, "head": head, "payload": payload,
+    return {"folder": folder, "repo": repo, "number": number, "head": head, "payload": payload, "review": review,
             "name": f"{repo}#{number} at {head[:7]} as {payload.get('event')}"}
+
+
+PROOFS = ("check", "probe", "reproduction", "citation")      # what a blocking finding may rest on (CONTEXT.md, Finding)
+PUSH_RIGHTS = ("push", "maintain", "admin")
+
+
+def may_push(repo: str, known: dict) -> bool:
+    """Whether the viewer can push to the repository: where a review is expected. Anything gh cannot say is no."""
+    if repo not in known:
+        try:
+            rights = gh_json(f"repos/{repo}").get("permissions") or {}
+        except (GhError, ValueError, AttributeError):
+            rights = {}
+        known[repo] = any(rights.get(right) is True for right in PUSH_RIGHTS)
+    return known[repo]
+
+
+def shortfalls(review: dict, can_push: bool) -> list:
+    """Why this review may not post without a yes: one line each, [] when it is fully verified at its head.
+    Fails closed: evidence that is missing or unreadable is evidence of nothing."""
+    data, reasons = review["review"], []
+    try:
+        rows = json.loads((review["folder"] / "checks" / "checks.json").read_text())
+    except (OSError, ValueError):
+        rows = None
+    if not isinstance(rows, list) or not rows or not all(isinstance(r, dict) for r in rows):
+        reasons.append("no check ran (static review, or no readable checks/checks.json)")
+    else:
+        for row in rows:
+            if row.get("verdict") in ("could not run", "flaky"):
+                reasons.append(f"{row['verdict']}: {row.get('name')}")
+    left = data.get("not_verified")
+    if not isinstance(left, list) or left:
+        reasons.append("left under not verified: " + ("; ".join(map(str, left))[:200] if isinstance(left, list)
+                                                       else "review.json has no not_verified list"))
+    findings = data.get("findings")
+    if not isinstance(findings, list):
+        findings = []
+        reasons.append("review.json has no findings list")
+    for finding in findings:
+        if not isinstance(finding, dict):
+            reasons.append("a finding is not readable")
+            continue
+        title = str(finding.get("title") or "untitled")
+        if finding.get("severity") not in ("question", "praise") and finding.get("verified") is not True:
+            reasons.append(f"finding not verified at the head: {title}")
+        if finding.get("severity") == "blocking" and finding.get("proof") not in PROOFS:
+            reasons.append(f"blocking finding has no proof (one of {', '.join(PROOFS)}): {title}")
+    if not can_push:
+        reasons.append(f"the viewer cannot push to {review['repo']}")
+    intent = data.get("intent")
+    if review["payload"].get("event") == "APPROVE" and not (isinstance(intent, dict) and intent.get("independent") is True):
+        reasons.append("an approval needs an independent reference, and the pull request's own description is not one")
+    return reasons
 
 
 def already_posted(review: dict, viewer: str):
@@ -166,10 +228,10 @@ class Pace:
         self.sent.append((time.monotonic(), units))
 
 
-def record(review: dict, posted: dict) -> str:
+def record(review: dict, posted: dict, auto: bool = False) -> str:
     (review["folder"] / "posted.json").write_text(json.dumps(
         {"html_url": posted.get("html_url"), "id": posted.get("id"), "event": review["payload"].get("event"),
-         "commit_id": review["head"]}, indent=2) + "\n")
+         "commit_id": review["head"], **({"auto": True} if auto else {})}, indent=2) + "\n")
     if evidence is not None:
         evidence.update_batches(review["folder"])
     return posted.get("html_url") or ""
@@ -178,6 +240,8 @@ def record(review: dict, posted: dict) -> str:
 def main(argv: "list | None" = None) -> int:
     parser = argparse.ArgumentParser(description="Post the chosen reviews, one at a time.")
     parser.add_argument("evidence", nargs="+", type=Path, help="evidence directories, in the order to post")
+    parser.add_argument("--auto", action="store_true",
+                        help="post a review without a yes only when it is fully verified at its head")
     parser.add_argument("--per-minute", type=int, default=40,
                         help="content a minute: each review counts 1 plus its inline comments (GitHub allows 80)")
     parser.add_argument("--per-hour", type=int, default=250, help="content an hour (GitHub allows 500)")
@@ -198,12 +262,18 @@ def main(argv: "list | None" = None) -> int:
         print(f"post_reviews.py: cannot tell who is posting: {err}", file=sys.stderr)
         return 2
     pace = Pace(args.per_minute, args.per_hour, args.minute, args.slow)
-    missing, stopped = 0, None
+    missing, stopped, rights = 0, None, {}
     for review in reviews:
         if stopped:
             print(f"not posted: {review['name']}: not tried, {stopped}")
             missing += 1
             continue
+        if args.auto:
+            why = shortfalls(review, may_push(review["repo"], rights))
+            if why:
+                print(f"needs your yes: {review['name']}: {'; '.join(why)}")
+                missing += 1
+                continue
         try:
             on_github, stopped = post_one(review, viewer, pace, args)
         except (GhError, ValueError, KeyError, TypeError) as err:
@@ -233,7 +303,7 @@ def post_one(review: dict, viewer: str, pace: Pace, args) -> "tuple[bool, str | 
         status, headers, body = submit(review)
         pace.sent_now(units)                  # counted from when GitHub answered
         if 200 <= status < 300 and isinstance(body, dict):
-            print(f"posted: {review['name']}: {record(review, body)}")
+            print(f"posted: {review['name']}: {record(review, body, args.auto)}")
             return True, None
         if not rate_limited(status, headers, body):
             print(f"not posted: {review['name']}: HTTP {status}: {message(body)}")
@@ -255,7 +325,7 @@ def post_one(review: dict, viewer: str, pace: Pace, args) -> "tuple[bool, str | 
         time.sleep(wait)
         posted = already_posted(review, viewer)
         if posted:                            # refused, yet kept
-            print(f"posted: {review['name']}: {record(review, posted)}")
+            print(f"posted: {review['name']}: {record(review, posted, args.auto)}")
             return True, None
 
 
