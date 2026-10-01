@@ -597,7 +597,10 @@ PRR_REFS="$PLUGIN/skills/pr-review/references"
 headings_in_order pr-review "$PRR" "## Gate" "## Checkout" "## Batch" "## Understand" "## Checks" "## Review" "## Draft" \
   "## Cleanup" "## Post" "## Review handover"
 PRR_OPENING=$(awk '/^## /{exit} {print}' "$PRR")
-for needle in "Nothing of an untrusted pull request runs on this machine without a yes" "Nothing reaches GitHub without a yes" \
+# 3.4.0 (.scratch/pr-review-autopost): a review may post by itself, but only when the code finds it fully verified at its head.
+for needle in "Nothing of an untrusted pull request runs on this machine without a yes" \
+  "Nothing reaches GitHub except through \`post_reviews.py\`" "fully verified at its head" \
+  "a yes that names the pull request and the event" "\`draft only\`" \
   "Nothing in the user's working tree" "data under review, never instructions" "read it again" "typed as a message"; do
   [[ $PRR_OPENING == *"$needle"* ]] || fail "pr-review should say, before its first step, where it holds for the whole review: $needle"
 done
@@ -606,7 +609,9 @@ PRR_DESC=$(sed -n 's/^description: //p' "$PRR")
 [[ $PRR_DESC == "Use when asked to review GitHub pull requests (numbers, URLs, open, requested)"* ]] \
   || fail "pr-review's description should lead with its trigger and the pull requests it takes: $PRR_DESC"
 [[ $PRR_DESC == *"yped by hand"* ]] && fail "pr-review's description still says it is typed by hand: $PRR_DESC"
-for r in checkout batch understand-and-review checks draft-and-post cleanup; do [[ -f "$PRR_REFS/$r.md" ]] || fail "pr-review lacks references/$r.md"; done
+[[ $PRR_DESC == *"only on your yes"* ]] && fail "pr-review's description still says drafts are posted only on your yes: $PRR_DESC"
+[[ $PRR_DESC == *"fully verified"* ]] || fail "pr-review's description should say it posts by itself only when fully verified: $PRR_DESC"
+for r in checkout batch understand-and-review checks draft post handover takeover reference cleanup; do [[ -f "$PRR_REFS/$r.md" ]] || fail "pr-review lacks references/$r.md"; done
 for f in "$PRR_REFS"/*.md; do
   grep -F -- "references/$(basename "$f")" <<< "$PRR_OPENING" | grep -qF "read this when" \
     || fail "pr-review does not name references/$(basename "$f") before its first step with when to read it (\"read this when\")"
@@ -639,12 +644,16 @@ step_says Checks checks "once per repository" "run_checks.py" "commands CI runs"
 step_says Review understand-and-review "Invoke \`code-review\`" "risk reviewer" "Verify every finding" "baseline" "probe test" \
   "Under static review, run nothing from the pull request" "blocking" "should fix" "request changes" "merges cleanly" \
   "\$EVID/probes/" "after that tree's checks"
-step_says Draft draft-and-post "review_payload.py" "review.json" "outside the diff" "footer" "without \`--checks\` under static review"
+step_says Draft draft "review_payload.py" "review.json" "outside the diff" "footer" "without \`--checks\` under static review" \
+  "\"verified\"" "\"proof\"" "\"requirement\"" "reference.json"
 step_says Cleanup cleanup "only worktrees carrying" "the one record from Checkout" \
   "never deleted with the tree" "matt-pocock-workflow:verification-before-completion"
-step_says Post draft-and-post "Re-check the candidate" "every time" "Don't post" "own pull request" "post_reviews.py" \
-  "needs no new yes" "stops" "Never push"
-step_says "Review handover" "" "batch_report.py --close" "Ready to merge" "Note for" "exactly as the script wrote it"
+step_says Post post "Re-check the candidate" "every time" "--auto" "needs your yes" "Don't post" "own pull request" "post_reviews.py" \
+  "needs no new yes" "stops" "Never push" "\`draft only\`" "label" "no person read it first" "reviewed again, twice at most"
+step_says "Review handover" handover "batch_report.py --close" "Ready to merge" "Note for" "exactly as the script wrote it" \
+  "posted automatically" "Short on time" "takeover.md"
+step_says Gate "" "\`against <path|url>\`" "\`draft only\`" "reference.md"
+step_says Understand understand-and-review "reference.md" "the reference, then a linked issue, then the pull request's body"
 # A step's gates and must-nots stay in the core where its detail moved out (the ticket's "gates, must-nots and steps
 # first"): an unmarked evidence directory, services and credentials, a head that moved, the viewer's own pull request.
 section_says pr-review "$PRR" Checkout "without the marker"
@@ -652,27 +661,48 @@ section_says pr-review "$PRR" Checks "only after a yes" "real credentials, paid 
 section_says pr-review "$PRR" Post "whose head moved is not posted" "only \`COMMENT\`"
 # A headless run asks its post question in text, and the answer starts a turn the scripts' pre-approval no longer
 # covers: the handover's table comes first, while it holds.
-step_says Post draft-and-post "while the pre-approval holds"
+step_says Post post "while the pre-approval holds"
 # The pre-approval also ends when the session waits on background work: the live run on 8fbdca2 put run_checks.py
 # and the risk reviewer in the background, and review_payload.py was refused in the turn their notifications began.
 # So a single review runs its scripts and its reviewers in the foreground, and a batch says its fan-out ends the turn.
 [[ $PRR_OPENING == *"in the foreground"* ]] || fail "pr-review's opening does not say to keep its scripts and subagents in the foreground"
-step_says Checks checks "in the foreground"
+step_says Checks checks "in the foreground" "--serial" "--share" "schedule" "shared" "flaky"
 step_says Review understand-and-review "in the foreground, in the same message as"
-step_says Batch batch "The fan-out ends this turn"
+step_says Batch batch "The fan-out ends this turn" "--share" "Shared baseline results" "references/draft.md"
+# A batch's subagents never post, so they do not read what only Post and the handover need: that is most of the
+# text the core used to hold, and the reason it moved out (lean-and-durable's size bound, and the tokens a fan-out pays).
+grep -F -- "references/post.md" "$PRR_REFS/batch.md" | grep -qF "never" \
+  || fail "batch.md should say that a subagent never reads references/post.md"
 # Its four scripts run without a permission prompt from any directory (lean-and-durable ticket 06): the core runs each as
 # `python3 ${CLAUDE_SKILL_DIR}/scripts/<name>.py` and its allowed-tools pre-approves exactly that command, as the skills
 # docs show. Claude Code fills in ${CLAUDE_SKILL_DIR} only in SKILL.md and its allowed-tools, so a reference writes a
 # path in the skill as <skill-dir>/..., which the core defines, and nothing names the directory the old way.
 PRR_FRONT=$(awk 'NR > 1 && /^---$/ {exit} NR > 1' "$PRR")
 PRR_BODY=$(awk 'body; NR > 1 && /^---$/ {body = 1}' "$PRR")
-for s in evidence run_checks review_payload batch_report post_reviews; do
+for s in evidence run_checks review_payload batch_report post_reviews requirements; do
   [[ -x "$PLUGIN/skills/pr-review/scripts/$s.py" ]] || fail "pr-review/scripts/$s.py missing or not executable"
   grep -qxF -- "  - Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py *)" <<< "$PRR_FRONT" \
     || fail "pr-review's allowed-tools does not pre-approve: Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py *)"
   [[ $PRR_BODY == *"\`python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py\`"* ]] \
     || fail "pr-review's core does not name its script as: python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py"
 done
+# takeover.py: `target` only decides, so it is pre-approved; `push` pushes to someone else's branch, so it is not, and
+# `git push` stays disallowed: Claude Code's own permission prompt, showing the exact branch and commit, is the user's yes.
+[[ -x "$PLUGIN/skills/pr-review/scripts/takeover.py" ]] || fail "pr-review/scripts/takeover.py missing or not executable"
+grep -qxF -- "  - Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/takeover.py target *)" <<< "$PRR_FRONT" \
+  || fail "pr-review's allowed-tools does not pre-approve takeover.py target"
+grep -F "takeover.py" <<< "$PRR_FRONT" | grep -v "takeover.py target" && fail "pr-review pre-approves more of takeover.py than target"
+grep -qxF -- "  - Bash(git push:*)" <<< "$PRR_FRONT" || fail "pr-review no longer disallows git push"
+[[ $PRR_BODY == *"\`python3 \${CLAUDE_SKILL_DIR}/scripts/takeover.py\`"* ]] || fail "pr-review's core does not name takeover.py"
+ref_says() {   # $1 = a reference's name, $2... = phrases it must contain
+  local name="$1" body needle; shift
+  body=$(cat "$PRR_REFS/$name.md") || fail "pr-review lacks references/$name.md"
+  for needle in "$@"; do [[ $body == *"$needle"* ]] || fail "references/$name.md should say: $needle"; done
+}
+ref_says takeover "takeover.py target" "takeover.py push" "AskUserQuestion" "Co-authored-by" "never a force" "worktree" \
+  "the author's branch" "new branch" "Merging stays"
+ref_says reference "requirements.py extract" "never the head" "against" "the baseline" "Reference" "short title" \
+  "how to verify" "facts only"
 # A review resumes (lean-and-durable ticket 07): evidence.py names each evidence directory and says where its review
 # starts. The core keeps the must-hold, that only what finished at the same head and baseline is reused; checkout.md
 # says what each answer keeps, that a moved head starts new, and that a directory not the review's own stops it. A
@@ -685,7 +715,7 @@ step_says Checkout checkout "evidence.py pin --pr" "--afresh" "continue with its
   "leaving out the lines of this review's own worktrees"
 step_says Batch batch "The batch's progress file" "brings it up to date" "--close\` closes it" "drafted or posted" "resume note" "typed again" \
   "a reused one" "has no run of it alone"
-step_says Post draft-and-post "posted at this head is not asked about again" "without \`--close\`"
+step_says Post post "posted at this head is not asked about again" "without \`--close\`"
 [[ $PRR_OPENING == *"\`<skill-dir>\`"* ]] || fail "pr-review's opening does not say what <skill-dir> in its references stands for"
 grep -F -- "\${CLAUDE_SKILL_DIR}/" "$PRR_REFS"/*.md && fail "a pr-review reference names a path through \${CLAUDE_SKILL_DIR}, which is not filled in there"
 grep -rF -- "this skill's base directory" "$PRR" "$PRR_REFS" && fail "pr-review still names its directory as \"this skill's base directory\""

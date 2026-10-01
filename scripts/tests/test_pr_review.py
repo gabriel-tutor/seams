@@ -2325,6 +2325,32 @@ class EvidenceTest(unittest.TestCase):
         header = self.batch_file()[1]
         self.assertEqual((header["Status"], header["Next"]), ("done", "Nothing left: the review handover was given."))
 
+    def test_a_batch_names_a_folder_for_its_shared_baseline_results_and_the_handover_removes_it(self):
+        # run_checks.py --share DIR keeps a passing baseline run for the batch's other reviews of the same commit;
+        # "nothing is kept after the batch" (.scratch/pr-review-autopost, decision 10), so the batch names the folder
+        # and the final handover removes it, once the batch closes.
+        second = ("https://github.com/acme/shop/pull/13", PUSHED, BASE)
+        code, out = self.pin((URL, HEAD, BASE), second)
+        self.assertEqual(code, 0, out)
+        file = next(self.root.glob("progress-*.md"))
+        shared = file.with_name(file.stem + ".shared")
+        self.assertIn(f"Shared baseline results: {shared}", out)
+        self.assertEqual(self.pin((URL, HEAD, BASE))[0], 0)
+        self.assertNotIn("Shared baseline results", self.pin((URL, HEAD, BASE))[1])     # one pull request, no batch
+        shared.mkdir()
+        (shared / "abc.json").write_text("{}")
+        evid, other = self.root / "acme-shop-12-cd11698", self.root / "acme-shop-13-0f4e5e9"
+        self.outputs(evid)
+        done = subprocess.run([sys.executable, str(BATCH_REPORT), "--close", str(evid), str(other)],
+                              capture_output=True, text=True, env=self.env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue(shared.exists(), "a review not yet drafted keeps the batch open, and its shared results")
+        self.outputs(other, head=PUSHED)
+        done = subprocess.run([sys.executable, str(BATCH_REPORT), "--close", str(evid), str(other)],
+                              capture_output=True, text=True, env=self.env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertFalse(shared.exists(), "the closed batch's shared results are gone")
+
     def test_the_next_step_names_the_batchs_pull_requests_in_a_line_the_resume_note_shows_whole(self):
         # The note shows 200 characters of a field and turns `#` into a space. Three URLs of this very repository run past
         # that (the live run on 7186f58 fell back to pointing at the file), so the next step names the pull requests by

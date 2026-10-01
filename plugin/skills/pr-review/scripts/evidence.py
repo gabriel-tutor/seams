@@ -284,6 +284,12 @@ def batch_path(root: Path, repo: Path, urls: list) -> Path:
     return root / f"progress-{slug}-{key}.md"
 
 
+def shared_dir(batch_file: Path) -> Path:
+    """Where a batch's reviews keep the baseline results they share (run_checks.py --share): beside the batch's file,
+    and removed with it when the batch closes. Nothing of it outlives the batch."""
+    return batch_file.with_name(batch_file.stem + ".shared")
+
+
 @contextlib.contextmanager
 def locked(root: Path):
     """One writer of the root's progress files at a time: the reviewers of a batch update theirs at once."""
@@ -430,6 +436,7 @@ def close_batches(folders) -> None:
                     if status == "active" and set(names) <= covered and \
                             all(pr_state(root / name)["step"] in FINISHED for name in names):
                         write_batch(path, repo, names, "done")
+                        shutil.rmtree(shared_dir(path), ignore_errors=True)
     except Exception as err:                  # noqa: BLE001
         print(f"note: the batch's progress file was not closed ({err})", file=sys.stderr)
 
@@ -473,6 +480,7 @@ def main(argv: "list | None" = None) -> int:
             with locked(root):
                 write_batch(path, repo, [pr["name"] for pr in prs], "active")
             print(f"The batch's progress file: {path}")
+            print(f"Shared baseline results: {shared_dir(path)}")
         else:                                 # one pull request of a batch, pinned again on its own
             update_batches(root / prs[0]["name"])
     except OSError as err:

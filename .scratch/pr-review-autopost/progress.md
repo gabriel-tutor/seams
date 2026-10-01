@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Build slice 6 with tdd: wire every script into the skill's text and static pins, moving the Post and handover detail into references so the core stays inside its 11,200-byte allowance.
+Next: Slice 6 is built and committed once its full suite is green; build slice 7 (README, CHANGELOG 3.4.0, ADR 0004, evidence docs, compatibility record, version bump), then the two reviews, the live evidence (each paid or posting run asked first) and the release.
 Updated: 2026-10-02
 
 ## Decisions
@@ -42,9 +42,10 @@ Updated: 2026-10-02
 
 ## Build state (2026-10-02)
 
-Slices 1 to 4 are committed (`ec9ff77`, `0971470`, `7de7e5d`); slice 5 is in the working tree, tested, and is committed in the commit titled "pr-review auto-post, slice 5: the take-over". Nothing is pushed, and no skill text calls any of it yet (slice 6), so the skill still behaves as 3.3.1.
+Slices 1 to 5 are committed (`ec9ff77`, `0971470`, `7de7e5d`, `2452841`); slice 6, the skill's text, is committed in the commit titled "pr-review auto-post, slice 6: the skill's text". Nothing is pushed. The skill now calls everything, so it behaves as 3.4.0 would.
 - Slice 1: `post_reviews.py --auto` and its eligibility rule. Slice 2: `requirements.py`, reference coverage, requirements in the posted review, the disclosure (decisions 22 to 24). Slice 3: the `pr-review:` label. Slice 4: `run_checks.py` both trees at once with a load limit, believing only passes, and shared baseline passes (decision 25).
 - Slice 5: `takeover.py` (`target`, `push`), `TakeoverTest` (17: the decision as a table, the push against a real bare repository), decision 26. Three mutations of the push guards (the credit line, the ancestry, a force) each fail the tests.
+- Slice 6: the core's Post and handover moved into `post.md` and `handover.md`, `draft-and-post.md` became `draft.md` with the fields the poster reads (`verified`, `proof`, `requirement`, `requirements`, `intent`); new `reference.md` and `takeover.md`; the standing rule changed to the auto-post rule; `requirements.py` and `takeover.py target` pre-approved (never `push`; `git push` stays disallowed); `--share` and `--serial` in `checks.md`; the batch's shared folder named by `evidence.py pin` and removed by `batch_report.py --close` (EvidenceTest). The core needed 11,857 bytes, so Severity and Verdict moved, word for word, to `understand-and-review.md` (it was that or a higher bound; the core is now 11,118). The description lost "their" to stay inside the 2,650-character listing.
 
 Slice order: 6 the core's Post and handover detail moved into references, with the static pins, `--auto`, `requirements.py` and `takeover.py target` (pre-approved scripts; `takeover.py push` is not), the reference sources, the label, `--share` (a per-batch folder `batch_report.py --close` removes), the take-over prompt and the changed standing rule; 7 docs, ADR 0004, then the reviews and the 3.4.0 release.
 
