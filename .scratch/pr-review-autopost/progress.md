@@ -1,8 +1,8 @@
 # Progress: pr-review faster, cheaper, auto-posting, with a take-over
 
 Status: active
-Stage: designed
-Next: the live evidence on planted-defect PRs and a throwaway PR (each paid or posting run asked first), the evidence and compatibility docs, then the release 3.4.0 through `release` (staging PR, then a main yes). Slices 1 to 7 and the review round are committed.
+Stage: deployed
+Next: Live evidence still owed, each paid or posting run asked first: before/after on planted-defect PRs, a throwaway PR for auto-post and labels (an approve needs a second account's PR). Then lean-and-durable 15 and 16.
 Updated: 2026-10-02
 
 ## Decisions
@@ -40,6 +40,8 @@ Updated: 2026-10-02
 28. Strictness I added beyond the decisions, and keep (mine): `checks.json` must list at least one check, so a repository with no discoverable checks never posts by itself; the label is written for every posted review, not only an automatic one; Severity and Verdict moved from the core to `understand-and-review.md` to keep the core under its bound (decision 14 named only Post and handover).
 29. Findings not taken, with why (mine): the shared-results folder has no ownership check of its own, because the evidence root is verified as the user's and 0700 before anything is written in it; `POSTED_AUTO` still says "every check ran on both trees", because a shared baseline result is a run of the same baseline commit; a moved head reuses nothing of the baseline (decision 3 says the baseline is reused), because `--share` exists only inside a batch: the cost is one more baseline run per moved head, never a wrong result.
 30. Not fixed, a ticket for later (predates this work): `run_checks.py` hands the whole environment to a pull request's code, so a check that prints it can put a secret in a log the review then cites; the leak scan now stops such a review posting by itself, but the environment should be scrubbed.
+
+31. Released 3.4.0 (2026-10-02): staging PR #14 at 79e1741 passed CI on macOS and Ubuntu, then main fast-forwarded a384606 to 79e1741 on the user's yes and its run passed; installed locally (3.4.0, user scope). The full suite was last run before the final commit's docs-only follow-ups, at the user's request not re-run on the candidate (CI ran it). Not done: the live runs on real pull requests, and the 3.4.0 entries of docs/plugin-behavior-tests.md and docs/compatibility.md.
 
 ## Open questions
 
