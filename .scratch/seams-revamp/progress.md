@@ -1,8 +1,8 @@
 # Progress: Seams revamp, faster and lighter at the same quality
 
 Status: active
-Stage: designing
-Next: Confirm the shared understanding of phase 1, offer ADR 0005 for the declaration's lifetime and the proportional process, then offer to-spec.
+Stage: designed
+Next: Write the phase-1 spec with to-spec (decisions 1 to 19; ADR 0005), then to-tickets; build ticket by ticket in a worktree, never live in plugin/. Sensitive (hooks, CI): code-review and a security review before it ships.
 Updated: 2026-10-02
 
 ## Decisions
@@ -26,6 +26,8 @@ Updated: 2026-10-02
 17. Scouts run on Sonnet 5.5, reviewers on the session's model (the user's choice): fact-finding faster and cheaper; reviews, where quality decides, unchanged.
 18. Phase 1's tests (the user's choice): the declaration's lifetime and the refusals on the gate module in process; one command-line smoke per hook event; the contract pins (sizes, frontmatter, routing rows, injected commands); and a test that fails when the suite runs over its time budget.
 19. Design-lens points, mine (the user may overrule them): the merged hook still fails open, as every hook does today (a crash never blocks the user's work); 4.0.0 reads 3.4.0's per-session ledger or starts it fresh, never refuses on an old one; removing the eval harness and the duplicated tests touches nobody's install; CI gains one Python 3.9 job (a CI change, so it gets the security review); a rollback is reinstalling 3.4.0. The stale manual-only declaration code in the gate goes with the split.
+
+20. ADR 0005 records decisions 6, 10 and 15 (the user's yes, 2026-10-02). The user confirmed the shared understanding of phase 1 and asked for the spec.
 
 ## Outline of phases 2 and 3 (grilled in full when each starts)
 
