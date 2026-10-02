@@ -47,8 +47,9 @@ def is_exempt_path(path: str, config: str | None = None, cwd: str | None = None,
     """Temp directories, the session's scratchpad and the Claude config directory are not the project.
 
     A path under the session's working directory is the project wherever that directory
-    lives, so a repo checked out under the temp dir is still gated. So is the gate's own ledger,
-    under the temp directory: a tool call that wrote it could forge a declaration.
+    lives, so a repo checked out under the temp dir is still gated. So is the gate's own ledger, wherever
+    it lies (under the temp directory when the home directory cannot hold it): a tool call that wrote it
+    could forge a declaration.
     """
     real = os.path.realpath(path)
     if real == "/dev/null":
@@ -112,7 +113,7 @@ def change_for_event(event: dict, config_dir: str | None = None) -> dict | None:
     """The project change a PreToolUse event would make, or None when it makes none.
 
     Editor tools: the file, unless it is under a temp directory, the session's scratchpad or the
-    config directory. Bash, and a Monitor watch, whose command runs in the Bash tool's shell: the
+    config directory, and outside the gate's ledger. Bash, and a Monitor watch, whose command runs in the Bash tool's shell: the
     classifier's label, unless every path the command writes is placed and scratch (a pull-request
     review writes only its evidence under the temp directory); a WebSocket watch runs no command.
     PowerShell: every command, unless it is on the read-only list. Anything else: nothing.
@@ -181,7 +182,7 @@ READ_ONLY_AGENTS = {PLUGIN_PREFIX + "scout", PLUGIN_PREFIX + "reviewer"}
 def read_only_problem(event: dict, config: str | None = None) -> str | None:
     """Why a read-only agent may not make this call, as text for its refusal, or None when it only reads,
     or writes scratch. Editor tools: only under the temp directory or the session's scratchpad (not the
-    config directory, which a declared request may write). Bash and a Monitor watch: the list of reads.
+    config directory, which a declared request may write, nor the gate's ledger). Bash and a Monitor watch: the list of reads.
     PowerShell: its read-only list."""
     tool, tool_input = event.get("tool_name") or "", event.get("tool_input") or {}
     cwd, scratchpad = event.get("cwd"), event.get("scratchpad_dir")
