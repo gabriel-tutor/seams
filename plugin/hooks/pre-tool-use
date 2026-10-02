@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: refuse a change to the project until the request has a declaration.
+"""PreToolUse hook: refuse a change to the project until a declaration has routed the work.
 
 Prints a deny decision with the reason when the gate is closed; prints nothing otherwise,
 recording an allowed change in the session's ledger. Fails open (see seams_gate.run_hook).

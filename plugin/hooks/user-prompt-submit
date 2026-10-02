@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit hook: a new prompt starts a new request.
+"""UserPromptSubmit hook: a prompt that types a process skill replaces the route.
 
-A short go-ahead ("yes", "ok, do that") or a notice Claude Code generated keeps the current
-request. A prompt that typed a process skill starts a new request already declared: the skills
-the UserPromptExpansion hook recorded for it, or the prompt's own leading slash command. Any
-other prompt after a declared request gets the lapse hint as context, naming the declarations
-that lapsed; it restores none of them. The prompt text itself is never stored. Fails open (see
-seams_gate.run_hook).
+A typed skill counts from the skills the UserPromptExpansion hook recorded for this prompt, or the
+prompt's own leading slash command. Any other prompt keeps the route (ADR 0005); unless it is a short
+go-ahead ("yes", "ok, do that") or a notice Claude Code generated, it starts a new request for the
+done-check, which counts that request's changes afresh. Prints nothing. The prompt text itself is
+never stored. Fails open (see seams_gate.run_hook).
 """
 import os
 import sys
@@ -19,12 +18,8 @@ import seams_gate as gate  # noqa: E402
 def handle(event: dict):
     session = event.get("session_id") or ""
     ledger = gate.load_ledger(session)
-    outcome = gate.submit_prompt(event, ledger)
-    if outcome["changed"]:
+    if gate.submit_prompt(event, ledger):
         gate.save_ledger(session, ledger)
-    if outcome["context"]:
-        return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
-                                       "additionalContext": outcome["context"]}}
     return None
 
 if __name__ == "__main__":

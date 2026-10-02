@@ -247,8 +247,7 @@ section_says progress-file.md "$PF" "Who keeps it" "\`grill\`" "\`to-spec\`" "\`
 GRILL="$PLUGIN/skills/grill/SKILL.md"
 section_says grill "$GRILL" Presentation "up to four in one AskUserQuestion call" "A gate, security or destructive question is asked alone"
 section_says grill "$GRILL" "Progress file" "\`.scratch/<feature>/progress.md\`" "references/progress-file.md" \
-  "at the first settled decision" "After each answered round" "never a secret" \
-  "typed as a message" "invoke \`matt-pocock-workflow:grill\` again before the update"
+  "at the first settled decision" "After each answered round" "never a secret"
 section_says grill "$GRILL" Resuming "resume note" "the spec, the tickets" "git state" "mismatch" \
   "Settled decisions are not asked again" "recorded open questions"
 section_says grill "$GRILL" Done "\`Next\`" "set \`Status: done\` in the commit that ships the change"
@@ -260,8 +259,7 @@ must_say routing.md "$PLUGIN/skills/using-matt-pocock-skills/references/routing.
 # its gate question when the file and git agree, and reports a mismatch instead of acting on the file.
 IMPL="$PLUGIN/skills/implement/SKILL.md"
 headings_in_order implement "$IMPL" "## Gate" "## Progress file" "## Resuming" "## Build"
-section_says implement "$IMPL" Gate "resume a ticket in progress whose state matches its progress file" \
-  "invoke \`matt-pocock-workflow:implement\` again before the next change"
+section_says implement "$IMPL" Gate "resume a ticket in progress whose state matches its progress file"
 # A commit cannot name itself (the live resume run kept the reviewed commit as the candidate and said what
 # the fix did in Next): the candidate is the commit under review, and a resume checks that the history
 # after it holds only commits the file accounts for.

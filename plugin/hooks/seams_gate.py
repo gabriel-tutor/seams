@@ -1,8 +1,9 @@
 """The gate: the rules the matt-pocock-workflow hooks share.
 
-A change to the project is refused until the current request has a declaration: a Skill
-invocation of a process skill, or a slash command the user typed for one. A read-only agent's call is
-held to a list of reads, declared or not. This module holds
+A change to the project is refused until a declaration has routed the work: a Skill invocation of a
+process skill, or a slash command the user typed for one. It holds until another process skill
+replaces it or the session is cleared, through typed replies and commits (ADR 0005). A read-only
+agent's call is held to a list of reads, declared or not. This module holds
 the pure parts (what counts as a change, what counts as a declaration, what a continuation
 is, the ledger's shape and the decisions) so the hooks stay thin. The routing harness scores a
 shell write with the same classifier: it counts every write, where the gate also lets through
@@ -814,12 +815,10 @@ OPTION = re.compile(r"^(option\s+)?[a-d1-9]$")
 
 
 BOOTSTRAP_SKILL = PLUGIN_PREFIX + "using-matt-pocock-skills"   # the routing policy: not a route
-# A skill's name as Claude Code writes it (matched whole); anything else in a ledger is damage.
-SKILL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9:._-]{0,79}")
 
 
 def is_declaration(skill: str) -> bool:
-    """Whether invoking this skill declares a route for the current request. Every Seams skill
+    """Whether invoking this skill declares a route. Every Seams skill
     but the bootstrap does (invoking the policy itself is not choosing a process: an eval run
     showed the model doing exactly that after an "Unknown skill" error), and so do Matt
     Pocock's process skills by bare name."""
@@ -830,72 +829,16 @@ def is_declaration(skill: str) -> bool:
     return skill in PROCESS_SKILLS
 
 
-SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills")
-
-
-def manual_seams_skill(bare: str) -> Optional[str]:
-    """The full name of this plugin's manual-only skill called exactly `bare`, or None.
-
-    Claude Code runs a plugin skill typed by its bare name (`/manual-review 42`) when no other command
-    has that name, and a manual-only skill is only ever typed, so its bare form must declare. No
-    other bare name does: a model-invocable Seams skill is declared through the Skill tool under its
-    full name, and a bare name it shares with a Superpowers original or a project's own command may
-    not be the Seams skill at all. The name is matched against the directory listing exactly, since
-    a case-insensitive file system would find `MANUAL-REVIEW` too."""
-    if not bare or "/" in bare or bare.startswith("."):
-        return None
-    try:
-        if bare not in os.listdir(SKILLS_DIR):
-            return None
-    except OSError:
-        return None
-    return PLUGIN_PREFIX + bare if _manual_only(os.path.join(SKILLS_DIR, bare, "SKILL.md")) else None
-
-
-def _manual_only(path: str) -> bool:
-    """Whether the SKILL.md at `path` says `disable-model-invocation: true` in its frontmatter: only the
-    user can invoke that skill, and Claude Code refuses a Skill call for it."""
-    try:
-        with open(path, encoding="utf-8") as f:
-            lines = f.read().split("\n")
-    except (OSError, ValueError):
-        return False
-    if not lines or lines[0].strip() != "---":
-        return False
-    for line in lines[1:]:
-        if line.strip() == "---":
-            return False
-        if line.strip() == "disable-model-invocation: true":
-            return True
-    return False
-
-
-def typed_only(skill: str, config: Optional[str] = None, cwd: Optional[str] = None) -> bool:
-    """Whether only the user can invoke this skill, so the Skill tool cannot declare it again: a Seams
-    skill by the plugin's own file; one of Matt Pocock's by the copy Claude Code loads, from the config
-    directory or the project's .claude/skills (either one marking it counts). A name that is not a
-    plain skill name, or a skill with no file there, is taken as invocable."""
-    if skill.startswith(PLUGIN_PREFIX):
-        return manual_seams_skill(skill[len(PLUGIN_PREFIX):]) is not None
-    if not SKILL_NAME.fullmatch(skill) or ":" in skill:
-        return False
-    roots = [os.path.join(config_dir(config), "skills")] + ([os.path.join(cwd, ".claude", "skills")] if cwd else [])
-    return any(_manual_only(os.path.join(root, skill, "SKILL.md")) for root in roots)
-
-
 def slash_declaration(prompt: str) -> Optional[str]:
     """The process skill a typed slash command names, or None. Matt Pocock's bare names win over
-    this plugin's, as they do in Claude Code (`/implement` is his); a manual-only Seams skill typed
-    by its bare name declares under its full name."""
+    this plugin's, as they do in Claude Code (`/implement` is his); a Seams skill counts by its full
+    name, as its expansion reports a bare one."""
     text = (prompt or "").strip()
     if not text.startswith("/"):
         return None
     parts = text[1:].split()
     name = parts[0] if parts else ""
-    if is_declaration(name):
-        return name
-    full = manual_seams_skill(name)
-    return full if full and is_declaration(full) else None
+    return name if is_declaration(name) else None
 
 
 # What Claude Code itself delivers as a user turn: a background task's or monitor's notice, a
@@ -930,10 +873,10 @@ def is_continuation(prompt: str) -> bool:
 
 
 # --- The ledger ---------------------------------------------------------------------------
-# One JSON file per session: the current request's declarations, changes and last
-# verification, each subagent's own declarations (which outlive a request), and the skills a
-# typed prompt expanded to, under its prompt id until it is submitted. Skill names, tool names,
-# paths and ids only; never command or prompt text.
+# One JSON file per session: the main conversation's route and each subagent's own, the current
+# request's changes and last verification (for the done-check), and the skills a typed prompt
+# expanded to, under its prompt id until it is submitted. Skill names, tool names, paths and ids
+# only; never command or prompt text. 3.4.0 wrote the same shape, so its ledgers read as they are.
 
 LEDGER_VERSION = 2                            # 2: events ordered by seq, not by the clock
 
@@ -1000,19 +943,31 @@ def _next_seq(ledger: dict) -> int:
 
 
 def new_request(ledger: dict) -> dict:
-    """A new request of the main conversation: its declarations and the changes so far go. A subagent's own
-    declarations stay, since they cover that subagent alone (declared_for)."""
+    """A new request of the main conversation: the done-check starts counting its changes afresh. The
+    declarations stay: a route lasts until another process skill replaces it or the session is cleared
+    (ADR 0005)."""
     ledger["started"] = time.time()
-    ledger["declarations"] = [d for d in _listed(ledger, "declarations") if isinstance(d, dict) and subagent_of(d)]
     ledger["changes"] = []
     ledger["verified_at"] = None
     ledger["verified_seq"] = 0
     return ledger
 
 
-def add_declaration(ledger: dict, skill: str, agent_id: Optional[str] = None) -> None:
-    ledger["declarations"].append({"skill": skill, "at": time.time(), "seq": _next_seq(ledger),
-                                   "agent": agent_id})
+def add_declaration(ledger: dict, skill: str, agent_id: Optional[str] = None, prompt_id: object = None) -> None:
+    """Declare a route: the main conversation's, or the subagent `agent_id`'s alone. It replaces that owner's
+    earlier route, except what the same typed prompt declared (`prompt_id`): a stacked command is one route."""
+    owner = agent_id if isinstance(agent_id, str) and agent_id else None
+    kept = [d for d in _listed(ledger, "declarations") if _stays(d, owner, prompt_id)]
+    ledger["declarations"] = kept + [{"skill": skill, "at": time.time(), "seq": _next_seq(ledger), "agent": owner,
+                                      "prompt_id": prompt_id}]
+
+
+def _stays(declaration: object, owner: Optional[str], prompt_id: object) -> bool:
+    """Whether an earlier declaration stays beside a new one of `owner`'s: another owner's does, and so does one the
+    same typed prompt made. A damaged entry counts as the main conversation's, as declared_for reads it."""
+    if (subagent_of(declaration) if isinstance(declaration, dict) else None) != owner:
+        return True
+    return bool(prompt_id) and isinstance(declaration, dict) and declaration.get("prompt_id") == prompt_id
 
 
 def subagent_of(declaration: dict) -> Optional[str]:
@@ -1023,10 +978,9 @@ def subagent_of(declaration: dict) -> Optional[str]:
 
 
 def declared_for(ledger: dict, agent_id: object = None) -> bool:
-    """Whether a call is covered: by the main conversation's declarations, which cover every call of their
-    request, a subagent's included, or by the calling subagent's own, which cover it alone and outlive the main
-    conversation's requests. So a parallel run's builder keeps working while the user types, and never opens the
-    gate for the user's new request (user story 48). A ledger whose declarations are not a list keeps the old rule."""
+    """Whether a call is covered: by the main conversation's declarations, which cover every call, a subagent's
+    included, or by the calling subagent's own, which cover it alone. So a parallel run's builder never opens the
+    gate for the main conversation (user story 48). A ledger whose declarations are not a list keeps the old rule."""
     declarations = ledger.get("declarations")
     if not isinstance(declarations, list):
         return bool(declarations)
@@ -1067,14 +1021,14 @@ def cleanup_ledgers(root: Optional[str] = None, days: int = 7) -> None:
 # --- Prompts ------------------------------------------------------------------------------
 # Claude Code runs the UserPromptExpansion hook once for each skill a typed prompt expands, and only
 # then the UserPromptSubmit hook for the prompt itself (captured on 2.1.282), both with the prompt's
-# id. A typed skill therefore waits in the ledger until its prompt starts the request it declares.
+# id. A typed skill therefore waits in the ledger until its prompt is submitted and replaces the route.
 # The hooks reference lists the two the other way round, so an expansion that arrives after its
-# prompt hook declares that prompt's request directly.
+# prompt hook joins that prompt's route directly.
 
 
 def _listed(ledger: dict, key: str) -> list:
     """A ledger list, or an empty one when the file holds something else there: a hook that raised on
-    it would fail open and leave the old request, and its declarations, in place."""
+    it would fail open and drop what it was recording, a route the user typed among them."""
     value = ledger.get(key)
     return value if isinstance(value, list) else []
 
@@ -1083,8 +1037,8 @@ def record_expansion(event: dict, ledger: dict) -> bool:
     """Keep what a UserPromptExpansion event expanded, under its prompt's id, until the prompt is
     submitted: the process skill, or None for anything else, since once an expansion arrived it alone
     says what the prompt typed. An earlier prompt's leftovers go (its prompt hook never ran). When the
-    prompt was submitted first and started the current request, a process skill declares that request
-    at once. True when the ledger changed. Only a skill or command (`slash_command`) can declare; an
+    prompt was submitted first and started the current request, a process skill joins that prompt's
+    route at once. True when the ledger changed. Only a skill or command (`slash_command`) can declare; an
     MCP server's prompt (`mcp_prompt`) never does, whatever its name. Without a prompt id nothing ties
     it to a request."""
     prompt_id, skill = event.get("prompt_id"), event.get("command_name")
@@ -1093,23 +1047,22 @@ def record_expansion(event: dict, ledger: dict) -> bool:
     declares = event.get("expansion_type") == "slash_command" and isinstance(skill, str) and is_declaration(skill)
     if prompt_id == ledger.get("request_prompt"):     # its prompt hook ran first: the request is this prompt's
         declared = [d.get("skill") for d in _listed(ledger, "declarations")
-                    if isinstance(d, dict) and not subagent_of(d)]
+                    if isinstance(d, dict) and not subagent_of(d) and d.get("prompt_id") == prompt_id]
         if not declares or skill in declared:
             return False
-        add_declaration(ledger, skill)
+        add_declaration(ledger, skill, prompt_id=prompt_id)
         return True
     kept = [e for e in _listed(ledger, "expanded") if isinstance(e, dict) and e.get("prompt_id") == prompt_id]
     ledger["expanded"] = kept + [{"prompt_id": prompt_id, "skill": skill if declares else None}]
     return True
 
 
-def submit_prompt(event: dict, ledger: dict, config_dir: Optional[str] = None) -> dict:
+def submit_prompt(event: dict, ledger: dict) -> bool:
     """A submitted prompt: a go-ahead or a machine notice keeps the request; anything else starts a new
-    one, declared by the process skills typed in it: the expansions recorded for this prompt, or, when
-    none arrived, its leading slash command. After a declared request, a new one that typed no route of
-    its own gets the lapse hint. Returns {"changed": whether the ledger changed, "context": the lapse
-    hint or None}. A damaged entry is skipped rather than raised on: a hook that fails here would leave
-    the old request, and its declarations, in place."""
+    one for the done-check, which counts its changes afresh. The route stays, unless the prompt typed
+    process skills: the expansions recorded for this prompt, or, when none arrived, its leading slash
+    command, which replace it. True when the ledger changed. A damaged entry is skipped rather than
+    raised on: a hook that fails here would drop the route the prompt typed."""
     prompt, prompt_id = event.get("prompt") or "", event.get("prompt_id")
     expanded = _listed(ledger, "expanded")
     mine = [e for e in expanded if isinstance(e, dict) and prompt_id and e.get("prompt_id") == prompt_id]
@@ -1119,46 +1072,12 @@ def submit_prompt(event: dict, ledger: dict, config_dir: Optional[str] = None) -
         typed = [s for s in [slash_declaration(prompt)] if s]
     ledger["expanded"] = []
     if not typed and is_continuation(prompt):
-        return {"changed": bool(expanded), "context": None}
-    lapsed = [] if typed else [d.get("skill") for d in _listed(ledger, "declarations")
-                               if isinstance(d, dict) and not subagent_of(d)]
+        return bool(expanded)
     new_request(ledger)
     ledger["request_prompt"] = prompt_id              # a late expansion of this prompt still declares it
     for skill in dict.fromkeys(typed):
-        add_declaration(ledger, skill)
-    return {"changed": True, "context": _lapse_hint(lapsed, config_dir, event.get("cwd"))}
-
-
-LAPSE_NAMES = 5
-# Left out of the hint: a pull-request review needs no declaration (everything it writes is under the temp directory),
-# and invoking it again after the user's typed answer would re-arm its pre-approved scripts, posting included, where
-# the user's own permission settings should decide.
-HINT_EXEMPT = {PLUGIN_PREFIX + "pr-review"}
-
-
-def _lapse_hint(skills: list, config: Optional[str] = None, cwd: Optional[str] = None) -> Optional[str]:
-    """The facts a new request after a declared one gives Claude: which declarations lapsed, that
-    invoking one again continues that work (or, for a skill only the user can type, that the user
-    types it again or the work takes a route Claude can invoke), that new work routes afresh. None
-    when nothing lapsed."""
-    names = list(dict.fromkeys(s for s in skills if isinstance(s, str) and SKILL_NAME.fullmatch(s)
-                               and s not in HINT_EXEMPT))[:LAPSE_NAMES]
-    if not names:
-        return None
-    manual = {name for name in names if typed_only(name, config, cwd)}
-    listed = ", ".join(f"`{name}`" + (" (only the user can type it)" if name in manual else "") for name in names)
-    which = f"`{names[0]}`" if len(names) == 1 else "the one it used"
-    if not manual:
-        how = f"invoking {which} again with the Skill tool restores the declaration"
-    elif len(manual) == len(names):
-        how = f"the Skill tool cannot invoke {which}: the user types it again, or the work takes a route Claude can invoke"
-    else:
-        how = (f"invoking {which} again with the Skill tool restores the declaration, unless only the user can "
-               "type it: then the user types it again, or the work takes a route Claude can invoke")
-    noun = "declaration" if len(names) == 1 else "declarations"
-    return (f"Seams: this message started a new request, so the previous request's {noun} lapsed: {listed}. "
-            "The gate refuses the next change to the project until a process skill is invoked for this request. "
-            f"If this message continues that work, {how}; new work needs its own route.")
+        add_declaration(ledger, skill, prompt_id=prompt_id)
+    return True
 
 
 # --- Project changes and the decision ------------------------------------------------------
@@ -1322,8 +1241,8 @@ def deny_reason(change: dict) -> str:
     else:
         what = (f"editing {describe(change)}" if change.get("path") else describe(change)) + " changes the project"
         rule = SCRATCH
-    return (f"{REFUSAL_PREFIX}{what}, and this request has no declaration yet: no process skill has been "
-            f"invoked for it. {ROUTES} {rule}")
+    return (f"{REFUSAL_PREFIX}{what}, and there is no declaration yet: no process skill has been invoked "
+            f"since the session started or was cleared. {ROUTES} {rule}")
 
 
 # --- Read-only agents ------------------------------------------------------------------------

@@ -24,10 +24,6 @@ _Avoid_: guard, blocker, permission
 The per-session record of declarations and changes that the gate and the done-check read, and of the skills a typed prompt expanded to, until that prompt starts its request.
 _Avoid_: state file, cache, log
 
-**Lapse hint**:
-The facts the prompt hook gives Claude when a typed message starts a new request after a declared one: which declarations lapsed, that invoking one again continues that work, and that new work takes its own route. It restores no declaration itself.
-_Avoid_: warning, reminder
-
 **Read-only agent**:
 One of the two agents Seams ships for delegated reading: `scout` finds facts in the code and docs, `reviewer` reviews a named diff. Each returns its conclusions with their citations and what it couldn't confirm. Neither writes: the gate holds both to a short list of reads, whatever the request has declared, so a check or a probe a finding needs is run by the main conversation.
 _Avoid_: helper, worker (a subagent is any agent Claude starts)
