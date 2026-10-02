@@ -759,6 +759,17 @@ class Ledger(unittest.TestCase):
                 tempfile.tempdir = None
                 self.assertEqual(seams_ledger.temp_dir(), tempfile.gettempdir())
 
+    def test_no_one_can_move_the_temp_dir_by_planting_names_in_it(self):
+        # tempfile probes a directory with random names; names another user on a shared /tmp could guess and create
+        # first (this process's id and a counter) would push the ledger and the scratch rules somewhere else.
+        shared = tempfile.mkdtemp()
+        for attempt in range(100):
+            Path(shared, f".seams-probe-{os.getpid()}-{attempt}").write_text("")
+        self.addCleanup(seams_ledger.temp_dir.cache_clear)
+        with mock.patch.dict(os.environ, {"TMPDIR": shared}):
+            seams_ledger.temp_dir.cache_clear()
+            self.assertEqual(seams_ledger.temp_dir(), shared)
+
 
 def event(tool: str, cwd: str = "/proj", agent_id: str = None, agent_type: object = None,
           **tool_input: object) -> dict:

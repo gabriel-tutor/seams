@@ -126,8 +126,8 @@ def temp_dir() -> str:
     for directory in filter(None, candidates):
         if directory != os.curdir:
             directory = os.path.abspath(directory)
-        for attempt in range(100):
-            probe = os.path.join(directory, f".seams-probe-{os.getpid()}-{attempt}")
+        for _ in range(100):
+            probe = os.path.join(directory, ".seams-probe-" + os.urandom(8).hex())   # random, as tempfile's: unguessable
             try:
                 fd = os.open(probe, os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
                 try:

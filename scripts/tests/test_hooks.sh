@@ -146,8 +146,9 @@ done
 # and none writing to stderr. A hook that fails to load fails this smoke, and never blocks: with each module beside
 # the hooks broken in turn, the smoke fails, while no hook exits with the blocking status 2 or answers when it failed.
 # The prompt, stop and pre-tool hooks fire on every prompt, turn and tool call, so they load only what they need
-# (seams-revamp ticket 05): never tempfile, traceback, typing or subprocess, which cost a third of a firing, and the
-# prompt and stop hooks never the gate's rules for a tool call (seams_gate) or its shell reader (seams_shell).
+# (seams-revamp ticket 05): never tempfile, traceback, typing or subprocess, which cost a third of a firing, the
+# prompt and stop hooks never the gate's rules for a tool call (seams_gate) or its shell reader (seams_shell), and the
+# pre-tool hook not the shell reader for an Edit.
 SPACED="$TMP/plugin root"; mkdir -p "$SPACED"; cp -R "$HOOKS" "$REPO/plugin/skills" "$SPACED/"
 BIN="$TMP/bin"; mkdir -p "$BIN"; ln -s "$(command -v "$PY")" "$BIN/python3"
 PATH="$BIN:$PATH" "$PY" - "$SPACED" "$PROJ" <<'PY' || fail "every hook event should answer as Claude Code runs it"
@@ -227,12 +228,17 @@ def smoke(base, session):
 problems, _ = smoke(root, "smoke")
 assert not problems, "\n".join(problems)
 
+def imported(stderr):
+    return {line.rsplit("|", 1)[1].strip() for line in stderr.splitlines() if line.startswith("import time:")}
+
+
+STARTUP = imported(subprocess.run(["python3", "-X", "importtime", "-c", "pass"], capture_output=True, text=True).stderr)
 HEAVY, GATE = {"tempfile", "traceback", "typing", "subprocess"}, {"seams_gate", "seams_shell"}
 for event, fields, never in (("UserPromptSubmit", {"prompt_id": "i1", "prompt": "now the label"}, HEAVY | GATE),
                              ("Stop", {"stop_hook_active": False}, HEAVY | GATE),
-                             ("PreToolUse", EDIT, HEAVY), ("PreToolUse", SHELL_WRITE, HEAVY)):
+                             ("PreToolUse", EDIT, HEAVY | {"seams_shell"}), ("PreToolUse", SHELL_WRITE, HEAVY)):
     for run in runs(root, event, fields, "imports", ("-X", "importtime")):
-        modules = {line.rsplit("|", 1)[1].strip() for line in run.stderr.splitlines() if line.startswith("import time:")}
+        modules = imported(run.stderr) - STARTUP     # the hook's own, not what Python's start-up loads (a site .pth's)
         assert modules and not modules & never, f"{event} loads {sorted(modules & never)}"
 
 for module in sorted(name for name in os.listdir(os.path.join(root, "hooks")) if name.endswith(".py")):
