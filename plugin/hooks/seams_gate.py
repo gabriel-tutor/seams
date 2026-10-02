@@ -831,8 +831,8 @@ def is_declaration(skill: str) -> bool:
 
 def slash_declaration(prompt: str) -> Optional[str]:
     """The process skill a typed slash command names, or None. Matt Pocock's bare names win over
-    this plugin's, as they do in Claude Code (`/implement` is his); a Seams skill counts by its full
-    name, as its expansion reports a bare one."""
+    this plugin's, as they do in Claude Code (`/implement` is his). A Seams skill counts here only by
+    its full name: a bare one counts through its expansion, which reports the full name."""
     text = (prompt or "").strip()
     if not text.startswith("/"):
         return None
@@ -876,7 +876,8 @@ def is_continuation(prompt: str) -> bool:
 # One JSON file per session: the main conversation's route and each subagent's own, the current
 # request's changes and last verification (for the done-check), and the skills a typed prompt
 # expanded to, under its prompt id until it is submitted. Skill names, tool names, paths and ids
-# only; never command or prompt text. 3.4.0 wrote the same shape, so its ledgers read as they are.
+# only; never command or prompt text. 3.4.0 wrote the same shape, without a declaration's prompt_id,
+# so its ledgers read as they are.
 
 LEDGER_VERSION = 2                            # 2: events ordered by seq, not by the clock
 
@@ -1241,8 +1242,8 @@ def deny_reason(change: dict) -> str:
     else:
         what = (f"editing {describe(change)}" if change.get("path") else describe(change)) + " changes the project"
         rule = SCRATCH
-    return (f"{REFUSAL_PREFIX}{what}, and there is no declaration yet: no process skill has been invoked "
-            f"since the session started or was cleared. {ROUTES} {rule}")
+    return (f"{REFUSAL_PREFIX}{what}, and no declaration covers it yet: no process skill has routed this "
+            f"conversation's work since the session started or was cleared. {ROUTES} {rule}")
 
 
 # --- Read-only agents ------------------------------------------------------------------------

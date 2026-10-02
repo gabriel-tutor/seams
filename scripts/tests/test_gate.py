@@ -553,7 +553,7 @@ class DeclarationLifetime(unittest.TestCase):
     def test_a_skill_that_is_no_route_replaces_nothing(self):
         for skill in ("superpowers:brainstorming", "frontend-design", "matt-pocock-workflow:using-matt-pocock-skills"):
             with self.subTest(skill=skill):
-                send(self.ledger, "/" + skill, (skill, "plugin"), prompt_id="p2")
+                send(self.ledger, "/" + skill, (skill, "plugin"), prompt_id="p2" + skill)
                 self.assertEqual(declared(self.ledger), ["matt-pocock-workflow:implement"])
 
     def test_clear_and_a_new_session_start_with_none(self):
@@ -998,7 +998,7 @@ class PreToolUseDecision(unittest.TestCase):
                       "matt-pocock-workflow:implement", "matt-pocock-workflow:trivial"]:
             self.assertIn(route, reason)
         # A route lasts, so the refusal must not send Claude back to a skill after every message.
-        self.assertIn("since the session started or was cleared", reason)
+        self.assertIn("routed this conversation's work since the session started or was cleared", reason)
         self.assertNotIn("this request", reason)
         # Scratch work is not a change: the reason says so, so it is not declared as trivial.
         self.assertIn("absolute path under the temp directory or the session's scratchpad needs no declaration", reason)

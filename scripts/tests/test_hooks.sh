@@ -74,7 +74,7 @@ say()    { ev UserPromptSubmit "\"prompt_id\":\"$1\",\"prompt\":\"$2\"" | hook u
 post_skill "tdd"
 for P in "yes, go ahead" "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished" \
          '<agent-message from=\"a1\">\n[Subagent hand-back] #12: request changes\n</agent-message>' "now fix the bug in pricing"; do
-  OUT=$(say r1 "$P"); [[ -z "$OUT" ]] || fail "the prompt hook should add nothing: $OUT"
+  OUT=$(say r1 "$P" 2>&1); [[ -z "$OUT" ]] || fail "the prompt hook should add nothing, and not fail: $OUT"
   OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "the route should last through '$P': $OUT"
 done
 grep -q 'fix the bug' "$LEDGER" && fail "ledger must not record prompt text"
