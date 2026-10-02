@@ -1509,8 +1509,8 @@ class DotDotAfterASymlink(unittest.TestCase):
                                                            ledger)
                                     self.assertEqual(decision["decision"], "deny")
                                     self.assertIsNone(decision["change"])
-        # Where the path's `..` stays in the temp directory as the kernel reads it, the refusal names the `..`, not a
-        # place outside the temp directory.
+        # Where the path's `..` stays in the temp directory as the kernel reads it, an editor tool's refusal names the `..`,
+        # not a place outside the temp directory.
         os.mkdir(os.path.join(self.base, "a"))
         for path in (f"{self.base}/a/../notes.md", f"{self.base}/not-yet/../notes.md"):
             with self.subTest(path=path):
