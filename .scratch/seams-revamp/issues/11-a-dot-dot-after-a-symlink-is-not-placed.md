@@ -1,6 +1,6 @@
 # 11: A `..` after a symlink is not placed
 
-**What to build:** a path the gate places is resolved the way the kernel resolves it, so a symlink followed by `..` can no longer make a write look like scratch: a shell operand or an editor tool's path holding a `..` segment counts as not placed (a change, refused without a declaration, recorded with one), or is resolved physically before it is placed; either is an equal fix. A read-only agent's write through such a path is refused like any other.
+**What to build:** a path the gate places is resolved the way the kernel resolves it, so a symlink followed by `..` can no longer make a write look like scratch: a shell operand or an editor tool's path holding a `..` segment counts as not placed (a change, refused without a declaration, recorded with one), or is resolved physically before it is placed. The first also refuses a `..` through real directories that is allowed today (`echo x > /tmp/a/../b`); the second keeps it. A read-only agent's write through such a path is refused like any other.
 
 **Blocked by:** 10 (The ledger out of an agent's reach).
 
