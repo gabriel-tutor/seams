@@ -10,14 +10,21 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      SEAMS_TEST_BUDGET: "300"   # CI's machines are slower than the user's Mac, whose budget is the default minute
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: plugin/evals/_fixture/package-lock.json
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: scripts/test.sh
+  # The hooks run under whichever python3 Claude Code finds first: on a Mac without another Python that is the system
+  # 3.9. Prove the gate, the hooks and the session start there, once, instead of running every suite twice locally.
+  system-python:
+    runs-on: macos-latest
+    env:
+      SEAMS_TEST_BUDGET: "300"
+    steps:
+      - uses: actions/checkout@v4
+      - run: /usr/bin/python3 --version
+      - run: scripts/test.sh --python /usr/bin/python3 --only gate,hooks,plugin_hook

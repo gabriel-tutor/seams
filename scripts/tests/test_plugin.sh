@@ -826,4 +826,19 @@ if [[ -d "$SP" ]]; then
     || fail "the recorded original of finishing-a-development-branch is not Superpowers 6.3.0's"
 fi
 
+# The eval scenarios, run by `claude plugin eval` (4.0 retired the custom harness that also read them): each carries
+# what that tool reads, its case file, a prompt with frontmatter, the scaffold that runs its setup, and graders that
+# say what to check; nothing the retired harness alone read is shipped.
+EVAL_CASES=0
+for dir in "$PLUGIN"/evals/*/; do
+  name="$(basename "$dir")"
+  [[ $name == _* || $name == results ]] && continue
+  EVAL_CASES=$((EVAL_CASES + 1))
+  for f in case.yaml prompt.md scaffold.sh setup.sh; do [[ -f "$dir/$f" ]] || fail "eval scenario $name lacks $f"; done
+  [[ $(head -1 "$dir/prompt.md") == "---" ]] || fail "eval scenario $name's prompt.md has no frontmatter"
+  ls "$dir"/graders/*.md >/dev/null 2>&1 || fail "eval scenario $name has no grader"
+  grep -L '^type: ' "$dir"/graders/*.md | grep -q . && fail "eval scenario $name has a grader without a type"
+  [[ -e "$dir/expect.json" ]] && fail "eval scenario $name ships expect.json, which only the retired harness read"
+done
+(( EVAL_CASES >= 10 )) || fail "only $EVAL_CASES eval scenarios found"
 echo "test_plugin: OK"

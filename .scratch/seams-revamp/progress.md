@@ -2,7 +2,8 @@
 
 Status: active
 Stage: designed
-Next: Build ticket 01 (A suite that runs in under a minute) with implement, in a worktree, never live in plugin/; then 02, 03 and 04 are unblocked.
+Ticket: 01
+Next: Ticket 01 is built on branch seams-4/01-fast-suite (worktree .worktrees/seams-4-01) in the commit after 038aa5b; review it against the fixed point 038aa5b (code-review, a correctness review, and a security review since it changes CI), then the definition of done.
 Updated: 2026-10-02
 
 ## Spec

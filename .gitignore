@@ -9,6 +9,5 @@ node_modules/
 # Routing-test run workspaces (fresh copies of the fixture), the fixture's installed dependencies,
 # and the eval reports claude plugin eval writes
 tests/runs/
-tests/fixture-deps/
 plugin/evals/results/
 .worktrees/
