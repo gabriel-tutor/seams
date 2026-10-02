@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designing
-Next: Ask when a declaration ends, whether finished branches merge by themselves, the subagents' models, and the seams of phase 1's tests; then check the design lens and confirm.
+Next: Confirm the shared understanding of phase 1, offer ADR 0005 for the declaration's lifetime and the proportional process, then offer to-spec.
 Updated: 2026-10-02
 
 ## Decisions
@@ -21,13 +21,20 @@ Updated: 2026-10-02
 12. Proof (the user's choice): the eval scenarios run with `claude plugin eval` on 3.4.0 and on the candidate (paid, each run asked first): no scenario may get worse; and cost is measured on 3 scripted tasks (tool calls, tokens, wall time), one run at a time so the Mac stays usable.
 13. pr-review in phase 1 (the user's choice): only the shared rules; it points to the one shared reference like the other skills, and its steps, scripts and checks stay exactly as in 3.4.0. The cancelled lighter-checks change is not revived.
 14. Phase 1 ships as 4.0.0 (the user's choice): the continuous flow and the declaration's new lifetime change how every session works.
+15. A declaration ends when another process skill is invoked or the session is cleared (the user's choice): it holds through typed replies and commits; the routing text still tells Claude to route new work. CONTEXT.md's Declaration and Gate say so.
+16. Integrating a finished branch stays a real gate (the user's choice): it always asks how (merge locally, a pull request, keep or discard), as today; decision 2's chain stops there.
+17. Scouts run on Sonnet 5.5, reviewers on the session's model (the user's choice): fact-finding faster and cheaper; reviews, where quality decides, unchanged.
+18. Phase 1's tests (the user's choice): the declaration's lifetime and the refusals on the gate module in process; one command-line smoke per hook event; the contract pins (sizes, frontmatter, routing rows, injected commands); and a test that fails when the suite runs over its time budget.
+19. Design-lens points, mine (the user may overrule them): the merged hook still fails open, as every hook does today (a crash never blocks the user's work); 4.0.0 reads 3.4.0's per-session ledger or starts it fresh, never refuses on an old one; removing the eval harness and the duplicated tests touches nobody's install; CI gains one Python 3.9 job (a CI change, so it gets the security review); a rollback is reinstalling 3.4.0. The stale manual-only declaration code in the gate goes with the split.
+
+## Outline of phases 2 and 3 (grilled in full when each starts)
+
+- Phase 2, the project's own stack and its official docs: the session start or `foundations` reads the stack from its manifests (package.json, pyproject, go.mod, Cargo.toml, app.json, Podfile, build.gradle, Dockerfile) and the drivers installed; an e2e check uses the stack's driver, CLI first where the vendor says it is cheaper (Playwright CLI or MCP and Chrome DevTools for the web, Claude in Chrome when the plan allows it, Maestro, MobileBuildMCP, the Android CLI and adb for mobile, plain runs for CLIs and APIs, computer use last); missing drivers are offered, never installed unasked; Context7 or the vendor's docs back decision 3.
+- Phase 3, Claude Code's bundled skills in the flow: where each fits (`/code-review` and `/security-review` can be invoked by Claude; `/simplify` at the refactor step; `/run` and `/run-skill-generator` for launching an app; `/verify` only the user can run, so the flow offers it rather than calling it), without replacing Matt Pocock's skills the user relies on.
 
 ## Open questions
 
-- Which skills, references, scripts and evals go, and which stay.
-- Bundled Claude Code skills: which the flow uses, and how (Claude can invoke /code-review and /security-review; /verify only the user can run).
-- Project-type intelligence and e2e drivers per stack.
-- Seams of the tests for whatever is built.
+- None for phase 1; phases 2 and 3 are grilled when they start.
 
 ## Facts
 

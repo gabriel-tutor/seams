@@ -13,11 +13,11 @@ The routing policy injected into every session at start, resume, clear, compacti
 _Avoid_: system prompt, preamble
 
 **Declaration**:
-A Skill invocation of a process skill, by Claude or typed by the user, that opens the gate for the current request. A subagent's own declaration opens it for that subagent alone, and outlives the request.
+A Skill invocation of a process skill, by Claude or typed by the user, that opens the gate until another process skill replaces it or the session is cleared: a typed reply does not end it. A subagent's own declaration opens it for that subagent alone.
 _Avoid_: unlock, override
 
 **Gate**:
-The hook that refuses any change to the project until the current request has a declaration, and holds a read-only agent to reads whatever is declared. In a flow skill, also the question that must get a yes before the skill starts or publishes.
+The hook that refuses any change to the project until a declaration has routed the work, and holds a read-only agent to reads whatever is declared. In a flow skill, also the question that must get a yes before it publishes, pushes, deploys, integrates a branch or destroys anything: between those, the flow runs on.
 _Avoid_: guard, blocker, permission
 
 **Ledger**:
