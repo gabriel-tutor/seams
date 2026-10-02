@@ -5,13 +5,13 @@ description: Use when a grilled design is agreed and the build will span more th
 
 # To spec
 
-Turn the current conversation into a spec and publish it to the project's issue tracker. No interview: the grill already settled the design, so this is synthesis of what is already known. Do not interview the user; the only questions here are the gate question, the seams when none were agreed, and the publish confirmation.
+Turn the current conversation into a spec and publish it to the project's issue tracker. No interview: the grill already settled the design, so this is synthesis of what is already known. Do not interview the user; the only questions here are the seams when none were agreed and the publish confirmation, and the gate's question only when nothing confirmed the design.
 
 **Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
 
 ## Gate
 
-Before reading anything, ask "Write the spec now?" with AskUserQuestion, recommended answer first, and wait for a yes. Skip this only when the user's last message asks for a spec or says yes to an offer to write one, or when a yes earlier in this request covered the spec ("grill it, then write the spec"). A general go-ahead such as "let's get going" or "next" is not a request for a spec.
+Start at once, with no opening question, when the flow reached this skill from a confirmed design (the bootstrap's flow rule: the grill ended with the user's confirmation, here or in the progress file, and named the spec next), or when the user's last message asks for a spec or says yes to an offer to write one. Otherwise, before reading anything, ask "Write the spec now?" with AskUserQuestion, recommended answer first, and wait for a yes; a general go-ahead such as "let's get going" or "next" is not a request for a spec.
 
 The issue tracker and the triage labels should already be in context (`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`). If the repo has neither, offer `matt-pocock-workflow:foundations` before going on; its `/setup-matt-pocock-skills` step, which only the user can run, writes them.
 
@@ -88,6 +88,6 @@ Any further notes about the feature, then the subsections from step 3: Alternati
 
 ## Next
 
-Offer `matt-pocock-workflow:to-tickets` and wait for a yes.
+Go on to `matt-pocock-workflow:to-tickets` without offering it: the flow continues (the bootstrap's flow rule).
 
 Adapted from Matt Pocock's `to-spec` skill (github.com/mattpocock/skills, `skills/engineering/to-spec` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`), MIT License, Copyright (c) 2026 Matt Pocock; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.

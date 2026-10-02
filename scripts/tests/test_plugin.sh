@@ -2,8 +2,9 @@
 # Static checks on the plugin, held to the contracts Claude Code and the routing rely on (seams-revamp ticket 03):
 # the manifests validate and nothing stray ships; the version has one source; the frontmatter fields Claude Code
 # reads; the size bounds of the skills, their references and the listing, and the paths a skill gives Claude; no
-# skill injects a shell command; the routing table's rows; the third-party notices and the copies' checksums. No
-# check pins a skill's or the README's wording: rewording a sentence that changes none of these leaves it green.
+# skill injects a shell command; the routing table's rows; the continuous flow's stops (ticket 06); the third-party
+# notices and the copies' checksums. No other check pins a skill's or the README's wording: rewording a sentence that
+# changes none of these leaves it green.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLUGIN="$REPO/plugin"
@@ -433,6 +434,73 @@ rm -rf "$ROW_FIX"
 problem=$(routing_problem "$BOOT"); [[ -z $problem ]] || fail "$problem"
 BOOT_BODY=$(awk 'body; NR > 1 && /^---$/ {body = 1}' "$BOOT")
 grep -qE "<[A-Z_-]+>" <<< "$BOOT_BODY" && fail "a pseudo-tag in the bootstrap: $(grep -oE "<[A-Z_-]+>" <<< "$BOOT_BODY" | head -1)"
+
+# The continuous flow's stops (seams-revamp ticket 06): once the user confirms a design, each step starts the next
+# unasked, so a question is all that stands between the flow and an outward, irreversible or paid action. The
+# bootstrap's flow rule names every stop, and each skill that owns one still asks before it acts: the spec's and the
+# tickets' publish, a parallel run's integrations, a branch's integration and its discard, the deploy, an incident's
+# outward action, the paid cloud review. Every skill that keeps the progress file still names it, since the flow skips
+# questions, never the record. A copy with each stop dropped in turn shows the check catching that stop alone.
+flow_stop_problems() {   # $1 = a plugin directory, $2 = "probe" to drop each stop from a copy: a line for each stop missed
+  python3 - "$1" "${2:-}" <<'PY'
+import pathlib, re, shutil, sys, tempfile
+root, probe = pathlib.Path(sys.argv[1]), sys.argv[2] == "probe"
+BOOT, FLOW = "skills/using-matt-pocock-skills/SKILL.md", r"(?m)^\d+\. Flow:.*$"
+FIN = "skills/finishing-a-development-branch/SKILL.md"
+STOPS = [(f"the bootstrap's flow rule names {what}", BOOT, FLOW, pattern) for what, pattern in (
+    ("the user's decisions", r"user's decisions"), ("integrating a branch", r"integrat\w*\s+(?:a\s+|the\s+)?branch"),
+    ("a push", r"\bpush"), ("a deploy", r"\bdeploy"), ("a publish", r"\bpublish"),
+    ("anything destructive", r"\bdestructive"), ("a paid run", r"\bpaid\b"))]
+STOPS += [(what, path, None, pattern) for what, path, pattern in (
+    ("to-spec asks before it publishes the spec", "skills/to-spec/SKILL.md", r"\*\*Publish\.\*\*[^\n]*\bwait for a yes"),
+    ("to-tickets publishes nothing before the breakdown's approval", "skills/to-tickets/SKILL.md",
+     r"Nothing is published before that approval"),
+    ("a parallel run's offer names its integrations", "skills/implement/references/parallel.md",
+     r"integrated onto the current branch one at a time"),
+    ("finishing-a-development-branch waits for the integration choice", FIN,
+     r"Wait for their answer;\s+the integration decision\s+is theirs"),
+    ("finishing-a-development-branch discards only on the typed word", FIN, r"Type 'discard' to confirm"),
+    ("release asks before every deploy", "skills/release/SKILL.md", r"\*\*every time\*\*: \"Deploy candidate"),
+    ("incident asks before any outward action", "skills/incident/SKILL.md", r"\*\*Ask before any outward action\.\*\*"),
+    ("implement never starts the paid cloud review unasked", "skills/implement/references/reviews.md",
+     r"\*\*Never `ultra`\*\*[^\n]*unless the user asks"))]
+STOPS += [(f"{s} keeps the progress file", f"skills/{s}/SKILL.md", None, r"progress file")
+          for s in ("grill", "to-spec", "to-tickets", "implement", "finishing-a-development-branch", "release")]
+
+def missed(plugin):
+    out = []
+    for what, path, scope, pattern in STOPS:
+        text = (plugin / path).read_text() if (plugin / path).is_file() else ""
+        if scope:
+            text = (re.search(scope, text) or re.match("", "")).group(0)
+        if not re.search(pattern, text, re.I):
+            out.append(what)
+    return out
+
+def drop(text, scope, pattern):   # the text with the stop's pattern removed, inside its scope when it has one
+    if not scope:
+        return re.sub(pattern, "", text, flags=re.I)
+    return re.sub(scope, lambda m: re.sub(pattern, "", m.group(0), flags=re.I), text, count=1)
+
+if not probe:
+    print("\n".join(missed(root)))
+    sys.exit()
+for what, path, scope, pattern in STOPS:
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = pathlib.Path(tmp)
+        for p in {stop[1] for stop in STOPS}:
+            (copy / p).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(root / p, copy / p)
+        (copy / path).write_text(drop((copy / path).read_text(), scope, pattern))
+        said = missed(copy)
+        if said != [what]:
+            print(f"the flow-stop check missed: {what} (it said: {said})")
+PY
+}
+STOP_OUT=$(flow_stop_problems "$PLUGIN")
+[[ -z $STOP_OUT ]] || fail "a stop of the continuous flow is gone: $STOP_OUT"
+STOP_OUT=$(flow_stop_problems "$PLUGIN" probe)
+[[ -z $STOP_OUT ]] || fail "$STOP_OUT"
 
 # The three kept Superpowers skills (KEPT, above): present, and matching the checksums recorded in the notices.
 for s in $KEPT; do [[ -f "$PLUGIN/skills/$s/SKILL.md" ]] || fail "missing copied skill: $s"; done

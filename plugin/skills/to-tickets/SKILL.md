@@ -11,7 +11,7 @@ Break a spec, a plan or the current conversation into a set of **tickets**: trac
 
 ## Gate
 
-Confirm the source (the spec that was just published, a spec path, an issue, or the conversation) and ask "Split it into tickets now?" with AskUserQuestion, recommended answer first, and wait for a yes. Skip this only when the user's last message asks for tickets or says yes to an offer to write them, or when a yes earlier in this request covered the tickets ("spec it and split it"); a yes to `matt-pocock-workflow:to-spec`'s offer is that yes.
+The source is the spec that was just published, or the one the user names (a spec path, an issue, or the conversation). Start at once, with no opening question, when the flow reached this skill from a confirmed design (the bootstrap's flow rule: `matt-pocock-workflow:to-spec` just published the spec, or the progress file records the confirmed design and names the split next), or when the user's last message asks for tickets, says yes to an offer to write them, or asks to build a spec they call agreed. Otherwise confirm the source and ask "Split it into tickets now?" with AskUserQuestion, recommended answer first, and wait for a yes.
 
 The issue tracker and the triage labels should already be in context (`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`). If the repo has neither, offer `matt-pocock-workflow:foundations` before going on; its `/setup-matt-pocock-skills` step, which only the user can run, writes them.
 
@@ -89,6 +89,6 @@ In either form, avoid specific file paths or code snippets: they go stale fast. 
 
 ## Next
 
-Offer `matt-pocock-workflow:implement` for the first ticket whose blockers are done, and wait for a yes.
+Go on to `matt-pocock-workflow:implement` for the first ticket whose blockers are done, without offering it: the flow continues (the bootstrap's flow rule). When two or more have no open blocker, `implement`'s parallel offer is the question.
 
 Adapted from Matt Pocock's `to-tickets` skill (github.com/mattpocock/skills, `skills/engineering/to-tickets` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`), MIT License, Copyright (c) 2026 Matt Pocock; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.

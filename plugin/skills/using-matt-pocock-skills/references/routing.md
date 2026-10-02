@@ -14,6 +14,20 @@ Read this file when the bootstrap's table is not enough: the path is unclear, a 
 
 Keep grill → spec → tickets in one context window. The spec and the tickets build on the grilling verbatim.
 
+## The continuous flow
+
+Once the user confirms a design (the grill's last question, or a spec the user calls agreed), the flow runs on: each flow skill goes on to the next step its row names without offering it, and `to-spec`, `to-tickets`, `implement` and `release` start without an opening question. The flow reached a step when this conversation or the progress file shows the design confirmed and names that step next; a "continue" on it is the flow going on. Asked directly by the user, a skill starts at once, as before. The flow skips questions, never the record: each step still writes the progress file and commits it, so the file and the handovers show everything the flow did.
+
+It stops only at the real gates:
+
+- **The user's decisions:** the grill's questions, the seams when none were agreed, where to build when nothing settled it, the tickets' breakdown, the parallel offer, the readiness rows to close.
+- **Integrating a branch:** `finishing-a-development-branch`'s menu (merge locally, a pull request, or keep), and a discard only when the user asks for one in so many words.
+- **A push, a deploy, a publish:** the spec's and the tickets' publish, the push behind a pull request, `release`'s deploy question.
+- **Anything destructive:** discarding work, a force, deleting data, a branch or files that exist nowhere else.
+- **A paid run:** a cloud review (`ultra`), a billed eval or service.
+
+Each is asked with a question that names it, when it comes; an earlier general yes ("go all the way") covers none of them. A limit the user set ("just the spec for now") stops the flow there. So does a handover that says to `/clear` before the next step, since only the user can type `/clear`: the resume note then brings the step back, and a "continue" goes on.
+
 ## Greenfield
 
 A new app starts with `foundations` (the run and verify commands, CI, the production rows), then the grill and `to-spec` with a Release section (target, environments, the first deploy). `to-tickets` makes ticket 01 the walking skeleton: one trivial path through build, CI, deploy and a smoke check, taken through `release` to the first environment the Release section names, before any feature ticket. Every later ticket then ships on a pipeline that already works.
@@ -76,7 +90,7 @@ Evidence belongs to a candidate. Evidence gathered on an unchanged candidate is 
 
 ## Alongside Superpowers
 
-If Superpowers is also enabled, these win: `grill` over `brainstorming`, `tdd` over `test-driven-development`, `diagnosing-bugs` over `systematic-debugging`, `to-spec`/`to-tickets` over `writing-plans`, `code-review` over `requesting-code-review`. The gate enforces the precedence: a Superpowers skill is not a declaration, so the project stays closed until one of these has been invoked for the request.
+If Superpowers is also enabled, these win: `grill` over `brainstorming`, `tdd` over `test-driven-development`, `diagnosing-bugs` over `systematic-debugging`, `to-spec`/`to-tickets` over `writing-plans`, `code-review` over `requesting-code-review`. The gate enforces the precedence: a Superpowers skill is not a declaration, so the project stays closed until one of these has routed the work.
 
 ## Precondition
 

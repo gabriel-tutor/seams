@@ -5,8 +5,12 @@ The vocabulary of the Seams plugin: a Claude Code workflow in which Matt Pocock'
 ## Language
 
 **Route**:
-The first skill a request is sent to, chosen from the bootstrap's table by the request's size and risk.
+The process skill that work is sent to, chosen from the bootstrap's table by its size and risk. It lasts until another process skill replaces it or the session is cleared; from a confirmed design, the continuous flow moves it on from step to step.
 _Avoid_: classification, triage (that word belongs to `/triage`)
+
+**Continuous flow**:
+What follows the user's confirmation of a design: spec, tickets, build, review and release, each step starting the next without asking. It stops only at the user's decisions and the gates (integrating a branch, a push, a deploy, a publish, anything destructive, a paid run), and each step still writes the progress file.
+_Avoid_: autopilot, auto mode (a Claude Code permission mode)
 
 **Bootstrap**:
 The routing policy injected into every session at start, resume, clear, compaction and fork.
@@ -17,7 +21,7 @@ A Skill invocation of a process skill, by Claude or typed by the user, that open
 _Avoid_: unlock, override
 
 **Gate**:
-The hook that refuses any change to the project until a declaration has routed the work, and holds a read-only agent to reads whatever is declared. In a flow skill, also the question that must get a yes before it publishes, pushes, deploys, integrates a branch or destroys anything: between those, the flow runs on.
+The hook that refuses any change to the project until a declaration has routed the work, and holds a read-only agent to reads whatever is declared. In a flow skill, also the question that must get a yes before it publishes, pushes, deploys, integrates a branch, destroys anything or starts a paid run: between those, the continuous flow runs on.
 _Avoid_: guard, blocker, permission
 
 **Ledger**:

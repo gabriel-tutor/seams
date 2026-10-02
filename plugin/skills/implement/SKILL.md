@@ -19,7 +19,7 @@ Build what a spec, a ticket or an agreed design describes: tests first at the ag
 
 ## Gate
 
-Before reading anything, confirm which spec, ticket or agreed design you're building, and where. Offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch. Wait for a yes. Skip this only when the user's last message already names both, when a yes earlier in this request covered this ticket and where it goes, or when you resume a ticket in progress whose state matches its progress file (Resuming, below).
+Before reading anything, settle which spec, ticket or agreed design you're building, and where; ask only what nothing settled. The flow from a confirmed design (the bootstrap's flow rule) brings the next unblocked ticket, or the parallel offer when two or more are; where is what the user said, what the confirmation recorded, or a linked worktree you're in. Otherwise offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch, and wait for the answer. A ticket resumed as its progress file records skips this (Resuming, below).
 
 Then note the starting point for the review's fixed point: the branch and HEAD from the repository facts (in a new worktree, its own), and the base branch.
 
@@ -27,7 +27,7 @@ Then note the starting point for the review's fixed point: the branch and HEAD f
 
 The feature's progress file, `.scratch/<feature>/progress.md` beside its spec, lets a fresh context continue this ticket. Read its format in `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` before the first write, and create the file if the feature has none. Keep it current at each step below, with `Updated` set to today, and stage it by name with each of the ticket's commits. Decisions and pointers only: never a secret, a credential, a token or personal data.
 
-- **After the gate's yes:** `Ticket` is this ticket's number, and `Next` names the branch and the starting commit.
+- **Once the gate settles it:** `Ticket` is this ticket's number, and `Next` names the branch and the starting commit.
 - **With each commit:** `Next` says what the commit does and the step that follows, naming the branch and the SHAs it needs: the review against the fixed point, the fixes, or the definition of done. A commit can't name itself, so `Candidate` is the commit under review, set when the review starts. After the review, list the findings you act on under `## Review`, one line each with its file and line, until they are fixed.
 - **The record:** just before the definition of done, commit the file with `Stage` set to the stage reached (built on a branch, integrated on the base branch), this ticket marked done in its ticket list, `Ticket`, `Candidate` and `## Review` removed, and `Next` naming the next unblocked ticket and whether to `/clear` before it. When nothing is left to build (the last ticket, or a design built in one go), set `Status: done` instead, unless the spec has a Release section; then `Next` is the release, through `matt-pocock-workflow:release`. An unmet row puts the ticket back (Definition of done, below).
 
@@ -37,7 +37,7 @@ When the resume note or the user points at a ticket its progress file records in
 
 1. Read the progress file, then the ticket and the spec, and the git state: the repository facts and `git log --oneline -5`.
 2. Where they disagree with the file (the branch is not the one `Next` names; the history after `Candidate`, or after the starting commit before a review, holds commits the file doesn't account for; the ticket is already done), report the mismatch and ask how to go on. Never act on the file instead.
-3. Where they agree, the yes given when the ticket started still covers it: don't ask the gate question again. Take the starting point and the fixed point from `Next` and the history, and continue from the step `Next` names.
+3. Where they agree, what started the ticket still covers it: don't ask the gate question again. Take the starting point and the fixed point from `Next` and the history, and continue from the step `Next` names.
 
 ## Build
 
@@ -93,6 +93,6 @@ Your closing message is the handover: exactly these four sections, in this order
 1. **Run it.** The exact commands to start and check the work, from the repo's real scripts or README; if it has none, the one-line command that works, and an offer to add it to the README.
 2. **Try it.** One short walkthrough per acceptance criterion, in the user's words: what to do, and what they should see. Refer to things by their glossary names. For a user-facing change to a runnable app, offer `/verify`, which only the user can start.
 3. **What changed.** The candidate SHA, the files and public interfaces touched, in a few lines, and any decision you made that the ticket didn't settle.
-4. **Next.** First the stage reached, one of the six: designed, built, integrated, release-ready, deployed, operated. A ticket that ends here is *built* (the candidate is on a branch) or *integrated* (it is on the base branch); it is never "done" without the stage, and it is never *deployed* until `matt-pocock-workflow:release` has verified the running candidate. Then name the next unblocked ticket, or say there is none. Then say whether to `/clear` before it (it is unrelated to this one, or this session is heavy) or to continue here (it builds on this one). If the candidate is on a branch, also offer `matt-pocock-workflow:finishing-a-development-branch`.
+4. **Next.** First the stage reached, one of the six: designed, built, integrated, release-ready, deployed, operated. A ticket that ends here is *built* (the candidate is on a branch) or *integrated* (it is on the base branch); it is never "done" without the stage, and it is never *deployed* until `matt-pocock-workflow:release` has verified the running candidate. Then name the next unblocked ticket, or say there is none. Then say whether to `/clear` before it (it is unrelated to this one, or this session is heavy) or to continue here (it builds on this one), and in that case go on to it, unoffered; with none left, a candidate on a branch goes to `matt-pocock-workflow:finishing-a-development-branch`, whose question stops the flow.
 
 Adapted from Matt Pocock's `implement` skill (github.com/mattpocock/skills, `skills/engineering/implement` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`), MIT License, Copyright (c) 2026 Matt Pocock; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.
