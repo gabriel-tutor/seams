@@ -170,12 +170,12 @@ The same flow, as a table:
 | Request | Path |
 | --- | --- |
 | Trivial: copy, a typo, a comment, an unobservable rename | the `trivial` declaration, then edit and verify |
-| Sensitive at any size: auth, permissions, secrets, billing, migrations, infrastructure, CI or deploy config, a public API, anything destructive | its size row's path, with `grill` on the security and failure axes first; `code-review` and a security review required |
+| Sensitive at any size: auth, permissions, secrets, billing, migrations, infrastructure, CI or deploy config, a public API, anything destructive | its size row's path, with `grill` on the security and failure axes first; `code-review`, a correctness review and a security review required |
 | Down or degraded for users now | `incident`: contain and restore before diagnosis |
 | Broken, failing, throwing, slow | `diagnosing-bugs`, then verify and finish |
 | Bounded change to existing code | short `grill`, then `tdd`, then verify and finish |
 | New behavior that fits one session | `grill` + `domain-modeling`, then `implement`, then verify and finish |
-| A build spanning several sessions, or a new app | `grill`, then `to-spec`, `to-tickets`, and `implement` one ticket per session; a new app's ticket 01 is the walking skeleton |
+| A build spanning several sessions, or a new app | `grill`, then `to-spec`, `to-tickets`, and `implement` ticket by ticket, each sized for one context; a new app's ticket 01 is the walking skeleton |
 | Ship, deploy, release, publish | `release`: readiness, a deploy behind an explicit yes, verification, an operations handover |
 | Review a pull request, or several at once | you type `/pr-review <number or URL> [...]`, `/pr-review open` or `/pr-review requested`, or ask Claude to review them: checks on head and baseline, a proven review per PR, posted by itself when fully verified, and a ready-to-merge answer per PR (see [Reviewing pull requests](#reviewing-pull-requests)) |
 | Foggy effort, issues someone else wrote, upkeep | Claude suggests `/wayfinder`, `/triage`, `/improve-codebase-architecture` |
@@ -316,7 +316,7 @@ A repository can also switch the plugin off for itself: `enabledPlugins` in its 
 
 ## What it costs
 
-Seams adds three things to every session: the descriptions of its skills and agents, which Claude Code lists so Claude can call them; the routing policy the session-start hook injects, at most 2,900 bytes (`scripts/tests/test_plugin_hook.sh` fails above that); and, when work is in progress, a resume note of under 1,500 characters. A skill's instructions cost context only once it runs. Each `SKILL.md` stays within 11,000 bytes, about 4,000 tokens (`scripts/tests/test_plugin.sh` fails above that), because when Claude Code compacts a conversation it keeps the first 5,000 tokens of each invoked skill, and 25,000 for all of them together, the most recent first. A reference a skill reads at one of its steps, the shared rules among them, stays within 16,000 bytes.
+Seams adds three things to every session: the descriptions of its skills and agents, which Claude Code lists so Claude can call them; the routing policy the session-start hook injects, at most 2,900 bytes (`scripts/tests/test_plugin_hook.sh` fails above that); and, when work is in progress, a resume note of under 1,500 characters. A skill's instructions cost context only once it runs. Each `SKILL.md` stays within 11,000 bytes, `pr-review`'s within 11,200, about 4,000 tokens (`scripts/tests/test_plugin.sh` fails above that), because when Claude Code compacts a conversation it keeps the first 5,000 tokens of each invoked skill, and 25,000 for all of them together, the most recent first. A reference a skill reads at one of its steps, the shared rules among them, stays within 16,000 bytes.
 
 By `claude plugin details`, the listing cost about 1,165 tokens a session in 3.2.1 and costs about 857 in 3.3, 26% less, measured again on the 3.3.0 release candidate ([the evidence](docs/plugin-behavior-tests.md)). 4.0 leaves the listing as it was: 2,649 characters by the static test's count, in 3.4.0 and now. That figure is the listing alone: the tool counts the hooks as costing the model nothing, so the routing policy and the resume note they inject are not in it.
 

@@ -1537,8 +1537,8 @@ What 4.0.0 waits for before its release (seams-revamp decision 12, ticket 08): t
 
 | Measure | 3.4.0 (`79e1741`) | 4.0 | Where it was measured |
 | --- | --- | --- | --- |
-| `scripts/test.sh` on the developer's Mac | about ten minutes: 8 suites one after another, the Python tests and two hook suites again under the system 3.9 | 17 suites in 15.4 s, within the 60 s budget | the spec's problem statement; ticket 08's run on `38b43cd`, 2026-10-03 (the integrations of tickets 02 to 10 took 14.8 to 17.7 s) |
-| A hook firing, median | Stop 37.6 ms, UserPromptSubmit 37.9, PreToolUse on an Edit 37.7, on a Bash call 37.5 | 19.5, 19.8, 21.1, 25.8 | ticket 05, on its integration `afd776f` against `79e1741`: `python3 <hook>` with the event on stdin, firings alternating between the versions (`37acf8e`'s message). Ticket 10 found an Edit and a Bash firing unchanged after it moved the ledger (medians of 30: 21.2 to 21.4 ms, and 26.4 to 26.7 for a Bash scratch redirect) |
+| `scripts/test.sh` on the developer's Mac | about ten minutes: 8 suites one after another, the Python tests and two hook suites again under the system 3.9 | 17 suites in 15.4 s, within the 60 s budget | the spec's problem statement; ticket 08's run on `38b43cd`, 2026-10-03. The integrated suites the progress file records took 21.5 s with tickets 03 and 04, before ticket 02 took out the sleeps, then 14.8 to 17.7 s |
+| A hook firing, median | Stop 37.6 ms, UserPromptSubmit 37.9, PreToolUse on an Edit 37.7, on a Bash call 37.5 | 19.5, 19.8, 21.1, 25.8 | ticket 05's figures for its integration `afd776f` against `79e1741`, as the progress file records them, measured as `37acf8e`'s message describes: `python3 <hook>` with the event on stdin, firings alternating between the versions. Ticket 10 found the firings unchanged after it moved the ledger: at its last commit, `51edb08`, against `955cd76`, medians of 30, an Edit 20.7 to 20.8 ms, a Bash scratch write 26.0 to 26.3, Stop 19.8 to 19.6 |
 | The listing, as `scripts/tests/test_plugin.sh` counts it | 2,649 characters | 2,649 | both trees, 2026-10-03 |
 | Every `SKILL.md` together | 94,727 bytes | 93,385 | both trees, 2026-10-03 |
 | Every reference together | 73,883 bytes | 80,641, the shared rules' 8,957 among them | both trees, 2026-10-03 |
@@ -1606,19 +1606,34 @@ R=$(mktemp -d); mkdir "$R/home" "$R/ws"
 
 Given a home that is not the account's, the scaffold copies the nine Matt Pocock skills from the account's config into `$R/config/skills`, beside the home, as an eval run has them. The session below uses `$R/config` as its config directory, so it finds them there and loads nothing else of the account's, and the 4.0 ledger lands under `$R/home`.
 
+The run's settings, the same rules for both versions, each naming its own plugin: reading the plugin under test and the copied skills, as absolute rules, and the fixture's own commands. The platform denies any other call that needs permission, and the run reports the denial.
+
+```bash
+python3 - "$R" "$P/<v340 or v400>/plugin" > "$R/settings.json" <<'PY'
+import json, os, sys
+run, plugin = map(os.path.realpath, sys.argv[1:3])
+allow = [f"Read(/{plugin}/**)", f"Read(/{run}/config/skills/**)",
+         "Bash(npm test:*)", "Bash(npm run typecheck:*)", "Bash(npx vitest:*)", "Bash(npx tsc:*)"]
+allow += [f"Bash(git {sub}:*)" for sub in
+          ("status", "diff", "log", "show", "add", "commit", "rev-parse", "merge-base", "branch", "worktree")]
+print(json.dumps({"permissions": {"allow": allow}}, indent=1))
+PY
+```
+
 **Each prompt**, paid, asked first:
 
 ```bash
-cd "$R/ws" && HOME="$R/home" CLAUDE_CONFIG_DIR="$R/config" CLAUDE_CODE_OAUTH_TOKEN=<token> \
+cd "$R/ws" && date +%s > "$R/prompt-<n>.time" && HOME="$R/home" CLAUDE_CONFIG_DIR="$R/config" CLAUDE_CODE_OAUTH_TOKEN=<token> \
   GIT_AUTHOR_NAME=bench GIT_AUTHOR_EMAIL=bench@example.com GIT_COMMITTER_NAME=bench GIT_COMMITTER_EMAIL=bench@example.com \
   claude -p "<prompt>" --plugin-dir "$P/<v340 or v400>/plugin" --model claude-opus-5-5 \
   --output-format stream-json --verbose --permission-mode acceptEdits --settings "$R/settings.json" \
-  --max-budget-usd <the ceiling the user sets> [--resume <session id>] > "$R/prompt-<n>.jsonl"
+  --max-budget-usd <the ceiling the user sets for one prompt> [--resume <session id>] > "$R/prompt-<n>.jsonl"; \
+  date +%s >> "$R/prompt-<n>.time"
 ```
 
 - From the second prompt on, `--resume` takes the `session_id` of the first prompt's `result` event.
 - The throwaway config directory holds no login, and the macOS Keychain entry is keyed to the config directory. `claude setup-token`, which the user runs once and which prints a token without saving it, gives `CLAUDE_CODE_OAUTH_TOKEN`; `ANTHROPIC_API_KEY` works too ([authentication](https://code.claude.com/docs/en/authentication)).
-- `$R/settings.json`, the same for both versions, allows reading the plugin under test and the copied skills, each written as an absolute rule after `realpath` (`Read(//<path>/**)`), and the fixture's own commands: `Bash(npm test:*)`, `Bash(npm run typecheck:*)`, `Bash(npx vitest:*)`, `Bash(npx tsc:*)`, and git's `status`, `diff`, `log`, `show`, `add`, `commit`, `rev-parse`, `merge-base`, `branch` and `worktree`, each as `Bash(git <subcommand>:*)`. The platform denies any other call that needs permission, and the run reports the denial.
+- `--max-budget-usd` caps one prompt's own spend: a resumed call's earlier spend does not count against it ([CLI reference](https://code.claude.com/docs/en/cli-reference)), so a task of eight prompts can spend eight ceilings. The user sets it per prompt, knowing that.
 - Per task, the runs alternate between 3.4.0 and the candidate, three on each.
 
 **One run's figures**, computed after it, free, by this script saved as `measure.py` and run as `python3 measure.py "$R"`:
@@ -1626,13 +1641,12 @@ cd "$R/ws" && HOME="$R/home" CLAUDE_CONFIG_DIR="$R/config" CLAUDE_CODE_OAUTH_TOK
 ```python
 import glob, json, os, sys
 
-run = sys.argv[1]                      # the run's directory: prompt-1.jsonl, prompt-2.jsonl, ..., config/
-results = []
-for n in range(1, 100):
-    path = os.path.join(run, f"prompt-{n}.jsonl")
-    if not os.path.exists(path):
-        break
-    results += [e for e in map(json.loads, open(path)) if e.get("type") == "result"]
+run = sys.argv[1]                      # the run's directory: prompt-<n>.jsonl and prompt-<n>.time for n = 1, 2, ..., config/
+results, wall, n = [], 0, 1
+while os.path.exists(os.path.join(run, f"prompt-{n}.jsonl")):
+    results += [e for e in map(json.loads, open(os.path.join(run, f"prompt-{n}.jsonl"))) if e.get("type") == "result"]
+    start, end = map(int, open(os.path.join(run, f"prompt-{n}.time")).read().split())
+    wall, n = wall + end - start, n + 1
 last = results[-1]                     # a resumed call reports the whole conversation's usage and cost
 projects = os.path.join(run, "config", "projects", "*")
 transcripts = glob.glob(os.path.join(projects, last["session_id"] + ".jsonl"))
@@ -1644,7 +1658,7 @@ for path in transcripts:
         for block in content if isinstance(content, list) else []:
             if block.get("type") == "tool_use":
                 calls[block["id"]] = block["name"]
-            elif block.get("type") == "tool_result":
+            elif block.get("type") == "tool_result" and block.get("is_error"):
                 text = block.get("content")
                 if isinstance(text, list):
                     text = " ".join(b.get("text", "") for b in text if isinstance(b, dict))
@@ -1653,7 +1667,7 @@ for path in transcripts:
 kinds = ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
 usage = {model: {k: u.get(k, 0) for k in kinds} for model, u in (last.get("modelUsage") or {}).items()}
 print(json.dumps({
-    "prompts": len(results),
+    "prompts": n - 1,
     "tool_calls": len(calls),
     "skill_calls": sum(name == "Skill" for name in calls.values()),
     "agent_calls": sum(name in ("Agent", "Task") for name in calls.values()),
@@ -1662,13 +1676,13 @@ print(json.dumps({
     "tokens": sum(sum(u.values()) for u in usage.values()),
     "tokens_by_model": usage,
     "cost_usd": last.get("total_cost_usd"),
-    "wall_seconds": round(sum(r.get("duration_ms", 0) for r in results) / 1000, 1),
+    "wall_seconds": wall,
 }, indent=1))
 ```
 
-- Tool calls: each distinct tool call in the session's transcripts, the main one and every subagent's, with the Skill and Agent calls counted apart, and the gate's refusals.
+- Tool calls: each distinct tool call in the session's transcripts, the main one and every subagent's, with the Skill and Agent calls counted apart, and the gate's refusals (an error result carrying `Seams gate:`). Checked free on 2026-10-03 against a real session of this repository's: 543 distinct calls, as many as a plain search of its eleven transcripts finds.
 - Tokens: per model, the input, output, cache-read and cache-creation tokens of the last prompt's `result`, whose `modelUsage` covers the whole conversation, subagents and earlier prompts included ([cost tracking](https://code.claude.com/docs/en/agent-sdk/cost-tracking)). The cost is its `total_cost_usd`, a client-side estimate.
-- Wall time: the sum of each prompt's `duration_ms`.
+- Wall time: the seconds each prompt's command ran, from the two times in its `prompt-<n>.time`, summed. Not `duration_ms`: the docs say a resumed call's cost includes the earlier prompts', and say nothing either way of its duration.
 - Denials: each prompt's `permission_denials`.
 
 **What is compared.** Per task, the median of each figure over its runs, on 3.4.0 and on the candidate. The bar (ticket 08): the candidate takes fewer tool calls and no more tokens or wall time, or the difference is explained. 4.0's scouts run on Sonnet, so the tokens are shown by model, with the cost beside them.
