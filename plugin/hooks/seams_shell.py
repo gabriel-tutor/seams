@@ -359,8 +359,9 @@ def _split_redirects(segment: list) -> tuple:
 # it is written out in full, or built from $TMPDIR or from a variable an earlier assignment in the
 # same command set. A relative path, a glob, a command substitution, an escape, a variable set
 # anywhere else, or one a loop, `read`, `unset` or `eval` may have changed is not placed, and the
-# write counts. So does an option with its value attached (`--target-directory=DIR`, `-tDIR`).
-# Single quotes are literal, as in the shell.
+# write counts. So does an option with its value attached (`--target-directory=DIR`, `-tDIR`), and
+# a path with a `..` segment: the kernel follows a symlink before the `..` after it, and the
+# command itself may make that link (seams-revamp ticket 11). Single quotes are literal, as in the shell.
 
 VARIABLE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?-)([^}$]*))?\}|([A-Za-z_][A-Za-z0-9_]*))")
 GLOB_CHARS = set("*?[{")                      # { for brace expansion
@@ -428,7 +429,7 @@ def _expand_part(text: str, env: dict, bare: bool) -> str | None:
 def _placed_path(token: str, env: dict) -> str | None:
     """The absolute path a token names, or None when it is not placed."""
     text = _expand(token, env)
-    if text is None or not text or GLOB_CHARS & set(text) or not os.path.isabs(text):
+    if text is None or not text or GLOB_CHARS & set(text) or not os.path.isabs(text) or ".." in text.split(os.sep):
         return None
     return os.path.normpath(text)
 

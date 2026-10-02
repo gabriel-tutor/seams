@@ -1436,6 +1436,134 @@ class LedgerOutOfReach(unittest.TestCase):
                 self.assertEqual(self.decide(edit, ledger)["decision"], "allow")
 
 
+class DotDotAfterASymlink(unittest.TestCase):
+    """A `..` after a symlink is not placed (seams-revamp ticket 11, from ticket 10's security review). The kernel follows
+    a symlink before the `..` after it, so `<scratch>/S/../x`, with S a link out of the temp directory, lands wherever S
+    leads, while the gate dropped `S/..` as text and placed it in scratch: one undeclared call could write the ledger or
+    the project. A path with a `..` segment, from a shell command or an editor tool, is a change: refused without a
+    declaration, recorded with one, and refused to a read-only agent, declared or not."""
+
+    PLACEMENTS = LedgerOutOfReach.PLACEMENTS
+    placed = LedgerOutOfReach.placed
+
+    def setUp(self):
+        self.config = tempfile.mkdtemp()
+        self.ledger = seams_ledger.empty_ledger("s1")
+        self.declared = seams_ledger.empty_ledger("s1")
+        seams_ledger.add_declaration(self.declared, "matt-pocock-workflow:implement")
+        self.base = tempfile.mkdtemp()
+        os.symlink("/", os.path.join(self.base, "S"))          # out of the temp directory: S/.. is the root
+        self.addCleanup(seams_ledger.home_state_dir.cache_clear)
+
+    def decide(self, ev, ledger=None):
+        return gate.decide_pre_tool_use(ev, self.ledger if ledger is None else ledger, config_dir=self.config)
+
+    def through_the_link(self, root):
+        """Paths through S/.. that the kernel puts in the ledger and in the project (the session's cwd is /proj)."""
+        return f"{self.base}/S/..{root}/s1.json", f"{self.base}/S/../proj/src/a.ts"
+
+    def test_a_shell_write_through_it_is_a_change(self):
+        t = tempfile.gettempdir()
+        for placement, home in self.PLACEMENTS:
+            with self.placed(home) as root:
+                for path in self.through_the_link(root):
+                    for tool, command, label in [("Bash", f"printf '%s' x > {path}", "a redirect to a file"),
+                                                 ("Bash", f"echo x >> {path}", "a redirect to a file"),
+                                                 ("Bash", f"cp {t}/forged.json {path}", "cp"),
+                                                 ("Bash", f"echo x | tee {path}", "tee"),
+                                                 ("Monitor", f"tail -f {t}/x.log > {path}", "a redirect to a file")]:
+                        with self.subTest(placement=placement, command=command):
+                            decision = self.decide(event(tool, command=command))
+                            self.assertEqual(decision["decision"], "deny")
+                            self.assertIn(label, decision["reason"])
+                            decision = self.decide(event(tool, command=command), self.declared)
+                            self.assertEqual(decision["decision"], "allow")
+                            self.assertEqual(decision["change"]["label"], label)
+
+    def test_an_editor_tools_write_through_it_is_a_change(self):
+        for placement, home in self.PLACEMENTS:
+            with self.placed(home) as root:
+                for path in self.through_the_link(root):
+                    for tool, key in (("Write", "file_path"), ("Edit", "file_path"), ("MultiEdit", "file_path"),
+                                      ("NotebookEdit", "notebook_path")):
+                        with self.subTest(placement=placement, tool=tool, path=path):
+                            decision = self.decide(event(tool, **{key: path}))
+                            self.assertEqual(decision["decision"], "deny")
+                            self.assertIn(path, decision["reason"])
+                            decision = self.decide(event(tool, **{key: path}), self.declared)
+                            self.assertEqual(decision["decision"], "allow")
+                            self.assertEqual(decision["change"]["path"], path, "recorded as written, not as text dropped")
+
+    def test_a_read_only_agent_writing_through_it_is_refused_declared_or_not(self):
+        for placement, home in self.PLACEMENTS:
+            with self.placed(home) as root:
+                for path in self.through_the_link(root):
+                    for agent in ("matt-pocock-workflow:reviewer", "matt-pocock-workflow:scout"):
+                        for ledger in (self.ledger, self.declared):
+                            for tool, tool_input in (("Bash", {"command": f"printf x > {path}"}),
+                                                     ("Bash", {"command": f"git diff HEAD >> {path}"}),
+                                                     ("Write", {"file_path": path, "content": "{}"})):
+                                with self.subTest(placement=placement, agent=agent, declared=ledger is self.declared,
+                                                  tool=tool, path=path):
+                                    decision = self.decide(event(tool, agent_id="a1", agent_type=agent, **tool_input),
+                                                           ledger)
+                                    self.assertEqual(decision["decision"], "deny")
+                                    self.assertIsNone(decision["change"])
+        # Where the path's `..` stays in the temp directory as the kernel reads it, the refusal names the `..`, not a
+        # place outside the temp directory.
+        os.mkdir(os.path.join(self.base, "a"))
+        for path in (f"{self.base}/a/../notes.md", f"{self.base}/not-yet/../notes.md"):
+            with self.subTest(path=path):
+                decision = self.decide(event("Write", agent_id="a1", agent_type="matt-pocock-workflow:reviewer",
+                                             file_path=path, content="x"))
+                self.assertEqual(decision["decision"], "deny")
+                self.assertIn("a `..` segment", decision["reason"])
+
+    def test_the_two_step_form_in_one_command_is_caught(self):
+        # The ticket's `ln -s /tmp /tmp/C && printf … > /tmp/C/../<home>/.local/state/seams/<sid>.json`: the link does not
+        # exist when the gate reads the command, and `ln` makes it from scratch to scratch before the write runs.
+        for placement, home in self.PLACEMENTS:
+            with self.placed(home):
+                ledger = seams_ledger.ledger_path("s1")
+                command = f"ln -s /tmp {self.base}/C && printf '%s' x > {self.base}/C/..{ledger}"
+                with self.subTest(placement=placement):
+                    decision = self.decide(event("Bash", command=command))
+                    self.assertEqual(decision["decision"], "deny")
+                    self.assertIn("a redirect to a file", decision["reason"])
+                    decision = self.decide(event("Bash", command=command), self.declared)
+                    self.assertEqual(decision["decision"], "allow")
+                    self.assertEqual(decision["change"]["label"], "a redirect to a file")
+
+    def test_a_dotdot_through_real_directories_counts_too_and_the_refusal_says_why(self):
+        # The cost of not following links the command may make: `echo x > /tmp/a/../b` was scratch.
+        os.mkdir(os.path.join(self.base, "a"))
+        path = f"{self.base}/a/../b.log"
+        for tool, tool_input in (("Bash", {"command": f"echo x > {path}"}), ("Write", {"file_path": path, "content": "x"})):
+            with self.subTest(tool=tool):
+                decision = self.decide(event(tool, **tool_input))
+                self.assertEqual(decision["decision"], "deny")
+                self.assertIn("a `..` segment", decision["reason"])
+
+    def test_a_path_with_no_dotdot_segment_is_placed_as_before(self):
+        t = tempfile.gettempdir()
+        # Names that hold dots but no `..` segment, a `.` segment and a doubled slash: scratch, as they were.
+        for path in (f"{t}/a..b/c.log", f"{t}/..a/x.log", f"{t}/x../y.log", f"{t}/.../x.log", f"{t}/./x.log",
+                     f"{t}//x.log"):
+            for tool, tool_input in (("Bash", {"command": f"echo x > {path}"}),
+                                     ("Write", {"file_path": path, "content": "x"})):
+                with self.subTest(path=path, tool=tool):
+                    self.assertIsNone(gate.change_for_event(event(tool, **tool_input), config_dir=self.config))
+        # A link with no `..` after it is followed as it was: through S into the project is a change, back into the
+        # temp directory is scratch.
+        for tool, key, value in (("Bash", "command", "echo x > {}"), ("Write", "file_path", "{}")):
+            with self.subTest(tool=tool):
+                change = gate.change_for_event(event(tool, **{key: value.format(f"{self.base}/S/proj/src/a.ts")}),
+                                               config_dir=self.config)
+                self.assertIsNotNone(change)
+                self.assertIsNone(gate.change_for_event(event(tool, **{key: value.format(f"{self.base}/S{t}/x.log")}),
+                                                        config_dir=self.config))
+
+
 class MonitorCommands(unittest.TestCase):
     """A Monitor watch runs its command in the Bash tool's shell, so the gate judges that command
     as it judges a Bash command. A WebSocket watch runs nothing on the machine (ticket 02)."""
