@@ -1,7 +1,7 @@
 {
   "name": "matt-pocock-workflow",
   "version": "3.4.0",
-  "description": "Unofficial workflow plugin built on Matt Pocock's engineering skills (github.com/mattpocock/skills): a session bootstrap that routes every development task to them, an interactive grill that asks every independent question at once, and gated spec, tickets and implement steps, plus four Superpowers skills for worktrees, verification, review feedback and finishing a branch.",
+  "description": "Unofficial workflow plugin built on Matt Pocock's engineering skills (github.com/mattpocock/skills): a session bootstrap that routes every development task to them, an interactive grill that asks every independent question at once, and spec, tickets and implement steps that run on from a confirmed design to the gates you decide, plus four Superpowers skills for worktrees, verification, review feedback and finishing a branch.",
   "author": {
     "name": "gabriel-tutor",
     "url": "https://github.com/gabriel-tutor"

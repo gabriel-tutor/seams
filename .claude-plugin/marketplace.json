@@ -9,7 +9,7 @@
     {
       "name": "matt-pocock-workflow",
       "source": "./plugin",
-      "description": "Unofficial workflow that makes Matt Pocock's engineering skills lead every Claude Code session: a session bootstrap, an interactive grill, and gated spec, tickets and implement steps.",
+      "description": "Unofficial workflow that makes Matt Pocock's engineering skills lead every Claude Code session: a session bootstrap, an interactive grill, and spec, tickets and implement steps that run on from a confirmed design to the gates you decide.",
       "category": "engineering",
       "keywords": ["matt-pocock", "workflow", "grilling", "tdd", "skills"]
     }
