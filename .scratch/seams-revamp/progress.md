@@ -2,7 +2,7 @@
 
 Status: active
 Stage: integrated
-Next: Ticket 08 (Docs and proof) is unblocked: build it with implement in a worktree under .worktrees/ off main; its paid evals asked first; /clear first.
+Next: Tickets 08 (docs and proof) and 11 (a .. after a symlink) are unblocked: offer them as a parallel run with implement, worktrees under .worktrees/ off main; /clear first.
 Updated: 2026-10-03
 
 ## Spec
@@ -19,8 +19,9 @@ Updated: 2026-10-03
 - 06 A continuous flow (blocked by: 03, 04) — done, integrated on main at 49884f8 (built at 56bfbbc); ADR 0006 at f27d05d
 - 07 One shared reference, process in proportion (blocked by: 03, 06) — done, integrated on main at 2adc23e (built at 05d756e)
 - 08 Docs and proof (blocked by: 02, 05, 07)
-- 09 Release 4.0.0 (blocked by: 08, 10)
+- 09 Release 4.0.0 (blocked by: 08, 10, 11)
 - 10 The ledger out of an agent's reach (blocked by: 05) — added 2026-10-02 from ticket 04's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at cacee8f (built at 51edb08); the ledger moved to ~/.local/state/seams
+- 11 A `..` after a symlink is not placed (blocked by: 10) — added 2026-10-03 from ticket 10's security review, the user's choice: 4.0.0 waits for it
 
 ## Decisions
 
@@ -54,6 +55,7 @@ Updated: 2026-10-03
 24. Ticket 05's timing (the user's answer, 2026-10-03): a PreToolUse firing on a Bash call at 25.8 ms (from 37.5) is accepted; the rest of its cost is compiling the shell classifier, and a bytecode cache in the temp directory would let a sandboxed shell plant code the hook runs. The gate was split into seams_gate.py, seams_ledger.py and seams_shell.py as the spec says (decision 9); decisions 6 and 19's "one lighter script" and "merged hook" meant that.
 
 25. The parallel run of tickets 07 and 10 (the user's pick, 2026-10-03), worktrees under .worktrees/ as for the earlier 4.0 runs. Ticket 07's builder's choices (the user may overrule them): `scout` declares the alias `model: sonnet`, which the live docs resolve to Sonnet 5.5 from Claude Code 2.1.284, rather than `claude-sonnet-5-5`, which fails on older versions and other providers; the six skills that run only in the main conversation reach rules.md through the bootstrap's pointer, while grill, implement, release and pr-review name its path; trivial's "moves you up a row, never down" was cut and the bootstrap's routing label lost "durable state" to stay within 2,900 bytes. Ticket 10's builder took the ticket's equal fix: the ledger lives at `~/.local/state/seams`, falling back to `$TMPDIR/seams-<uid>` where the home can't hold it; there is no migration from the old place, so a session running across the upgrade declares once more (decision 19's "starts it fresh"); this session's gate refused once at the fast-forward, as expected.
+26. After the run of 07 and 10 (the user's answers, 2026-10-03): the `..`-after-a-symlink limit becomes ticket 11, which 4.0.0 waits for; `/simplify` is skipped on ticket 07's diff; `scout` keeps the alias `model: sonnet`.
 
 ## Outline of phases 2 and 3 (grilled in full when each starts)
 
@@ -63,7 +65,6 @@ Updated: 2026-10-03
 ## Open questions
 
 - None for phase 1; phases 2 and 3 are grilled when they start.
-- Whether the `..`-after-a-symlink limit (ticket 10's security review, Facts) becomes a ticket of its own, and whether 4.0.0 waits for it.
 
 ## Facts
 
@@ -78,7 +79,7 @@ Updated: 2026-10-03
 - The parallel run of 05 and 06 (2026-10-02 to 03): the builders' reviewer reports again came to the main conversation, which forwarded their output files. Auto mode refused to integrate a ticket the user had not reviewed while it left questions for the user; the user's answers and "merge" cleared it. Hook medians per firing, 3.4.0 to afd776f: Stop 37.6 to 19.5 ms, UserPromptSubmit 37.9 to 19.8, Edit 37.7 to 21.1, Bash 37.5 to 25.8. The suite: 17 suites in 15.5 s.
 - Left for later tickets, from the run of 05 and 06: implement's SKILL.md is at 10,997 of its 11,000 bytes and the bootstrap's injection at 2,890 of 2,900, and the flow's stops are written five times (CONTEXT.md twice, the bootstrap, routing.md, test_plugin.sh), with "the flow reached a step" restated in to-spec, to-tickets and release (ticket 07); docs/plugin-behavior-tests.md:231 still names seams_gate.py as the classifier, README.md:329 and :402 and docs/compatibility.md:3 say "the gate module", and spec.md:118 doesn't list the flow's stops among the contracts test_plugin.sh now pins (ticket 08); an eval for "continue" on a confirmed design, and one for a progress file someone else committed, belong to ticket 08's proof.
 - The parallel run of 07 and 10 (2026-10-03): the builders' reviewer reports again came to the main conversation, which forwarded their output files; ticket 10's builder read them from the subagents' transcripts. Integrated suites: 17 suites in 17.7 s with 07, 14.8 s with 10.
-- Left for later, from the run of 07 and 10: ticket 08's CHANGELOG says the ledger moved to `~/.local/state/seams` and why, and that a session across the upgrade declares once more; a `..` after a symlink is normalized before realpath (`seams_shell._placed_path`, `seams_gate._editor_path`), so one undeclared Bash call can still reach the ledger or the project that way, rated medium by ticket 10's security review and proposed as a ticket of its own (the user's call); in the temp fallback the temp root stays scratch, so recursive writes into it still reach the ledger there; lean-and-durable ticket 16's case variants now matter only in that fallback; `/simplify` was not run on ticket 07's 21-file diff.
+- Left for later, from the run of 07 and 10: ticket 08's CHANGELOG says the ledger moved to `~/.local/state/seams` and why, and that a session across the upgrade declares once more; a `..` after a symlink is normalized before realpath (`seams_shell._placed_path`, `seams_gate._editor_path`), so one undeclared Bash call can still reach the ledger or the project that way, rated medium by ticket 10's security review and now ticket 11; in the temp fallback the temp root stays scratch, so recursive writes into it still reach the ledger there; lean-and-durable ticket 16's case variants now matter only in that fallback.
 - Bundled skills (Claude Code docs mirror, 2026-09-24): /code-review is model-invocable; /verify runs only when the user invokes it (since 2.1.215) and cannot be preloaded into a subagent; /security-review and /init can be called through the Skill tool; /run and /verify find how to launch an app from the project type and README, package.json or Makefile, and /run-skill-generator records it as a project skill; a plugin skill loads beside a bundled one of the same name; a plugin can ship MCP servers in `.mcp.json` that start when it is enabled.
 - Hooks: PreToolUse and PostToolUse fire on every tool call and block until they finish; Stop fires at the end of every reply; SessionStart hooks should be fast (the docs); /doctor flags slow hooks.
 - The skill listing budget is 1% of the context window, at most 1,536 characters a description.
