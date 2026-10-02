@@ -2,8 +2,8 @@
 
 Status: active
 Stage: integrated
-Next: Tickets 05 (Lighter hooks) and 06 (A continuous flow) are unblocked: offer them as a parallel run with implement, worktrees under .worktrees/ off main, never live in plugin/; /clear first.
-Updated: 2026-10-02
+Next: Tickets 07 (shared reference) and 10 (ledger out of reach) are unblocked: offer them as a parallel run with implement, worktrees under .worktrees/ off main; /clear first.
+Updated: 2026-10-03
 
 ## Spec
 
@@ -15,8 +15,8 @@ Updated: 2026-10-02
 - 02 No test sleeps, each behavior tested once (blocked by: 01) — done, integrated on main at 7a618e9 (built at 8eeb0a7); the test_hooks.sh conflict with 04 resolved in 02's layout, 04's 3.4.0-ledger check kept as section 4b
 - 03 Wording pins shrink to the contracts (blocked by: 01) — done, integrated on main at 2ecba9b (built at b63794a)
 - 04 A route lasts (blocked by: 01) — done, integrated on main at 5037a63 (built at 3765110); the test_plugin.sh conflict with 03 resolved with 03's file
-- 05 Lighter hooks (blocked by: 04)
-- 06 A continuous flow (blocked by: 03, 04)
+- 05 Lighter hooks (blocked by: 04) — done, integrated on main at afd776f (built at 6eb2b99); a Bash firing at 25.8 ms, the user's yes
+- 06 A continuous flow (blocked by: 03, 04) — done, integrated on main at 49884f8 (built at 56bfbbc); ADR 0006 at f27d05d
 - 07 One shared reference, process in proportion (blocked by: 03, 06)
 - 08 Docs and proof (blocked by: 02, 05, 07)
 - 09 Release 4.0.0 (blocked by: 08, 10)
@@ -50,6 +50,9 @@ Updated: 2026-10-02
 
 22. The parallel run of tickets 02, 03 and 04 (the user's pick, 2026-10-02): ticket 04's conflict with ticket 03 in `scripts/tests/test_plugin.sh` was resolved with 03's version whole (the user's choice), since it checks no skill wording; ticket 04's medium security finding, a ledger any tool call can forge, became ticket 10, which 4.0.0 waits for (the user's choice).
 
+23. Ticket 06's open points (the user's answers, 2026-10-03): the continuous flow is recorded in a new ADR 0006, with a pointer from ADR 0002, which stays as written; where `implement` builds is asked with the grill's confirmation, as built; security finding 1, a committed progress file standing in for the user's confirmation after a `/clear`, is left as built, an accepted risk ADR 0006 records. Auto mode refused to integrate 06 before these were answered; the user's "merge after my answers" cleared it.
+24. Ticket 05's timing (the user's answer, 2026-10-03): a PreToolUse firing on a Bash call at 25.8 ms (from 37.5) is accepted; the rest of its cost is compiling the shell classifier, and a bytecode cache in the temp directory would let a sandboxed shell plant code the hook runs. The gate was split into seams_gate.py, seams_ledger.py and seams_shell.py as the spec says (decision 9); decisions 6 and 19's "one lighter script" and "merged hook" meant that.
+
 ## Outline of phases 2 and 3 (grilled in full when each starts)
 
 - Phase 2, the project's own stack and its official docs: the session start or `foundations` reads the stack from its manifests (package.json, pyproject, go.mod, Cargo.toml, app.json, Podfile, build.gradle, Dockerfile) and the drivers installed; an e2e check uses the stack's driver, CLI first where the vendor says it is cheaper (Playwright CLI or MCP and Chrome DevTools for the web, Claude in Chrome when the plan allows it, Maestro, MobileBuildMCP, the Android CLI and adb for mobile, plain runs for CLIs and APIs, computer use last); missing drivers are offered, never installed unasked; Context7 or the vendor's docs back decision 3.
@@ -69,6 +72,8 @@ Updated: 2026-10-02
 
 - The parallel run of 02, 03 and 04 (2026-10-02): the reports of a builder's own scouts and reviewers were delivered to the main conversation, not to the builder, which waited idle for them; the main conversation forwarded each report's output file (`<tmp>/claude-<uid>/<project>/<session>/tasks/<agent-id>.output`, the report being the final SubagentHandback call). The suite went from 21.5 s (03 and 04 merged) to 16.1 s with 02.
 - Left for later tickets, from the run's reviews: README.md:329 still names the lapse hint and a subagent under the same ledger among what the hook executables test (ticket 08); `plugin/skills/trivial/SKILL.md:8` and `references/routing.md:79` still say a declaration is for the request, and CONTEXT.md's Route entry is the old sense (tickets 06 and 07); ADR 0001 still says "for the current request" without pointing to ADR 0005.
+- The parallel run of 05 and 06 (2026-10-02 to 03): the builders' reviewer reports again came to the main conversation, which forwarded their output files. Auto mode refused to integrate a ticket the user had not reviewed while it left questions for the user; the user's answers and "merge" cleared it. Hook medians per firing, 3.4.0 to afd776f: Stop 37.6 to 19.5 ms, UserPromptSubmit 37.9 to 19.8, Edit 37.7 to 21.1, Bash 37.5 to 25.8. The suite: 17 suites in 15.5 s.
+- Left for later tickets, from the run of 05 and 06: implement's SKILL.md is at 10,997 of its 11,000 bytes and the bootstrap's injection at 2,890 of 2,900, and the flow's stops are written five times (CONTEXT.md twice, the bootstrap, routing.md, test_plugin.sh), with "the flow reached a step" restated in to-spec, to-tickets and release (ticket 07); docs/plugin-behavior-tests.md:231 still names seams_gate.py as the classifier, README.md:329 and :402 and docs/compatibility.md:3 say "the gate module", and spec.md:118 doesn't list the flow's stops among the contracts test_plugin.sh now pins (ticket 08); an eval for "continue" on a confirmed design, and one for a progress file someone else committed, belong to ticket 08's proof.
 - Bundled skills (Claude Code docs mirror, 2026-09-24): /code-review is model-invocable; /verify runs only when the user invokes it (since 2.1.215) and cannot be preloaded into a subagent; /security-review and /init can be called through the Skill tool; /run and /verify find how to launch an app from the project type and README, package.json or Makefile, and /run-skill-generator records it as a project skill; a plugin skill loads beside a bundled one of the same name; a plugin can ship MCP servers in `.mcp.json` that start when it is enabled.
 - Hooks: PreToolUse and PostToolUse fire on every tool call and block until they finish; Stop fires at the end of every reply; SessionStart hooks should be fast (the docs); /doctor flags slow hooks.
 - The skill listing budget is 1% of the context window, at most 1,536 characters a description.
