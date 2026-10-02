@@ -5,22 +5,22 @@ A typed skill counts from the skills the UserPromptExpansion hook recorded for t
 prompt's own leading slash command. Any other prompt keeps the route (ADR 0005); unless it is a short
 go-ahead ("yes", "ok, do that") or a notice Claude Code generated, it starts a new request for the
 done-check, which counts that request's changes afresh. Prints nothing. The prompt text itself is
-never stored. Fails open (see seams_gate.run_hook).
+never stored. Fails open (see seams_ledger.run_hook).
 """
 import os
 import sys
 
 sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-import seams_gate as gate  # noqa: E402
+import seams_ledger  # noqa: E402
 
 
 def handle(event: dict):
     session = event.get("session_id") or ""
-    ledger = gate.load_ledger(session)
-    if gate.submit_prompt(event, ledger):
-        gate.save_ledger(session, ledger)
+    ledger = seams_ledger.load_ledger(session)
+    if seams_ledger.submit_prompt(event, ledger):
+        seams_ledger.save_ledger(session, ledger)
     return None
 
 if __name__ == "__main__":
-    sys.exit(gate.run_hook(handle))
+    sys.exit(seams_ledger.run_hook(handle))

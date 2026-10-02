@@ -1,4 +1,5 @@
-"""The gate module (plugin/hooks/seams_gate.py), through its public functions.
+"""The gate's modules (plugin/hooks/seams_ledger.py, seams_gate.py and seams_shell.py), through their
+public functions.
 
 The gate refuses a change to the project until a declaration has routed the work. These
 tests drive the module the way the hooks do: a shell command in, a label out; an event and a
@@ -7,7 +8,6 @@ from the code.
 """
 from __future__ import annotations
 
-import importlib.util
 import os
 import stat
 import sys
@@ -19,18 +19,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
-MODULE = REPO / "plugin" / "hooks" / "seams_gate.py"
-
-
-def load():
-    sys.dont_write_bytecode = True             # no __pycache__ in the plugin directory, however this runs
-    spec = importlib.util.spec_from_file_location("seams_gate", MODULE)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-gate = load()
+sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory, however this runs
+sys.path.insert(0, str(REPO / "plugin" / "hooks"))
+import seams_gate as gate  # noqa: E402  (the PreToolUse decision)
+import seams_ledger  # noqa: E402  (the ledger, the prompts and the done-check)
+import seams_shell as shell  # noqa: E402  (the shell reader)
 
 
 class ClassifyCommand(unittest.TestCase):
@@ -170,12 +163,12 @@ class ClassifyCommand(unittest.TestCase):
     def test_mutations_get_the_label_the_refusal_will_name(self):
         for command, label in self.MUTATIONS.items():
             with self.subTest(command=command):
-                self.assertEqual(gate.classify_command(command), label)
+                self.assertEqual(shell.classify_command(command), label)
 
     def test_read_only_commands_are_not_mutations(self):
         for command in self.READS:
             with self.subTest(command=command):
-                self.assertIsNone(gate.classify_command(command))
+                self.assertIsNone(shell.classify_command(command))
 
 
 class QuotedOperators(unittest.TestCase):
@@ -254,12 +247,12 @@ class QuotedOperators(unittest.TestCase):
     def test_text_the_shell_reads_as_text_is_not_a_change(self):
         for command in self.FALSE_POSITIVES:
             with self.subTest(command=command):
-                self.assertIsNone(gate.classify_command(command))
+                self.assertIsNone(shell.classify_command(command))
 
     def test_a_real_redirect_or_write_in_the_same_shapes_is_still_caught(self):
         for command, label in self.BYPASSES.items():
             with self.subTest(command=command):
-                self.assertEqual(gate.classify_command(command), label)
+                self.assertEqual(shell.classify_command(command), label)
 
 
 class NestingTooDeepToRead(unittest.TestCase):
@@ -274,8 +267,8 @@ class NestingTooDeepToRead(unittest.TestCase):
                         "echo " + "$(echo " * deep + "x" + ")" * deep,
                         "eval " * deep + "rm -rf src"]:
             with self.subTest(command=command[:30]):
-                self.assertIsNotNone(gate.classify_command(command))
-                decision = gate.decide_pre_tool_use(event("Bash", command=command), gate.empty_ledger("s1"))
+                self.assertIsNotNone(shell.classify_command(command))
+                decision = gate.decide_pre_tool_use(event("Bash", command=command), seams_ledger.empty_ledger("s1"))
                 self.assertEqual(decision["decision"], "deny")
 
 
@@ -285,7 +278,7 @@ class LabelsAreFixedText(unittest.TestCase):
     def test_labels_come_from_a_fixed_vocabulary(self):
         for command in ["uv pip SECRETWORD x", "npm SECRETWORD", "git SECRETWORD", "pip SECRETWORD"]:
             with self.subTest(command=command):
-                label = gate.classify_command(command)
+                label = shell.classify_command(command)
                 self.assertTrue(label is None or "SECRETWORD" not in label, label)
 
 
@@ -298,27 +291,27 @@ class Declarations(unittest.TestCase):
                       "domain-modeling", "code-review", "codebase-design", "setup-pre-commit",
                       "wayfinder", "to-spec", "implement"]:
             with self.subTest(skill=skill):
-                self.assertTrue(gate.is_declaration(skill))
+                self.assertTrue(seams_ledger.is_declaration(skill))
 
     def test_the_bootstrap_skill_is_not_a_declaration(self):
         # The routing policy itself is not a route: seen live in an eval run, the model invoked it
         # after an "Unknown skill" error and the gate opened. Every other Seams skill still declares.
-        self.assertFalse(gate.is_declaration("matt-pocock-workflow:using-matt-pocock-skills"))
-        self.assertTrue(gate.is_declaration("matt-pocock-workflow:trivial"))
-        self.assertTrue(gate.is_declaration("matt-pocock-workflow:grill"))
+        self.assertFalse(seams_ledger.is_declaration("matt-pocock-workflow:using-matt-pocock-skills"))
+        self.assertTrue(seams_ledger.is_declaration("matt-pocock-workflow:trivial"))
+        self.assertTrue(seams_ledger.is_declaration("matt-pocock-workflow:grill"))
 
     def test_other_plugins_and_domain_skills_do_not(self):
         for skill in ["superpowers:brainstorming", "superpowers:test-driven-development",
                       "frontend-design", "vercel:deploy", "pdf", "", "matt-pocock-workflow"]:
             with self.subTest(skill=skill):
-                self.assertFalse(gate.is_declaration(skill))
+                self.assertFalse(seams_ledger.is_declaration(skill))
 
     def test_a_typed_slash_command_for_a_process_skill_declares(self):
-        self.assertEqual(gate.slash_declaration("/to-spec"), "to-spec")
-        self.assertEqual(gate.slash_declaration("/matt-pocock-workflow:grill add coupons"),
+        self.assertEqual(seams_ledger.slash_declaration("/to-spec"), "to-spec")
+        self.assertEqual(seams_ledger.slash_declaration("/matt-pocock-workflow:grill add coupons"),
                          "matt-pocock-workflow:grill")
-        self.assertEqual(gate.slash_declaration("/setup-matt-pocock-skills"), "setup-matt-pocock-skills")
-        self.assertEqual(gate.slash_declaration("  /wayfinder  "), "wayfinder")
+        self.assertEqual(seams_ledger.slash_declaration("/setup-matt-pocock-skills"), "setup-matt-pocock-skills")
+        self.assertEqual(seams_ledger.slash_declaration("  /wayfinder  "), "wayfinder")
 
     def test_a_bare_seams_name_is_not_the_prompts_to_read(self):
         # The Seams skills are declared through the Skill tool or their expansion under their full names: a bare
@@ -327,20 +320,20 @@ class Declarations(unittest.TestCase):
         # the plugin's files either (Seams 4.0 removed that path).
         for prompt in ["/no-such-skill", "/..", "/.", "//etc/passwd"]:
             with self.subTest(prompt=prompt):
-                self.assertIsNone(gate.slash_declaration(prompt))
-        self.assertEqual(gate.slash_declaration("/matt-pocock-workflow:pr-review https://github.com/o/r/pull/7"),
+                self.assertIsNone(seams_ledger.slash_declaration(prompt))
+        self.assertEqual(seams_ledger.slash_declaration("/matt-pocock-workflow:pr-review https://github.com/o/r/pull/7"),
                          "matt-pocock-workflow:pr-review")
-        self.assertEqual(gate.slash_declaration("/implement"), "implement")   # Matt Pocock's bare name wins, as it does in Claude Code
+        self.assertEqual(seams_ledger.slash_declaration("/implement"), "implement")   # Matt Pocock's bare name wins, as it does in Claude Code
         for prompt in ["/pr-review 42", "/grill", "/release", "/verification-before-completion", "/using-git-worktrees",
                        "/finishing-a-development-branch", "/receiving-code-review", "/using-matt-pocock-skills"]:
             with self.subTest(prompt=prompt):
-                self.assertIsNone(gate.slash_declaration(prompt))
+                self.assertIsNone(seams_ledger.slash_declaration(prompt))
 
     def test_other_slash_commands_and_plain_prompts_do_not(self):
         for prompt in ["/superpowers:brainstorming", "/compact", "/clear", "add a feature",
                        "run /tdd on this", ""]:
             with self.subTest(prompt=prompt):
-                self.assertIsNone(gate.slash_declaration(prompt))
+                self.assertIsNone(seams_ledger.slash_declaration(prompt))
 
 
 def expansion(command_name: str, source: str, prompt_id: object = "p1", kind: str = "slash_command") -> dict:
@@ -359,11 +352,11 @@ def send(ledger: dict, prompt: str, *typed: tuple, prompt_id: object = "p1") -> 
     """The user sends a prompt: Claude Code runs the expansion hook once for each skill it expanded,
     then the prompt hook, in that order (seen in the capture above)."""
     for name, source in typed:
-        gate.record_expansion(expansion(name, source, prompt_id), ledger)
+        seams_ledger.record_expansion(expansion(name, source, prompt_id), ledger)
     submitted = {"session_id": "s1", "cwd": "/proj", "hook_event_name": "UserPromptSubmit", "prompt": prompt}
     if prompt_id is not None:
         submitted["prompt_id"] = prompt_id
-    return gate.submit_prompt(submitted, ledger)
+    return seams_ledger.submit_prompt(submitted, ledger)
 
 
 def declared(ledger: dict) -> list:
@@ -389,7 +382,7 @@ class TypedSkills(unittest.TestCase):
                 ("/pr-review 42", "matt-pocock-workflow:pr-review", "plugin"),
                 ("/tdd add a test", "tdd", "userSettings")]:
             with self.subTest(prompt=prompt):
-                ledger = gate.empty_ledger("s1")
+                ledger = seams_ledger.empty_ledger("s1")
                 send(ledger, prompt, (name, source))
                 self.assertEqual(declared(ledger), [name])
                 self.assertTrue(gate_open(ledger))
@@ -397,10 +390,10 @@ class TypedSkills(unittest.TestCase):
     def test_a_stacked_command_records_each_process_skill_it_expanded(self):
         # An interactive session expands every stacked skill, each with its own event; the prompt's
         # parse sees only the first word, and cannot read `/grill` or `/pdf` as a route at all.
-        ledger = gate.empty_ledger("s1")
+        ledger = seams_ledger.empty_ledger("s1")
         send(ledger, "/grill /tdd fix the coupon", ("matt-pocock-workflow:grill", "plugin"), ("tdd", "userSettings"))
         self.assertEqual(declared(ledger), ["matt-pocock-workflow:grill", "tdd"])
-        ledger = gate.empty_ledger("s1")
+        ledger = seams_ledger.empty_ledger("s1")
         send(ledger, "/pdf /tdd fix the coupon", ("pdf", "userSettings"), ("tdd", "userSettings"))
         self.assertEqual(declared(ledger), ["tdd"])
 
@@ -408,7 +401,7 @@ class TypedSkills(unittest.TestCase):
         # A bare model-invocable Seams name is not the prompt's to read (`/grill`, and `/pr-review` since it became
         # model-invocable): its expansion names it. Without the event, a review still needs no declaration: every
         # write it makes is under the temp directory.
-        ledger = gate.empty_ledger("s1")
+        ledger = seams_ledger.empty_ledger("s1")
         send(ledger, "/pr-review 42")
         self.assertEqual(declared(ledger), [])
 
@@ -417,10 +410,10 @@ class TypedSkills(unittest.TestCase):
                              ("/matt-pocock-workflow:grill add coupons", "matt-pocock-workflow:grill"),
                              ("/matt-pocock-workflow:pr-review 42", "matt-pocock-workflow:pr-review")]:
             with self.subTest(prompt=prompt):
-                ledger = gate.empty_ledger("s1")
+                ledger = seams_ledger.empty_ledger("s1")
                 send(ledger, prompt)
                 self.assertEqual(declared(ledger), [name])
-        ledger = gate.empty_ledger("s1")
+        ledger = seams_ledger.empty_ledger("s1")
         send(ledger, "/tdd add a test", ("tdd", "userSettings"))
         self.assertEqual(declared(ledger), ["tdd"], "a skill both expanded and parsed is recorded once")
 
@@ -428,23 +421,23 @@ class TypedSkills(unittest.TestCase):
         # The hooks reference lists UserPromptSubmit before UserPromptExpansion; 2.1.282 ran them the
         # other way round. In either order a typed skill declares the request its own prompt started,
         # and no other.
-        ledger = gate.empty_ledger("s1")
+        ledger = seams_ledger.empty_ledger("s1")
         send(ledger, "/grill add coupons")                    # the prompt hook first: its parse cannot read /grill
         self.assertFalse(gate_open(ledger))
-        gate.record_expansion(expansion("matt-pocock-workflow:grill", "plugin", "p1"), ledger)
+        seams_ledger.record_expansion(expansion("matt-pocock-workflow:grill", "plugin", "p1"), ledger)
         self.assertEqual(declared(ledger), ["matt-pocock-workflow:grill"])
         self.assertTrue(gate_open(ledger))
         send(ledger, "now the label", prompt_id="p2")
-        gate.record_expansion(expansion("tdd", "userSettings", "p1"), ledger)   # a late one from the earlier prompt
+        seams_ledger.record_expansion(expansion("tdd", "userSettings", "p1"), ledger)   # a late one from the earlier prompt
         self.assertEqual(declared(ledger), ["matt-pocock-workflow:grill"])
         # Late, a stacked command's expansions replace the route before it and make one route together, whichever
         # skill comes first, even one the route before it already held.
         for first, second in (("matt-pocock-workflow:grill", "tdd"), ("tdd", "matt-pocock-workflow:grill")):
             with self.subTest(first=first):
-                gate.add_declaration(ledger, "tdd")
+                seams_ledger.add_declaration(ledger, "tdd")
                 send(ledger, "/grill /tdd fix the coupon", prompt_id="p3" + first)
                 for name in (first, second, first):
-                    gate.record_expansion(expansion(name, "plugin", "p3" + first), ledger)
+                    seams_ledger.record_expansion(expansion(name, "plugin", "p3" + first), ledger)
                 self.assertEqual(declared(ledger), [first, second])
 
     def test_once_an_expansion_arrived_the_prompts_own_parse_does_not_decide(self):
@@ -455,8 +448,8 @@ class TypedSkills(unittest.TestCase):
                                            ("/code-review 42", "code-review:code-review", "plugin", "slash_command"),
                                            ("/tdd review", "tdd", "mcp", "mcp_prompt")]:
             with self.subTest(prompt=prompt, kind=kind):
-                ledger = gate.empty_ledger("s1")
-                gate.record_expansion(expansion(name, source, "p1", kind=kind), ledger)
+                ledger = seams_ledger.empty_ledger("s1")
+                seams_ledger.record_expansion(expansion(name, source, "p1", kind=kind), ledger)
                 send(ledger, prompt)
                 self.assertEqual(declared(ledger), [])
                 self.assertFalse(gate_open(ledger))
@@ -464,8 +457,8 @@ class TypedSkills(unittest.TestCase):
     def test_a_damaged_ledger_entry_never_stops_a_prompt_or_the_route_it_types(self):
         # The prompt hook fails open: had it raised here, the new request would never have been saved, and
         # the route the next prompt typed would never have replaced the old one.
-        ledger = gate.empty_ledger("s1")
-        gate.add_declaration(ledger, "tdd")
+        ledger = seams_ledger.empty_ledger("s1")
+        seams_ledger.add_declaration(ledger, "tdd")
         ledger["declarations"].append("tdd")
         ledger["declarations"].append({"skill": {"not": "a name"}})
         ledger["expanded"] = ["tdd", {"skill": ["tdd"], "prompt": "p2"}, {"skill": "pdf", "prompt": "p2"}]
@@ -475,10 +468,10 @@ class TypedSkills(unittest.TestCase):
         # Whole lists damaged: neither hook falls over on them, and a typed route still replaces them.
         for damage in ({"expanded": 5}, {"expanded": "tdd"}, {"declarations": True}, {"declarations": 3}):
             with self.subTest(damage=damage):
-                ledger = gate.empty_ledger("s1")
-                gate.add_declaration(ledger, "tdd")
+                ledger = seams_ledger.empty_ledger("s1")
+                seams_ledger.add_declaration(ledger, "tdd")
                 ledger.update(damage)
-                gate.record_expansion(expansion("pdf", "userSettings", "p3"), ledger)
+                seams_ledger.record_expansion(expansion("pdf", "userSettings", "p3"), ledger)
                 send(ledger, "delete the old tables", prompt_id="p4")
                 send(ledger, "/tdd add a test", ("tdd", "userSettings"), prompt_id="p5")
                 self.assertEqual(declared(ledger), ["tdd"])
@@ -491,27 +484,27 @@ class TypedSkills(unittest.TestCase):
                 ("/superpowers:brainstorming coupons", "superpowers:brainstorming", "plugin"),
                 ("/using-matt-pocock-skills", "matt-pocock-workflow:using-matt-pocock-skills", "plugin")]:
             with self.subTest(prompt=prompt):
-                ledger = gate.empty_ledger("s1")
+                ledger = seams_ledger.empty_ledger("s1")
                 send(ledger, prompt, (name, source))
                 self.assertEqual(declared(ledger), [])
                 self.assertFalse(gate_open(ledger))
         # An MCP server's prompt is typed as a slash command too; a server can name one `tdd`.
-        ledger = gate.empty_ledger("s1")
-        gate.record_expansion(expansion("tdd", "mcp", kind="mcp_prompt"), ledger)
+        ledger = seams_ledger.empty_ledger("s1")
+        seams_ledger.record_expansion(expansion("tdd", "mcp", kind="mcp_prompt"), ledger)
         send(ledger, "/mcp__docs__tdd review")
         self.assertEqual(declared(ledger), [])
         self.assertFalse(gate_open(ledger))
 
     def test_an_expansion_declares_only_the_request_its_own_prompt_starts(self):
-        ledger = gate.empty_ledger("s1")
-        gate.record_expansion(expansion("tdd", "userSettings", "p1"), ledger)
+        ledger = seams_ledger.empty_ledger("s1")
+        seams_ledger.record_expansion(expansion("tdd", "userSettings", "p1"), ledger)
         self.assertFalse(gate_open(ledger), "nothing opens before the prompt that typed it is submitted")
         # p1's prompt hook never ran (it failed, or timed out): the next prompt is not declared by it.
         send(ledger, "delete the old tables", prompt_id="p2")
         self.assertEqual(declared(ledger), [])
         self.assertFalse(gate_open(ledger))
         # Without a prompt id there is nothing to tie the expansion to, so it is not kept.
-        self.assertFalse(gate.record_expansion(expansion("tdd", "userSettings", None), ledger))
+        self.assertFalse(seams_ledger.record_expansion(expansion("tdd", "userSettings", None), ledger))
         send(ledger, "delete the old tables", prompt_id=None)
         self.assertEqual(declared(ledger), [])
 
@@ -521,7 +514,7 @@ class DeclarationLifetime(unittest.TestCase):
     ADR 0005): a typed reply of any length and a commit leave the next project write allowed."""
 
     def setUp(self):
-        self.ledger = gate.empty_ledger("s1")
+        self.ledger = seams_ledger.empty_ledger("s1")
         send(self.ledger, "/matt-pocock-workflow:implement ticket 03", ("matt-pocock-workflow:implement", "plugin"))
 
     def test_a_typed_reply_of_any_length_keeps_the_route(self):
@@ -537,11 +530,11 @@ class DeclarationLifetime(unittest.TestCase):
         for command in ("git add src/a.ts", "git commit -m 'Ticket 03: the coupon field'"):
             decision = gate.decide_pre_tool_use(event("Bash", command=command), self.ledger)
             self.assertEqual(decision["decision"], "allow")
-            gate.add_change(self.ledger, decision["change"])
+            seams_ledger.add_change(self.ledger, decision["change"])
         self.assertTrue(gate_open(self.ledger))
 
     def test_another_process_skill_replaces_the_route(self):
-        gate.add_declaration(self.ledger, "diagnosing-bugs")                      # Claude invokes it
+        seams_ledger.add_declaration(self.ledger, "diagnosing-bugs")                      # Claude invokes it
         self.assertEqual(declared(self.ledger), ["diagnosing-bugs"])
         send(self.ledger, "/tdd add a test", ("tdd", "userSettings"), prompt_id="p2")   # the user types one
         self.assertEqual(declared(self.ledger), ["tdd"])
@@ -558,19 +551,19 @@ class DeclarationLifetime(unittest.TestCase):
 
     def test_clear_and_a_new_session_start_with_none(self):
         root = tempfile.mkdtemp()
-        gate.save_ledger("s1", self.ledger, root)
-        self.assertTrue(gate_open(gate.load_ledger("s1", root)))
-        gate.reset_ledger("s1", root)                    # what SessionStart does on startup and clear
-        self.assertFalse(gate_open(gate.load_ledger("s1", root)))
-        self.assertFalse(gate_open(gate.load_ledger("s2", root)), "another session never shares this one's route")
+        seams_ledger.save_ledger("s1", self.ledger, root)
+        self.assertTrue(gate_open(seams_ledger.load_ledger("s1", root)))
+        seams_ledger.reset_ledger("s1", root)                    # what SessionStart does on startup and clear
+        self.assertFalse(gate_open(seams_ledger.load_ledger("s1", root)))
+        self.assertFalse(gate_open(seams_ledger.load_ledger("s2", root)), "another session never shares this one's route")
 
     def test_nothing_but_a_process_skill_opens_a_session_with_no_route(self):
-        ledger = gate.empty_ledger("s1")
+        ledger = seams_ledger.empty_ledger("s1")
         for n, prompt in enumerate(["yes", "fix the bug in pricing", "/superpowers:brainstorming coupons",
                                     "<task-notification>\n<task-id>b1</task-id>\n</task-notification>"]):
             send(ledger, prompt, prompt_id=f"q{n}")
             self.assertFalse(gate_open(ledger), prompt[:20])
-        gate.add_declaration(ledger, "matt-pocock-workflow:implement", "builder-1")
+        seams_ledger.add_declaration(ledger, "matt-pocock-workflow:implement", "builder-1")
         self.assertFalse(gate_open(ledger), "a subagent's route never opens the main conversation's")
 
     def test_a_lasting_route_never_lets_a_read_only_agent_write(self):
@@ -579,15 +572,15 @@ class DeclarationLifetime(unittest.TestCase):
         self.assertEqual(gate.decide_pre_tool_use(commit, self.ledger)["decision"], "deny")
 
     def test_the_done_check_still_asks_for_a_request_that_changed_the_project(self):
-        gate.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
-        gate.mark_verified(self.ledger)
-        self.assertIsNone(gate.decide_stop(self.ledger, stop_hook_active=False))
+        seams_ledger.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
+        seams_ledger.mark_verified(self.ledger)
+        self.assertIsNone(seams_ledger.decide_stop(self.ledger, stop_hook_active=False))
         send(self.ledger, "now make the coupon field required", prompt_id="p2")
-        self.assertIsNone(gate.decide_stop(self.ledger, stop_hook_active=False), "nothing changed since the prompt")
+        self.assertIsNone(seams_ledger.decide_stop(self.ledger, stop_hook_active=False), "nothing changed since the prompt")
         decision = gate.decide_pre_tool_use(event("Edit", file_path="/proj/src/b.ts"), self.ledger)
-        gate.add_change(self.ledger, decision["change"])
-        self.assertIn("/proj/src/b.ts", gate.decide_stop(self.ledger, stop_hook_active=False))
-        self.assertIsNone(gate.decide_stop(self.ledger, stop_hook_active=True), "once per turn")
+        seams_ledger.add_change(self.ledger, decision["change"])
+        self.assertIn("/proj/src/b.ts", seams_ledger.decide_stop(self.ledger, stop_hook_active=False))
+        self.assertIsNone(seams_ledger.decide_stop(self.ledger, stop_hook_active=True), "once per turn")
 
 
 # A ledger as 3.4.0's hooks wrote it (captured 2026-10-02 from 79e1741's hooks, the paths shortened): the main
@@ -605,19 +598,19 @@ class LedgerFrom340(unittest.TestCase):
 
     def setUp(self):
         self.root = tempfile.mkdtemp()
-        os.makedirs(gate.ledger_root(self.root), exist_ok=True)
+        os.makedirs(seams_ledger.ledger_root(self.root), exist_ok=True)
 
     def written(self, text: str) -> dict:
-        Path(gate.ledger_path("s1", self.root)).write_text(text)
-        return gate.load_ledger("s1", self.root)
+        Path(seams_ledger.ledger_path("s1", self.root)).write_text(text)
+        return seams_ledger.load_ledger("s1", self.root)
 
     def test_its_route_holds_through_a_typed_reply_and_its_changes_still_count(self):
         ledger = self.written(LEDGER_340)
         self.assertTrue(gate_open(ledger))
-        self.assertIn("/proj/src/a.ts", gate.decide_stop(ledger, stop_hook_active=False))
+        self.assertIn("/proj/src/a.ts", seams_ledger.decide_stop(ledger, stop_hook_active=False))
         send(ledger, "now make the coupon field required", prompt_id="q2")
-        gate.save_ledger("s1", ledger, self.root)
-        ledger = gate.load_ledger("s1", self.root)
+        seams_ledger.save_ledger("s1", ledger, self.root)
+        ledger = seams_ledger.load_ledger("s1", self.root)
         self.assertTrue(gate_open(ledger))
         send(ledger, "/tdd add a test", ("tdd", "userSettings"), prompt_id="q3")
         self.assertEqual([d["skill"] for d in ledger["declarations"] if not d["agent"]], ["tdd"])
@@ -631,7 +624,7 @@ class LedgerFrom340(unittest.TestCase):
                 ledger = self.written(text)
                 self.assertEqual(ledger["declarations"], [])
                 send(ledger, "now the label", prompt_id="q2")
-                gate.add_declaration(ledger, "tdd")
+                seams_ledger.add_declaration(ledger, "tdd")
                 self.assertTrue(gate_open(ledger))
 
 
@@ -646,8 +639,8 @@ class Continuations(unittest.TestCase):
                        "<task-notification>\n<task-id>abc</task-id>\n</task-notification>",
                        "<system-reminder>\nSomething changed on disk.\n</system-reminder>",
                        "Stop hook feedback:\nSeams done-check: 2 unverified changes"):
-            self.assertTrue(gate.is_continuation(notice), notice[:40])
-        self.assertFalse(gate.is_continuation("the notification says the build failed, fix it"))
+            self.assertTrue(seams_ledger.is_continuation(notice), notice[:40])
+        self.assertFalse(seams_ledger.is_continuation("the notification says the build failed, fix it"))
 
     def test_a_subagents_hand_back_keeps_the_request(self):
         # A background subagent's final report reaches the prompt hook in this form (captured from
@@ -656,9 +649,9 @@ class Continuations(unittest.TestCase):
         # of the gate's 25 refusals followed one: each hand-back dropped the review's declaration.
         hand_back = ('<agent-message from="a9da89eff2d60b60b">\n[Subagent hand-back] The text below is the '
                      'final report of a subagent this session delegated to.\n  done\n</agent-message>')
-        self.assertTrue(gate.is_continuation(hand_back))
-        self.assertTrue(gate.is_continuation("Another Claude session sent a message:\n" + hand_back))
-        self.assertFalse(gate.is_continuation("the agent-message says the build failed, fix it"))
+        self.assertTrue(seams_ledger.is_continuation(hand_back))
+        self.assertTrue(seams_ledger.is_continuation("Another Claude session sent a message:\n" + hand_back))
+        self.assertFalse(seams_ledger.is_continuation("the agent-message says the build failed, fix it"))
 
     def test_go_aheads_and_bare_options_continue(self):
         for prompt in ["yes", "Yes.", "y", "ok", "OK!", "okay", "sure", "go ahead", "go on",
@@ -666,7 +659,7 @@ class Continuations(unittest.TestCase):
                        "sounds good", "looks good", "lgtm", "yes please", "yes, do that",
                        "b", "2", "option 2", "carry on", "keep going"]:
             with self.subTest(prompt=prompt):
-                self.assertTrue(gate.is_continuation(prompt))
+                self.assertTrue(seams_ledger.is_continuation(prompt))
 
     def test_requests_start_a_new_request(self):
         for prompt in ["add a feature to the cart", "fix the bug in pricing",
@@ -677,7 +670,7 @@ class Continuations(unittest.TestCase):
                        "why did you do that?", "/to-spec", "ok now change the threshold to 1500",
                        ""]:
             with self.subTest(prompt=prompt):
-                self.assertFalse(gate.is_continuation(prompt))
+                self.assertFalse(seams_ledger.is_continuation(prompt))
 
 
 class Ledger(unittest.TestCase):
@@ -687,63 +680,95 @@ class Ledger(unittest.TestCase):
         self.root = tempfile.mkdtemp()
 
     def test_a_fresh_session_has_an_empty_request(self):
-        ledger = gate.load_ledger("s1", self.root)
+        ledger = seams_ledger.load_ledger("s1", self.root)
         self.assertEqual(ledger["declarations"], [])
         self.assertEqual(ledger["changes"], [])
         self.assertIsNone(ledger["verified_at"])
 
     def test_a_declaration_survives_a_round_trip(self):
-        ledger = gate.load_ledger("s1", self.root)
-        gate.add_declaration(ledger, "matt-pocock-workflow:grill", agent_id="a1")
-        gate.save_ledger("s1", ledger, self.root)
-        again = gate.load_ledger("s1", self.root)
+        ledger = seams_ledger.load_ledger("s1", self.root)
+        seams_ledger.add_declaration(ledger, "matt-pocock-workflow:grill", agent_id="a1")
+        seams_ledger.save_ledger("s1", ledger, self.root)
+        again = seams_ledger.load_ledger("s1", self.root)
         self.assertEqual([d["skill"] for d in again["declarations"]], ["matt-pocock-workflow:grill"])
         self.assertEqual(again["declarations"][0]["agent"], "a1")
 
     def test_a_new_request_clears_changes_and_verification_and_keeps_the_route(self):
-        ledger = gate.load_ledger("s1", self.root)
-        gate.add_declaration(ledger, "tdd")
-        gate.add_change(ledger, {"tool": "Edit", "path": "/p/src/a.ts", "doc": False})
-        gate.mark_verified(ledger)
-        gate.new_request(ledger)
+        ledger = seams_ledger.load_ledger("s1", self.root)
+        seams_ledger.add_declaration(ledger, "tdd")
+        seams_ledger.add_change(ledger, {"tool": "Edit", "path": "/p/src/a.ts", "doc": False})
+        seams_ledger.mark_verified(ledger)
+        seams_ledger.new_request(ledger)
         self.assertEqual([d["skill"] for d in ledger["declarations"]], ["tdd"])
         self.assertEqual(ledger["changes"], [])
         self.assertIsNone(ledger["verified_at"])
 
     def test_reset_removes_the_session_file(self):
-        ledger = gate.load_ledger("s1", self.root)
-        gate.add_declaration(ledger, "tdd")
-        gate.save_ledger("s1", ledger, self.root)
-        gate.reset_ledger("s1", self.root)
-        self.assertEqual(gate.load_ledger("s1", self.root)["declarations"], [])
+        ledger = seams_ledger.load_ledger("s1", self.root)
+        seams_ledger.add_declaration(ledger, "tdd")
+        seams_ledger.save_ledger("s1", ledger, self.root)
+        seams_ledger.reset_ledger("s1", self.root)
+        self.assertEqual(seams_ledger.load_ledger("s1", self.root)["declarations"], [])
 
     def test_the_file_and_directory_are_private_to_the_user(self):
-        gate.save_ledger("s1", gate.load_ledger("s1", self.root), self.root)
-        path = gate.ledger_path("s1", self.root)
+        seams_ledger.save_ledger("s1", seams_ledger.load_ledger("s1", self.root), self.root)
+        path = seams_ledger.ledger_path("s1", self.root)
         self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(os.stat(os.path.dirname(path)).st_mode), 0o700)
 
     def test_a_corrupt_file_reads_as_an_empty_request(self):
-        path = gate.ledger_path("s1", self.root)
+        path = seams_ledger.ledger_path("s1", self.root)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         Path(path).write_text("{not json")
-        self.assertEqual(gate.load_ledger("s1", self.root)["declarations"], [])
+        self.assertEqual(seams_ledger.load_ledger("s1", self.root)["declarations"], [])
 
     def test_cleanup_removes_ledgers_older_than_seven_days(self):
         for session in ("old", "new"):
-            gate.save_ledger(session, gate.load_ledger(session, self.root), self.root)
-        old = gate.ledger_path("old", self.root)
+            seams_ledger.save_ledger(session, seams_ledger.load_ledger(session, self.root), self.root)
+        old = seams_ledger.ledger_path("old", self.root)
         stale = time.time() - 8 * 24 * 3600
         os.utime(old, (stale, stale))
-        gate.cleanup_ledgers(self.root, days=7)
+        seams_ledger.cleanup_ledgers(self.root, days=7)
         self.assertFalse(os.path.exists(old))
-        self.assertTrue(os.path.exists(gate.ledger_path("new", self.root)))
+        self.assertTrue(os.path.exists(seams_ledger.ledger_path("new", self.root)))
 
     def test_the_default_root_is_this_users_seams_directory_in_the_temp_dir(self):
         # Per user, the tmux convention (/tmp/tmux-1000): on a shared Linux /tmp a directory owned
         # by another user would make chmod raise EPERM and the gate fail open for everyone else.
-        self.assertEqual(os.path.dirname(gate.ledger_path("s1")),
+        self.assertEqual(os.path.dirname(seams_ledger.ledger_path("s1")),
                          os.path.join(tempfile.gettempdir(), f"seams-{os.getuid()}"))
+
+    def test_the_temp_dir_is_the_one_tempfile_finds(self):
+        # The hooks find it without importing tempfile (seams-revamp ticket 05), and the ledger and the scratch rules
+        # must stay where tempfile puts them: the first of $TMPDIR, $TEMP, $TMP and the usual directories this user can
+        # write a file in.
+        writable, read_only = tempfile.mkdtemp(), tempfile.mkdtemp()
+        a_file = os.path.join(writable, "a-file")
+        Path(a_file).write_text("")
+        os.chmod(read_only, 0o500)
+        self.addCleanup(os.chmod, read_only, 0o700)
+        self.addCleanup(seams_ledger.temp_dir.cache_clear)
+        self.addCleanup(setattr, tempfile, "tempdir", None)
+        for env in ({"TMPDIR": writable}, {"TMPDIR": writable + "/"}, {"TMPDIR": os.path.relpath(writable)},
+                    {"TMPDIR": read_only}, {"TMPDIR": "/no/such/dir"}, {"TMPDIR": a_file},
+                    {"TMPDIR": "", "TEMP": writable}, {"TMP": writable}, {}):
+            with self.subTest(env=env), mock.patch.dict(os.environ, env):
+                for name in {"TMPDIR", "TEMP", "TMP"} - set(env):
+                    os.environ.pop(name, None)
+                seams_ledger.temp_dir.cache_clear()
+                tempfile.tempdir = None
+                self.assertEqual(seams_ledger.temp_dir(), tempfile.gettempdir())
+
+    def test_no_one_can_move_the_temp_dir_by_planting_names_in_it(self):
+        # tempfile probes a directory with random names; names another user on a shared /tmp could guess and create
+        # first (this process's id and a counter) would push the ledger and the scratch rules somewhere else.
+        shared = tempfile.mkdtemp()
+        for attempt in range(100):
+            Path(shared, f".seams-probe-{os.getpid()}-{attempt}").write_text("")
+        self.addCleanup(seams_ledger.temp_dir.cache_clear)
+        with mock.patch.dict(os.environ, {"TMPDIR": shared}):
+            seams_ledger.temp_dir.cache_clear()
+            self.assertEqual(seams_ledger.temp_dir(), shared)
 
 
 def event(tool: str, cwd: str = "/proj", agent_id: str = None, agent_type: object = None,
@@ -983,7 +1008,7 @@ class PreToolUseDecision(unittest.TestCase):
 
     def setUp(self):
         self.config = tempfile.mkdtemp()
-        self.ledger = gate.empty_ledger("s1")
+        self.ledger = seams_ledger.empty_ledger("s1")
 
     def decide(self, ev):
         return gate.decide_pre_tool_use(ev, self.ledger, config_dir=self.config)
@@ -1009,7 +1034,7 @@ class PreToolUseDecision(unittest.TestCase):
         self.assertIn("sed -i", decision["reason"])
 
     def test_a_change_with_a_declaration_is_allowed_and_recorded(self):
-        gate.add_declaration(self.ledger, "tdd")
+        seams_ledger.add_declaration(self.ledger, "tdd")
         decision = self.decide(event("Edit", file_path="/proj/src/a.ts"))
         self.assertEqual(decision["decision"], "allow")
         self.assertEqual(decision["change"]["path"], "/proj/src/a.ts")
@@ -1021,7 +1046,7 @@ class PreToolUseDecision(unittest.TestCase):
 
     def test_a_subagent_is_judged_by_the_same_ledger(self):
         self.assertEqual(self.decide(event("Edit", agent_id="a1", file_path="/proj/src/a.ts"))["decision"], "deny")
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:implement")
         self.assertEqual(self.decide(event("Edit", agent_id="a1", file_path="/proj/src/a.ts"))["decision"], "allow")
 
 
@@ -1033,14 +1058,14 @@ class SubagentDeclarations(unittest.TestCase):
     main conversation's declarations still cover every call, a subagent's included, as before."""
 
     def setUp(self):
-        self.ledger = gate.empty_ledger("s1")
+        self.ledger = seams_ledger.empty_ledger("s1")
 
     def allowed(self, agent_id: str = None) -> bool:
         edit = event("Edit", agent_id=agent_id, file_path="/proj/src/a.ts", old_string="a", new_string="b")
         return gate.decide_pre_tool_use(edit, self.ledger)["decision"] == "allow"
 
     def test_a_subagents_declaration_opens_nothing_for_the_main_conversation_or_another_agent(self):
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement", "builder-1")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:implement", "builder-1")
         self.assertTrue(self.allowed("builder-1"))
         self.assertFalse(self.allowed(), "the main conversation's request has no declaration of its own")
         self.assertFalse(self.allowed("builder-2"))
@@ -1048,16 +1073,16 @@ class SubagentDeclarations(unittest.TestCase):
     def test_a_typed_message_keeps_every_route_and_each_owner_replaces_only_its_own(self):
         send(self.ledger, "/matt-pocock-workflow:implement tickets 03 and 05 in parallel",
              ("matt-pocock-workflow:implement", "plugin"))
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement", "builder-1")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:implement", "builder-1")
         send(self.ledger, "also rename the README's title", prompt_id="p2")
         self.assertTrue(self.allowed() and self.allowed("builder-1") and self.allowed("builder-2"))
-        gate.add_declaration(self.ledger, "tdd", "builder-1")
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:trivial")
+        seams_ledger.add_declaration(self.ledger, "tdd", "builder-1")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:trivial")
         owners = [(d["skill"], d["agent"]) for d in self.ledger["declarations"]]
         self.assertEqual(sorted(owners, key=str), [("matt-pocock-workflow:trivial", None), ("tdd", "builder-1")])
 
     def test_a_subagents_route_still_opens_nothing_after_a_typed_message(self):
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement", "builder-1")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:implement", "builder-1")
         send(self.ledger, "and the colour", prompt_id="p2")
         self.assertFalse(self.allowed(), "a typed message never borrows a builder's route")
         self.assertTrue(self.allowed("builder-1"))
@@ -1065,9 +1090,9 @@ class SubagentDeclarations(unittest.TestCase):
     def test_a_typed_skill_still_declares_its_request_when_a_subagent_declared_the_same_skill(self):
         # The prompt hook first, then the prompt's own expansion: a subagent's declaration of the same skill is not
         # this request's.
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:grill", "helper-1")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:grill", "helper-1")
         send(self.ledger, "/grill add coupons", prompt_id="p2")      # its parse cannot read a bare /grill
-        gate.record_expansion(expansion("matt-pocock-workflow:grill", "plugin", "p2"), self.ledger)
+        seams_ledger.record_expansion(expansion("matt-pocock-workflow:grill", "plugin", "p2"), self.ledger)
         self.assertTrue(self.allowed())
 
     def test_an_entry_that_names_no_subagent_is_the_main_conversations(self):
@@ -1075,9 +1100,9 @@ class SubagentDeclarations(unittest.TestCase):
         # conversation's next route replaces it.
         self.ledger["declarations"] = [{"skill": "tdd"}, {"skill": "matt-pocock-workflow:grill", "agent": 7}]
         self.assertTrue(self.allowed() and self.allowed("builder-1"))
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:trivial", "builder-1")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:trivial", "builder-1")
         self.assertEqual(len(self.ledger["declarations"]), 3, "a subagent's route replaces none of them")
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:implement")
         self.assertEqual(sorted(declared(self.ledger)), ["matt-pocock-workflow:implement", "matt-pocock-workflow:trivial"])
 
 
@@ -1093,8 +1118,8 @@ class ReadOnlyAgents(unittest.TestCase):
 
     def setUp(self):
         self.config = tempfile.mkdtemp()
-        self.ledger = gate.empty_ledger("s1")
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement")      # the request is declared
+        self.ledger = seams_ledger.empty_ledger("s1")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:implement")      # the request is declared
 
     def decide(self, tool="Bash", agent=None, scratchpad=None, **tool_input):
         ev = event(tool, agent_id="a1", agent_type=agent or self.REVIEWER, **tool_input)
@@ -1232,7 +1257,7 @@ class ReadOnlyAgents(unittest.TestCase):
                 self.assertEqual(self.decide(agent=agent, command="npm version patch")["decision"], "allow")
         undeclared = gate.decide_pre_tool_use(event("Edit", agent_id="a1", agent_type="general-purpose",
                                                     file_path="/proj/src/a.ts"),
-                                              gate.empty_ledger("s1"), config_dir=self.config)
+                                              seams_ledger.empty_ledger("s1"), config_dir=self.config)
         self.assertEqual(undeclared["decision"], "deny")
         self.assertIn("Route it first", undeclared["reason"])
 
@@ -1254,7 +1279,7 @@ class MonitorCommands(unittest.TestCase):
 
     def setUp(self):
         self.config = tempfile.mkdtemp()
-        self.ledger = gate.empty_ledger("s1")
+        self.ledger = seams_ledger.empty_ledger("s1")
 
     def decide(self, **tool_input):
         tool_input = dict({"description": "watch", "timeout_ms": 300000}, **tool_input)
@@ -1276,7 +1301,7 @@ class MonitorCommands(unittest.TestCase):
                 self.assertEqual(self.decide(**tool_input)["decision"], "allow")
 
     def test_after_a_declaration_the_watch_is_allowed_and_recorded_as_a_shell_change(self):
-        gate.add_declaration(self.ledger, "matt-pocock-workflow:implement")
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:implement")
         decision = self.decide(command="tail -f server.log | tee src/log-copy.txt")
         self.assertEqual(decision["decision"], "allow")
         self.assertEqual((decision["change"]["tool"], decision["change"]["label"]), ("Monitor", "tee"))
@@ -1326,7 +1351,7 @@ class PowerShellCommands(unittest.TestCase):
 
     def setUp(self):
         self.config = tempfile.mkdtemp()
-        self.ledger = gate.empty_ledger("s1")
+        self.ledger = seams_ledger.empty_ledger("s1")
 
     def decide(self, command):
         return gate.decide_pre_tool_use(event("PowerShell", command=command, description="x"), self.ledger,
@@ -1346,7 +1371,7 @@ class PowerShellCommands(unittest.TestCase):
                     self.assertIn(listed, decision["reason"])
 
     def test_after_a_declaration_it_is_allowed_and_recorded(self):
-        gate.add_declaration(self.ledger, "tdd")
+        seams_ledger.add_declaration(self.ledger, "tdd")
         decision = self.decide("Remove-Item src -Recurse")
         self.assertEqual(decision["decision"], "allow")
         self.assertEqual(decision["change"]["tool"], "PowerShell")
@@ -1358,23 +1383,23 @@ class PowerShellCommands(unittest.TestCase):
         for command, blocks in (("git commit -m done", False), ("git push origin main", False),
                                 ("Remove-Item src -Recurse", True), ("git commit -m x; Remove-Item src", True)):
             with self.subTest(command=command):
-                self.ledger = gate.empty_ledger("s1")
-                gate.add_declaration(self.ledger, "tdd")
-                gate.mark_verified(self.ledger)
-                gate.add_change(self.ledger, self.decide(command)["change"])
-                self.assertEqual(gate.decide_stop(self.ledger, stop_hook_active=False) is not None, blocks)
+                self.ledger = seams_ledger.empty_ledger("s1")
+                seams_ledger.add_declaration(self.ledger, "tdd")
+                seams_ledger.mark_verified(self.ledger)
+                seams_ledger.add_change(self.ledger, self.decide(command)["change"])
+                self.assertEqual(seams_ledger.decide_stop(self.ledger, stop_hook_active=False) is not None, blocks)
 
 
 class StopDecision(unittest.TestCase):
     """decide_stop: a turn that changed non-documentation project files ends only after verification."""
 
     def setUp(self):
-        self.ledger = gate.empty_ledger("s1")
-        gate.add_declaration(self.ledger, "tdd")
+        self.ledger = seams_ledger.empty_ledger("s1")
+        seams_ledger.add_declaration(self.ledger, "tdd")
 
     def test_an_unverified_code_change_blocks_once_with_the_reason(self):
-        gate.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
-        reason = gate.decide_stop(self.ledger, stop_hook_active=False)
+        seams_ledger.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
+        reason = seams_ledger.decide_stop(self.ledger, stop_hook_active=False)
         self.assertIsNotNone(reason)
         self.assertIn("Seams done-check", reason)
         self.assertIn("1 unverified change", reason)
@@ -1383,65 +1408,65 @@ class StopDecision(unittest.TestCase):
         self.assertIn("does not repeat", reason)
 
     def test_the_second_stop_of_the_turn_is_allowed(self):
-        gate.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
-        self.assertIsNone(gate.decide_stop(self.ledger, stop_hook_active=True))
+        seams_ledger.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
+        self.assertIsNone(seams_ledger.decide_stop(self.ledger, stop_hook_active=True))
 
     def test_no_changes_or_documentation_only_are_allowed(self):
-        self.assertIsNone(gate.decide_stop(self.ledger, stop_hook_active=False))
-        gate.add_change(self.ledger, {"tool": "Write", "path": "/proj/docs/spec.md", "doc": True})
-        gate.add_change(self.ledger, {"tool": "Edit", "path": "/proj/CONTEXT.md", "doc": True})
-        self.assertIsNone(gate.decide_stop(self.ledger, stop_hook_active=False))
+        self.assertIsNone(seams_ledger.decide_stop(self.ledger, stop_hook_active=False))
+        seams_ledger.add_change(self.ledger, {"tool": "Write", "path": "/proj/docs/spec.md", "doc": True})
+        seams_ledger.add_change(self.ledger, {"tool": "Edit", "path": "/proj/CONTEXT.md", "doc": True})
+        self.assertIsNone(seams_ledger.decide_stop(self.ledger, stop_hook_active=False))
 
     def test_verification_after_the_last_change_satisfies_it(self):
-        gate.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
-        gate.mark_verified(self.ledger)
-        self.assertIsNone(gate.decide_stop(self.ledger, stop_hook_active=False))
+        seams_ledger.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
+        seams_ledger.mark_verified(self.ledger)
+        self.assertIsNone(seams_ledger.decide_stop(self.ledger, stop_hook_active=False))
 
     def test_a_change_after_verification_needs_verifying_again(self):
-        gate.mark_verified(self.ledger)
-        gate.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/b.ts", "doc": False})
-        self.assertIn("/proj/src/b.ts", gate.decide_stop(self.ledger, stop_hook_active=False))
+        seams_ledger.mark_verified(self.ledger)
+        seams_ledger.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/b.ts", "doc": False})
+        self.assertIn("/proj/src/b.ts", seams_ledger.decide_stop(self.ledger, stop_hook_active=False))
 
     def test_a_shell_mutation_counts_and_is_named_by_its_label(self):
-        gate.add_change(self.ledger, {"tool": "Bash", "label": "sed -i", "doc": False})
-        reason = gate.decide_stop(self.ledger, stop_hook_active=False)
+        seams_ledger.add_change(self.ledger, {"tool": "Bash", "label": "sed -i", "doc": False})
+        reason = seams_ledger.decide_stop(self.ledger, stop_hook_active=False)
         self.assertIn("sed -i", reason)
 
     def test_the_count_covers_every_unverified_file(self):
         for path in ("/proj/src/a.ts", "/proj/src/b.ts", "/proj/src/c.ts"):
-            gate.add_change(self.ledger, {"tool": "Edit", "path": path, "doc": False})
-        self.assertIn("3 unverified changes", gate.decide_stop(self.ledger, stop_hook_active=False))
+            seams_ledger.add_change(self.ledger, {"tool": "Edit", "path": path, "doc": False})
+        self.assertIn("3 unverified changes", seams_ledger.decide_stop(self.ledger, stop_hook_active=False))
 
     def test_a_commit_after_verification_does_not_need_verifying_again(self):
-        gate.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
-        gate.mark_verified(self.ledger)
-        gate.add_change(self.ledger, {"tool": "Bash", "label": "git commit", "doc": False})
-        gate.add_change(self.ledger, {"tool": "Bash", "label": "git push", "doc": False})
-        self.assertIsNone(gate.decide_stop(self.ledger, stop_hook_active=False))
+        seams_ledger.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
+        seams_ledger.mark_verified(self.ledger)
+        seams_ledger.add_change(self.ledger, {"tool": "Bash", "label": "git commit", "doc": False})
+        seams_ledger.add_change(self.ledger, {"tool": "Bash", "label": "git push", "doc": False})
+        self.assertIsNone(seams_ledger.decide_stop(self.ledger, stop_hook_active=False))
 
     def test_the_reason_speaks_of_the_request_not_the_turn(self):
-        gate.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
-        reason = gate.decide_stop(self.ledger, stop_hook_active=False)
+        seams_ledger.add_change(self.ledger, {"tool": "Edit", "path": "/proj/src/a.ts", "doc": False})
+        reason = seams_ledger.decide_stop(self.ledger, stop_hook_active=False)
         self.assertNotIn("this turn changed", reason)
         self.assertIn("since the last verification", reason)
 
     def test_a_ledger_from_an_older_format_reads_as_empty(self):
         root = tempfile.mkdtemp()
-        path = gate.ledger_path("s1", root)
+        path = seams_ledger.ledger_path("s1", root)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         Path(path).write_text('{"version": 1, "session": "s1", "declarations": [{"skill": "tdd"}], '
                               '"changes": [{"tool": "Edit", "path": "/p/a.ts", "doc": false}], "verified_at": null}')
-        self.assertEqual(gate.load_ledger("s1", root)["declarations"], [])
-        self.assertEqual(gate.LEDGER_VERSION, 2)
+        self.assertEqual(seams_ledger.load_ledger("s1", root)["declarations"], [])
+        self.assertEqual(seams_ledger.LEDGER_VERSION, 2)
 
     def test_which_skills_count_as_verification(self):
         for skill in ["matt-pocock-workflow:verification-before-completion",
                       "superpowers:verification-before-completion", "verification-before-completion"]:
             with self.subTest(skill=skill):
-                self.assertTrue(gate.is_verification(skill))
+                self.assertTrue(seams_ledger.is_verification(skill))
         for skill in ["tdd", "matt-pocock-workflow:trivial", "superpowers:brainstorming"]:
             with self.subTest(skill=skill):
-                self.assertFalse(gate.is_verification(skill))
+                self.assertFalse(seams_ledger.is_verification(skill))
 
 
 if __name__ == "__main__":

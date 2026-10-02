@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parents[2]
 PLUGIN = REPO / "plugin"
 SCENARIOS = PLUGIN / "evals"
 sys.path.insert(0, str(PLUGIN / "hooks"))
-import seams_gate as gate  # noqa: E402  (what counts as a declaration)
+import seams_ledger  # noqa: E402  (what counts as a declaration)
 
 
 def all_scenarios() -> list:
@@ -71,7 +71,7 @@ class ScenarioFilesTest(unittest.TestCase):
                 self.assertTrue(prompt[prompt.index("\n---", 4) + 4:].strip(), "a prompt body after the frontmatter")
                 expect = expectation(name)
                 for skill in expect["skill"]:
-                    self.assertTrue(gate.is_declaration(skill), skill)
+                    self.assertTrue(seams_ledger.is_declaration(skill), skill)
                 self.assertIsInstance(expect["refusal"], bool)
                 self.assertGreater(expect["runs"], 0)
 

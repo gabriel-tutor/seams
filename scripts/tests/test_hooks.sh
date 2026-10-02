@@ -139,39 +139,118 @@ for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit ses
   [[ -z "$OUT" ]] || fail "$h should print nothing on garbage: $OUT"
 done
 
-# 6. The hook config. PreToolUse sees every tool that edits or runs a shell, and every entry is in
-# exec form (args), run as Claude Code spawns it: command and args with ${CLAUDE_PLUGIN_ROOT} put in
-# as plain strings, no shell. Run that way from a plugin root whose path holds a space, under the
-# interpreter being tested, each hook gives its usual answer.
+# 6. Each hook event once, as Claude Code runs it: the hook config's exec form (command and args, ${CLAUDE_PLUGIN_ROOT}
+# put in as plain strings, no shell), from a plugin root whose path holds a space, under the interpreter being tested.
+# PreToolUse sees every tool that edits or runs a shell. One session goes through every event, each hook answering in
+# the shape the hooks reference documents, or, where it prints nothing, showing what it recorded in a later answer,
+# and none writing to stderr. A hook that fails to load fails this smoke, and never blocks: with each module beside
+# the hooks broken in turn, the smoke fails, while no hook exits with the blocking status 2 or answers when it failed.
+# The prompt, stop and pre-tool hooks fire on every prompt, turn and tool call, so they load only what they need
+# (seams-revamp ticket 05): never tempfile, traceback, typing or subprocess, which cost a third of a firing, the
+# prompt and stop hooks never the gate's rules for a tool call (seams_gate) or its shell reader (seams_shell), and the
+# pre-tool hook not the shell reader for an Edit.
 SPACED="$TMP/plugin root"; mkdir -p "$SPACED"; cp -R "$HOOKS" "$REPO/plugin/skills" "$SPACED/"
 BIN="$TMP/bin"; mkdir -p "$BIN"; ln -s "$(command -v "$PY")" "$BIN/python3"
-PATH="$BIN:$PATH" "$PY" - "$HOOKS/hooks.json" "$SPACED" "$PROJ" <<'PY' || fail "the hook config should run in exec form"
-import json, os, subprocess, sys
-config, root, proj = sys.argv[1:]
-hooks = json.load(open(config))["hooks"]
+PATH="$BIN:$PATH" "$PY" - "$SPACED" "$PROJ" <<'PY' || fail "every hook event should answer as Claude Code runs it"
+import json, os, shutil, subprocess, sys, tempfile
+root, proj = sys.argv[1:]
+hooks = json.load(open(os.path.join(root, "hooks", "hooks.json")))["hooks"]
 tools = {t for entry in hooks["PreToolUse"] for t in (entry.get("matcher") or "").split("|")}
 missing = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "PowerShell", "Monitor"} - tools
 assert not missing, f"PreToolUse does not match {sorted(missing)}"
-# One session through every event, in this order: each hook's answer is known.
-steps = {"SessionStart": ({"source": "startup"}, '"additionalContext"'),
-         "UserPromptExpansion": ({"prompt_id": "e1", "expansion_type": "slash_command", "command_name": "pdf",
-                                  "command_source": "userSettings", "command_args": "", "prompt": "/pdf"}, ""),
-         "UserPromptSubmit": ({"prompt_id": "e1", "prompt": "/pdf add a feature"}, ""),
-         "PreToolUse": ({"tool_name": "Edit", "tool_input": {"file_path": f"{proj}/src/a.ts", "old_string": "a",
-                                                             "new_string": "b"}}, '"permissionDecision": "deny"'),
-         "PostToolUse": ({"tool_name": "Skill", "tool_input": {"skill": "tdd"}, "tool_response": {}}, ""),
-         "Stop": ({"stop_hook_active": False}, "")}
-assert set(hooks) == set(steps), f"the config's events changed: {sorted(hooks)}"
-put = lambda text: text.replace("${CLAUDE_PLUGIN_ROOT}", root)
-for event, (fields, expected) in steps.items():      # the session's order, whatever the config's
+
+
+def runs(base, event, fields, session, flags=()):
+    """Each hook the config gives `event`, run from the plugin root `base` as Claude Code runs it."""
+    put = lambda text: text.replace("${CLAUDE_PLUGIN_ROOT}", base)
+    done = []
     for entry in hooks[event]:
         for hook in entry["hooks"]:
             assert isinstance(hook.get("args"), list), f"{event} is not in exec form: {hook}"
-            run = subprocess.run([put(hook["command"])] + [put(a) for a in hook["args"]], cwd=proj, timeout=60,
-                                 input=json.dumps(dict(fields, session_id="exec", cwd=proj, hook_event_name=event)),
-                                 capture_output=True, text=True, env=dict(os.environ, CLAUDE_PLUGIN_ROOT=root))
-            assert run.returncode == 0, f"{event} exited {run.returncode}: {run.stderr}"
-            assert (expected in run.stdout) if expected else not run.stdout, f"{event} answered: {run.stdout!r} {run.stderr}"
+            done.append(subprocess.run([put(hook["command"]), *flags] + [put(a) for a in hook["args"]], cwd=proj,
+                                       input=json.dumps(dict(fields, session_id=session, cwd=proj, hook_event_name=event)),
+                                       capture_output=True, text=True, timeout=60,
+                                       env=dict(os.environ, CLAUDE_PLUGIN_ROOT=base)))
+    return done
+
+
+def fits(value, shape):
+    """Whether a JSON value has the shape: the same keys at every level, a non-empty string where it says str."""
+    if shape is str:
+        return isinstance(value, str) and bool(value)
+    if isinstance(shape, dict):
+        return isinstance(value, dict) and set(value) == set(shape) and all(fits(value[k], shape[k]) for k in shape)
+    return value == shape
+
+
+def context(event):
+    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": str}}
+
+
+DENY = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": str}}
+EDIT = {"tool_name": "Edit", "tool_input": {"file_path": f"{proj}/src/a.ts", "old_string": "a", "new_string": "b"}}
+SHELL_WRITE = {"tool_name": "Bash", "tool_input": {"command": "echo x > src/b.ts"}}
+skill = lambda name: {"tool_name": "Skill", "tool_input": {"skill": name}, "tool_response": {}}
+# (event, its fields, the answer's shape or None for no answer, a phrase the answer holds), in a session's order.
+STEPS = [
+    ("SessionStart", {"source": "startup"}, context("SessionStart"), "## This session"),
+    ("PreToolUse", EDIT, DENY, "Seams gate: editing"),
+    ("PreToolUse", SHELL_WRITE, DENY, "Seams gate: a shell command"),
+    ("UserPromptExpansion", {"prompt_id": "e1", "expansion_type": "slash_command", "command_name": "matt-pocock-workflow:grill",
+                             "command_source": "plugin", "command_args": "the coupon", "prompt": "/grill the coupon"},
+     context("UserPromptExpansion"), "`matt-pocock-workflow:grill` starts outside a git repository"),
+    ("UserPromptSubmit", {"prompt_id": "e1", "prompt": "/grill the coupon"}, None, ""),
+    ("PreToolUse", SHELL_WRITE, None, ""),                  # the typed /grill opened the gate
+    ("Stop", {"stop_hook_active": False}, context("Stop"), "Seams done-check: 1 unverified change"),   # it was recorded
+    ("PostToolUse", skill("matt-pocock-workflow:implement"), context("PostToolUse"),
+     "`matt-pocock-workflow:implement` starts outside a git repository"),
+    ("PostToolUse", skill("matt-pocock-workflow:verification-before-completion"), None, ""),
+    ("Stop", {"stop_hook_active": False}, None, ""),        # the verification was recorded
+]
+assert set(hooks) == {event for event, *_ in STEPS}, f"the config's events changed: {sorted(hooks)}"
+
+
+def smoke(base, session):
+    """The problems of one session through every event from the plugin root `base`, and every run it made."""
+    problems, done = [], []
+    for event, fields, shape, phrase in STEPS:
+        for run in runs(base, event, fields, session):
+            done.append((event, run))
+            if run.returncode or run.stderr:
+                problems.append(f"{event} exited {run.returncode}: {run.stderr.strip()[-400:]}")
+            elif shape is None and run.stdout:
+                problems.append(f"{event} should answer nothing here: {run.stdout!r}")
+            elif shape is not None and not (fits(json.loads(run.stdout or "null"), shape) and phrase in run.stdout):
+                problems.append(f"{event} should answer {shape} with {phrase!r}: {run.stdout!r}")
+    return problems, done
+
+
+problems, _ = smoke(root, "smoke")
+assert not problems, "\n".join(problems)
+
+def imported(stderr):
+    return {line.rsplit("|", 1)[1].strip() for line in stderr.splitlines() if line.startswith("import time:")}
+
+
+STARTUP = imported(subprocess.run(["python3", "-X", "importtime", "-c", "pass"], capture_output=True, text=True).stderr)
+HEAVY, GATE = {"tempfile", "traceback", "typing", "subprocess"}, {"seams_gate", "seams_shell"}
+for event, fields, never in (("UserPromptSubmit", {"prompt_id": "i1", "prompt": "now the label"}, HEAVY | GATE),
+                             ("Stop", {"stop_hook_active": False}, HEAVY | GATE),
+                             ("PreToolUse", EDIT, HEAVY | {"seams_shell"}), ("PreToolUse", SHELL_WRITE, HEAVY)):
+    for run in runs(root, event, fields, "imports", ("-X", "importtime")):
+        modules = imported(run.stderr) - STARTUP     # the hook's own, not what Python's start-up loads (a site .pth's)
+        assert modules and not modules & never, f"{event} loads {sorted(modules & never)}"
+
+for module in sorted(name for name in os.listdir(os.path.join(root, "hooks")) if name.endswith(".py")):
+    broken = os.path.join(tempfile.mkdtemp(), "plugin root")
+    shutil.copytree(root, broken)
+    with open(os.path.join(broken, "hooks", module), "w") as f:
+        f.write('raise ImportError("broken on purpose")\n')
+    problems, done = smoke(broken, "broken-" + module)
+    assert problems, f"the smoke should fail when {module} cannot load"
+    for event, run in done:
+        assert run.returncode != 2 and not (run.returncode and run.stdout), \
+            f"{event} should fail open with {module} broken: exit {run.returncode}, {run.stdout!r}"
 PY
 
 # 7. Repository facts (lean-and-durable ticket 10, decision 33). As implement, the grill or release starts, the Skill
