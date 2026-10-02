@@ -1,8 +1,8 @@
 # Progress: Seams revamp, faster and lighter at the same quality
 
 Status: active
-Stage: built
-Next: Ticket 01 is built on branch seams-4/01-fast-suite (worktree .worktrees/seams-4-01); integrate it (finishing-a-development-branch asks how), then tickets 02, 03 and 04 are unblocked: 02 and 03 build on this suite, 04 on the gate. /clear first: this session is heavy.
+Stage: integrated
+Next: Build ticket 02, 03 or 04 with implement, each in its own worktree under .worktrees/ off main, never live in plugin/ (02 and 03 build on the suite, 04 on the gate); /clear first.
 Updated: 2026-10-02
 
 ## Spec
@@ -11,7 +11,7 @@ Updated: 2026-10-02
 
 ## Tickets
 
-- 01 A suite that runs in under a minute (blocked by: none) — done, f988c12 on seams-4/01-fast-suite
+- 01 A suite that runs in under a minute (blocked by: none) — done, integrated on main from seams-4/01-fast-suite (7f4d79d); at the merge, tests/fixture-deps/, the retired harness's leftover, was ignored again
 - 02 No test sleeps, each behavior tested once (blocked by: 01)
 - 03 Wording pins shrink to the contracts (blocked by: 01)
 - 04 A route lasts (blocked by: 01)
