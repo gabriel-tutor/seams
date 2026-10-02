@@ -19,8 +19,8 @@ import seams_gate as gate  # noqa: E402  (what counts as a declaration)
 
 
 def all_scenarios() -> list:
-    """Every case directory; `_fixture`, `_shared` and `results` are not cases."""
-    return sorted(p.parent.name for p in SCENARIOS.glob("*/prompt.md") if not p.parent.name.startswith("_"))
+    """Every case directory, with its prompt or without; `_fixture`, `_shared` and `results` are not cases."""
+    return sorted(p.name for p in SCENARIOS.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")) and p.name != "results")
 
 
 def expectation(scenario: str) -> dict:
@@ -64,7 +64,7 @@ class ScenarioFilesTest(unittest.TestCase):
         for name in names:
             with self.subTest(scenario=name):
                 folder = SCENARIOS / name
-                for f in ("setup.sh", "scaffold.sh", "case.yaml"):
+                for f in ("prompt.md", "setup.sh", "scaffold.sh", "case.yaml"):
                     self.assertTrue((folder / f).is_file(), f)
                 prompt = (folder / "prompt.md").read_text()
                 self.assertTrue(prompt.startswith("---\n"), "eval frontmatter")
