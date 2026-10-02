@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designing
-Next: Read the scouts' facts (the plugin's per-session cost, the test suite, the e2e drivers), then ask the next round: the gate and done-check, what goes from the test suite and in what language, and the phase-1 scope.
+Next: Ask the next round: the design depth per phase, how unchanged results are proved, whether pr-review is in phase 1, and the version; then the seams of phase 1's tests.
 Updated: 2026-10-02
 
 ## Decisions
@@ -12,11 +12,14 @@ Updated: 2026-10-02
 3. Official docs (the user's choice): always, for anything third-party. Before writing or reviewing code that uses a library, framework, platform, CLI or API, check its official docs for the version in use (Context7 or the vendor's site) and cite them; repo-internal logic needs no lookup.
 4. How the revamp is built (the user's standing rule after 2026-10-02, memory "protect the user's machine"): in a git worktree, never live in `plugin/`, which the user's other sessions load in place; nothing CPU-heavy runs on the user's Mac without asking first.
 5. The context management stays (the user's words, 2026-10-02: "please don't remove the feature of our plugin skills like the context management so even next session it can pickup the actual context", and "because i like the skills how it note every changes"): the committed progress files that note every decision and step, the session-start bootstrap and its resume note, and the repository facts a skill starts with all stay, so a new session, `/clear` or a compaction picks up where the work was. The revamp may make them cheaper, never remove them or note less.
+6. Enforcement stays, without the friction (the user's choice, 2026-10-02): the gate still refuses changes no skill has routed and the done-check still asks for verification before a turn that changed the project ends; but a declaration lasts until the work it routed is committed or another route is invoked, so a typed reply no longer lapses it; the hooks become one lighter script. Accepted risk: an unrelated request typed mid-task rides on the current route.
+7. The test suite becomes fast and behavior-first (the user's choice): suites run in parallel; the macOS Python 3.9 compatibility run moves to one CI job instead of re-running everything locally; the ~750 wording pins shrink to the few that guard real contracts (sizes, frontmatter, routing rows, injected commands); real sleeps become fake clocks. Target: under a minute on the user's Mac.
+8. The eval scenarios stay, the custom harness goes (the user's choice): `plugin/evals` stays for Claude Code's own `claude plugin eval`; `scripts/behavior_test.py`, `scripts/prepare_run.sh`, `scripts/fixture_deps.sh` and their tests are removed, and with them the suite's only need for Node.
+9. Python and bash stay, made fast (the user's choice): the time is in waiting, not in Python; the gate is split so each hook loads only what it needs (37 ms toward about 20), the suites run in parallel, and no test sleeps.
+10. Process is proportional to size and risk (the user's choice): scouts, reviewers and question rounds scale with the change; a one-line fix gets one check, a feature or anything sensitive gets the full set (both reviews, the security review, verification). Each rule is written once, in one shared reference the skills point to.
 
 ## Open questions
 
-- The gate and the done-check: keep, lighten, or replace (asked alone: it is the plugin's enforcement).
-- The test suite: what is removed, what stays, how it is made fast, and in which language.
 - Which skills, references, scripts and evals go, and which stay.
 - Bundled Claude Code skills: which the flow uses, and how (Claude can invoke /code-review and /security-review; /verify only the user can run).
 - Project-type intelligence and e2e drivers per stack.
