@@ -17,7 +17,7 @@ HOMES="$HOMES_BASE/$(printf '%0*d' $((46 - ${#HOMES_BASE})) 0 | tr 0 h)"; mkdir 
 # A fixture copy of the plugin whose bootstrap body is a known literal.
 FIX="$TMP/plugin"
 mkdir -p "$FIX/hooks" "$FIX/skills/using-matt-pocock-skills"
-cp "$HOOK" "$FIX/hooks/session-start"; cp "$REPO/plugin/hooks/seams_gate.py" "$FIX/hooks/"
+cp "$HOOK" "$FIX/hooks/session-start"; cp "$REPO/plugin/hooks/seams_ledger.py" "$FIX/hooks/"
 cat > "$FIX/skills/using-matt-pocock-skills/SKILL.md" <<'MD'
 ---
 name: using-matt-pocock-skills
@@ -187,12 +187,12 @@ for H in "$MP_HOME" "$PARTIAL_HOME" "$BARE_HOME"; do
   done
 done
 
-# The bootstrap injects even when the gate module is missing beside the hook (the ledger is
+# The bootstrap injects even when the ledger module is missing beside the hook (the ledger is
 # skipped, the traceback goes to stderr, the context still comes out).
 LONE="$TMP/lone"; mkdir -p "$LONE/hooks"; cp -R "$FIX/skills" "$LONE/skills"; cp "$HOOK" "$LONE/hooks/session-start"
 C=$(printf '{"cwd":"%s","source":"startup","session_id":"lone"}' "$PLAIN" | CLAUDE_PLUGIN_ROOT="$LONE" HOME="$MP_HOME" "$LONE/hooks/session-start" 2>/dev/null \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])')
-grep -q 'Fixture routing policy line' <<< "$C" || fail "bootstrap should inject without seams_gate.py"
+grep -q 'Fixture routing policy line' <<< "$C" || fail "bootstrap should inject without seams_ledger.py"
 
 # --- The resume note (ADR 0003) -----------------------------------------------------------------
 # After the bootstrap, the hook lists the repository's active progress files (.scratch/<feature>/progress.md)

@@ -15,7 +15,7 @@ Claude's prompt-injection defenses. After the bootstrap comes the resume note (A
 repository's unfinished work from its progress files, and the newest unfinished pr-review batch run
 in it, as data, with a one-line systemMessage telling the user what is being resumed.
 Also keeps the gate's ledger: a new session or /clear starts with an empty one.
-Fails open (see seams_gate.run_hook), and a bad progress file only drops out of the note.
+Fails open (see seams_ledger.run_hook), and a bad progress file only drops out of the note.
 Python 3.9: macOS's system interpreter may run this.
 """
 from __future__ import annotations
@@ -32,9 +32,9 @@ from pathlib import Path
 sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 try:
-    import seams_gate as gate                  # the ledger; the bootstrap must inject without it
+    import seams_ledger                        # the ledger; the bootstrap must inject without it
 except Exception:                              # noqa: BLE001
-    gate = None
+    seams_ledger = None
 
 HERE = Path(__file__).resolve().parent.parent
 # The root Claude Code runs this plugin from. It supplies CLAUDE_PLUGIN_ROOT; for a plugin
@@ -66,8 +66,8 @@ def without_frontmatter(text: str) -> str:
 
 def config_dir() -> Path:
     """Claude Code's config directory, resolved as the gate does: CLAUDE_CONFIG_DIR, else ~/.claude."""
-    if gate is not None:
-        return Path(gate.config_dir())
+    if seams_ledger is not None:
+        return Path(seams_ledger.config_dir())
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"))
 
 
@@ -317,12 +317,12 @@ def resume_note(root: Path) -> "tuple[str, str] | None":
 def ledger_housekeeping(event: dict) -> None:
     """A new session or /clear starts with an empty ledger; compaction and resume keep it; a
     fork is a new session, with a new id and so an empty ledger; old ones go."""
-    if gate is None:
+    if seams_ledger is None:
         return
     session = event.get("session_id") or ""
     if event.get("source") in ("startup", "clear"):
-        gate.reset_ledger(session)
-    gate.cleanup_ledgers()
+        seams_ledger.reset_ledger(session)
+    seams_ledger.cleanup_ledgers()
 
 
 def handle(event: dict) -> dict:
@@ -351,8 +351,8 @@ def handle(event: dict) -> dict:
 
 
 def main() -> int:
-    if gate is not None:
-        return gate.run_hook(handle)
+    if seams_ledger is not None:
+        return seams_ledger.run_hook(handle)
     try:                                       # the same frame, without the module
         print(json.dumps(handle(json.loads(sys.stdin.read() or "{}"))))
     except Exception:

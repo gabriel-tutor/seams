@@ -5,14 +5,14 @@ Claude Code runs this once for each skill a typed prompt expands (stacked ones i
 name the skill resolved to, and only then the UserPromptSubmit hook for the prompt. This records the
 skill against the prompt's id; the prompt hook adopts it when it starts the request. When the typed
 skill is implement, the grill or release, it then adds the repository facts as context (see
-seams_facts); for anything else it prints nothing. Fails open (see seams_gate.run_hook).
+seams_facts); for anything else it prints nothing. Fails open (see seams_ledger.run_hook).
 """
 import os
 import sys
 
 sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-import seams_gate as gate  # noqa: E402
+import seams_ledger  # noqa: E402
 try:
     import seams_facts as facts            # the repository facts; a declaration is recorded without them
 except Exception:                          # noqa: BLE001
@@ -21,12 +21,12 @@ except Exception:                          # noqa: BLE001
 
 def handle(event: dict):
     session = event.get("session_id") or ""
-    ledger = gate.load_ledger(session)
-    if gate.record_expansion(event, ledger):
-        gate.save_ledger(session, ledger)
+    ledger = seams_ledger.load_ledger(session)
+    if seams_ledger.record_expansion(event, ledger):
+        seams_ledger.save_ledger(session, ledger)
     if event.get("expansion_type") != "slash_command":
         return None
     return facts and facts.hook_output("UserPromptExpansion", event.get("command_name") or "", event.get("cwd"))
 
 if __name__ == "__main__":
-    sys.exit(gate.run_hook(handle))
+    sys.exit(seams_ledger.run_hook(handle))

@@ -5,23 +5,23 @@ Asks once, when the request has a non-documentation project change after its las
 verification and Claude Code says this is the first stop of the turn (stop_hook_active false).
 It asks as Stop hook feedback (hookSpecificOutput.additionalContext), which keeps the turn going
 through the same loop protections as a block, without Claude Code labeling it a hook error.
-Prints nothing otherwise. Fails open (see seams_gate.run_hook).
+Prints nothing otherwise. Fails open (see seams_ledger.run_hook).
 """
 import os
 import sys
 
 sys.dont_write_bytecode = True                 # no __pycache__ in the plugin directory
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-import seams_gate as gate  # noqa: E402
+import seams_ledger  # noqa: E402
 
 
 def handle(event: dict):
-    ledger = gate.load_ledger(event.get("session_id") or "")
-    reason = gate.decide_stop(ledger, bool(event.get("stop_hook_active")))
+    ledger = seams_ledger.load_ledger(event.get("session_id") or "")
+    reason = seams_ledger.decide_stop(ledger, bool(event.get("stop_hook_active")))
     if reason:
         return {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": reason}}
     return None
 
 
 if __name__ == "__main__":
-    sys.exit(gate.run_hook(handle))
+    sys.exit(seams_ledger.run_hook(handle))
