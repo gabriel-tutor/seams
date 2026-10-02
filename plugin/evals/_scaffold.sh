@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# The workspace for one scenario, the same for the routing harness and for `claude plugin eval`.
+# The workspace for one `claude plugin eval` scenario.
 #   _scaffold.sh <case-dir>        run in the (empty) workspace directory
-# Copies the OrderKit fixture from beside the cases, provides its dependencies (a symlink to
-# $SEAMS_FIXTURE_NODE_MODULES when set, the harness's shared install; else `npm ci` here), makes the
+# Copies the OrderKit fixture from beside the cases, installs its dependencies (`npm ci`), makes the
 # workspace a git repo at a baseline commit, applies the case's setup.sh, and, for an eval run,
 # gives the run's config directory the nine Matt Pocock skills the plugin invokes (see below).
 set -euo pipefail
@@ -11,11 +10,7 @@ EVALS="$(cd "$CASE/.." && pwd)"
 REQUIRED=(grilling domain-modeling tdd diagnosing-bugs code-review codebase-design setup-matt-pocock-skills setup-pre-commit setup-ts-deep-modules)
 
 rsync -a --exclude node_modules "$EVALS/_fixture/" ./
-if [[ -n "${SEAMS_FIXTURE_NODE_MODULES:-}" ]]; then
-  ln -s "$SEAMS_FIXTURE_NODE_MODULES" node_modules
-else
-  npm ci --silent --no-audit --no-fund --prefer-offline
-fi
+npm ci --silent --no-audit --no-fund --prefer-offline
 
 export GIT_AUTHOR_NAME=bench GIT_AUTHOR_EMAIL=bench@example.com
 export GIT_COMMITTER_NAME=bench GIT_COMMITTER_EMAIL=bench@example.com
@@ -31,8 +26,8 @@ bash "$CASE/setup.sh"
 # is not the account's real home, the nine required skills are copied from the runner's config into
 # <run>/config/skills, symlinks resolved. The runner's config is what Claude Code's is: CLAUDE_CONFIG_DIR
 # when set, else the account's ~/.claude, and never the other when the one set lacks them (a machine
-# without the skills must look the same to the suite as to a run). A harness run (a real $HOME) needs
-# nothing: the runner's own config already holds them. Missing skills are named on stderr and the
+# without the skills must look the same to the suite as to a run). A case run by hand (a real $HOME)
+# needs nothing: the runner's own config already holds them. Missing skills are named on stderr and the
 # scaffold goes on, so the run then shows what that machine has.
 REAL_HOME="$(python3 -c 'import os, pwd; print(pwd.getpwuid(os.getuid()).pw_dir)' 2>/dev/null || true)"
 if [[ -n "$REAL_HOME" && "$HOME" != "$REAL_HOME" ]]; then

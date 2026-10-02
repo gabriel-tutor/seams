@@ -165,7 +165,7 @@ _Avoid_: spec (one kind of reference), description (the author's own claim)
 ## Evidence
 
 **Scenario**:
-One prompt, the fixture setup it runs in, and its expectation: the routing harness's unit and a `claude plugin eval` case are the same directory under `plugin/evals/`.
+One prompt, the fixture setup it runs in, its expectation and the graders that agree with it: a `claude plugin eval` case, one directory under `plugin/evals/`.
 _Avoid_: test case (the deterministic suites' unit), benchmark
 
 **Arm**:
@@ -173,6 +173,6 @@ One set of a scenario's runs under one condition: with the plugin loaded, or wit
 _Avoid_: variant, control group
 
 **Run record**:
-What one headless run did, as the harness or the eval wrote it down: the first committing call, refusals, failed calls, denials, how it ended.
+What one headless run did, as the eval wrote it down: the first committing call, refusals, failed calls, denials, how it ended.
 _Avoid_: log, transcript (that is the raw stream the record was read from)
 

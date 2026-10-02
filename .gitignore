@@ -6,8 +6,7 @@ __pycache__/
 # Node (the sandbox project installs locally)
 node_modules/
 
-# Routing-test run workspaces (fresh copies of the fixture), the fixture's installed dependencies,
-# and the eval reports claude plugin eval writes
+# Run records the retired routing harness left, and the eval reports claude plugin eval writes
 tests/runs/
 plugin/evals/results/
 .worktrees/

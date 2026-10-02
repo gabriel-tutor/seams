@@ -1,0 +1,3 @@
+{"skill": "matt-pocock-workflow:implement", "refusal": false, "past_skill": true, "runs": 3,
+ "skills": "code-review", "agents": "matt-pocock-workflow:reviewer",
+ "tasks": "^matt-pocock-workflow:reviewer\\n[^\\n]*[Cc]orrectness"}

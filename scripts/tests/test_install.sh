@@ -50,7 +50,10 @@ case "$*" in
 esac
 SH
 chmod +x "$TMP/bin/claude"
-ln -sf "$(command -v node)" "$TMP/bin/node"; ln -sf "$(command -v python3)" "$TMP/bin/python3"
+# The installer only checks that node is there and prints its version (skills.sh is never run here), so a stand-in
+# does: the suite needs no Node of its own.
+printf '#!/bin/sh\necho v22.0.0\n' > "$TMP/bin/node"; chmod +x "$TMP/bin/node"
+ln -sf "$(command -v python3)" "$TMP/bin/python3"
 
 # home <dir> [skill...]: a fixture home whose Matt Pocock skills are symlinks into a store, the way
 # skills.sh lays them out; all nine required ones unless names are given (--none: no skills). Settings

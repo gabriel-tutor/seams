@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+env:
+  SEAMS_TEST_BUDGET: "300"   # CI's machines are slower than the user's Mac, whose budget is the default minute
 jobs:
   test:
     strategy:
@@ -10,21 +12,19 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      SEAMS_TEST_BUDGET: "300"   # CI's machines are slower than the user's Mac, whose budget is the default minute
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: scripts/test.sh
-  # The hooks run under whichever python3 Claude Code finds first: on a Mac without another Python that is the system
-  # 3.9. Prove the gate, the hooks and the session start there, once, instead of running every suite twice locally.
+  # The hooks and pr-review's scripts run under whichever python3 Claude Code finds first: on a Mac without another
+  # Python that is the system 3.9. Prove them there, once, instead of running every suite twice on the user's Mac.
   system-python:
     runs-on: macos-latest
-    env:
-      SEAMS_TEST_BUDGET: "300"
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - run: /usr/bin/python3 --version
-      - run: scripts/test.sh --python /usr/bin/python3 --only gate,hooks,plugin_hook
+      - run: /usr/bin/python3 -c 'import sys; assert sys.version_info[:2] == (3, 9), sys.version; print(sys.version)'
+      - run: scripts/test.sh --python /usr/bin/python3 --only gate,hooks,plugin_hook,pr_review,evals
