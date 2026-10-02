@@ -2,12 +2,24 @@
 
 Status: active
 Stage: designed
-Next: Split the spec into tickets with to-tickets; build ticket by ticket in a worktree, never live in plugin/. Sensitive (hooks, CI): code-review and a security review before 4.0.0 ships.
+Next: Build ticket 01 (A suite that runs in under a minute) with implement, in a worktree, never live in plugin/; then 02, 03 and 04 are unblocked.
 Updated: 2026-10-02
 
 ## Spec
 
 `.scratch/seams-revamp/spec.md` (Seams 4.0: fast and continuous, at the same quality), ready-for-agent.
+
+## Tickets
+
+- 01 A suite that runs in under a minute (blocked by: none)
+- 02 No test sleeps, each behavior tested once (blocked by: 01)
+- 03 Wording pins shrink to the contracts (blocked by: 01)
+- 04 A route lasts (blocked by: 01)
+- 05 Lighter hooks (blocked by: 04)
+- 06 A continuous flow (blocked by: 03, 04)
+- 07 One shared reference, process in proportion (blocked by: 03, 06)
+- 08 Docs and proof (blocked by: 02, 05, 07)
+- 09 Release 4.0.0 (blocked by: 08)
 
 ## Decisions
 
