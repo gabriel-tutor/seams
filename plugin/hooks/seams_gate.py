@@ -35,6 +35,13 @@ def _under(path: str, root: str) -> bool:
     return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
 
 
+def _climbs(path: str) -> bool:
+    """Whether a path has a `..` segment, which is never placed: the kernel follows a symlink before the `..` after it,
+    so the path lands wherever that link leads, and a command can make the link it then writes through (seams-revamp
+    ticket 11)."""
+    return ".." in path.split(os.sep)
+
+
 def _scratchpad_roots(scratchpad: object) -> tuple:
     """The session's scratchpad (the hook input's `scratchpad_dir`, Claude Code 2.1.257 and later) as
     a scratch root: none when the field is absent or is not an absolute path, so a missing field
@@ -49,8 +56,10 @@ def is_exempt_path(path: str, config: str | None = None, cwd: str | None = None,
     A path under the session's working directory is the project wherever that directory
     lives, so a repo checked out under the temp dir is still gated. So is the gate's own ledger, wherever
     it lies (under the temp directory when the home directory cannot hold it): a tool call that wrote it
-    could forge a declaration.
+    could forge a declaration. So is a path with a `..` segment (_climbs).
     """
+    if _climbs(path):
+        return False
     real = os.path.realpath(path)
     if real == "/dev/null":
         return True
@@ -67,7 +76,10 @@ def is_scratch_path(path: str, cwd: str | None = None, scratchpad: object = None
     is_exempt_path: the Claude config directory is not scratch, even where it lies inside a temp
     directory (a CI job's or an eval run's does), since a shell command there could delete the
     user's settings. Nor is the gate's ledger, nor a directory that holds it below a temp root (a home under the temp
-    directory): a recursive copy, an archive or a find there reaches it. A temp root itself stays scratch."""
+    directory): a recursive copy, an archive or a find there reaches it. A temp root itself stays scratch. Nor is a path
+    with a `..` segment (_climbs)."""
+    if _climbs(path):
+        return False
     real = os.path.realpath(path)
     if real == "/dev/null":
         return True
@@ -108,11 +120,12 @@ def _powershell_label(command: str) -> str:
 
 
 def _editor_path(event: dict) -> str:
-    """The file an editor tool writes, absolute (a relative one lies under the session's cwd), or ""."""
+    """The file an editor tool writes, absolute (a relative one lies under the session's cwd), or "". Normalized unless
+    it has a `..` segment, which normalizing would drop as text (_climbs)."""
     path = (event.get("tool_input") or {}).get(EDITOR_TOOLS[event.get("tool_name")]) or ""
     if path and not os.path.isabs(path):
         path = os.path.join(event.get("cwd") or os.getcwd(), path)
-    return os.path.normpath(path) if path else ""
+    return os.path.normpath(path) if path and not _climbs(path) else path
 
 
 def change_for_event(event: dict, config_dir: str | None = None) -> dict | None:
@@ -159,7 +172,8 @@ REFUSAL_PREFIX = "Seams gate: "                # a refused call's reason starts 
 
 
 SCRATCH = ("Scratch work is not a change: a write whose every path is an absolute path under the temp "
-           "directory or the session's scratchpad needs no declaration, from Edit, Write or a shell command.")
+           "directory or the session's scratchpad needs no declaration, from Edit, Write or a shell command, "
+           "unless a path has a `..` segment.")
 
 
 POWERSHELL_LIST = ("Before a declaration PowerShell runs only `Get-Content`, `Get-ChildItem`, `Select-String`, "
@@ -201,6 +215,8 @@ def read_only_problem(event: dict, config: str | None = None) -> str | None:
                 return f"writes `{path}`, inside the Claude config directory"
             if _under(os.path.realpath(path), ledger_root()):
                 return f"writes `{path}`, inside the gate's ledger directory"
+            if _climbs(path):
+                return f"writes `{path}`, a path with a `..` segment, which is never scratch"
             return f"writes `{path}`, outside the temp directory and the session's scratchpad"
         import seams_shell
         return f"writes `{path}`, inside a git directory" if seams_shell.in_git_dir(path) else None
