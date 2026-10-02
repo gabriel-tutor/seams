@@ -21,7 +21,7 @@ A Skill invocation of a process skill, by Claude or typed by the user, that open
 _Avoid_: unlock, override
 
 **Gate**:
-The hook that refuses any change to the project until a declaration has routed the work, and holds a read-only agent to reads whatever is declared. In a flow skill, also the question that must get a yes before it publishes, pushes, deploys, integrates a branch, destroys anything or starts a paid run: between those, the continuous flow runs on.
+The hook that refuses any change to the project until a declaration has routed the work, and holds a read-only agent to reads whatever is declared. In a flow skill, also the question that must get a yes at one of the continuous flow's stops: between those, the flow runs on.
 _Avoid_: guard, blocker, permission
 
 **Ledger**:
@@ -29,7 +29,7 @@ The per-session record of declarations and changes that the gate and the done-ch
 _Avoid_: state file, cache, log
 
 **Read-only agent**:
-One of the two agents Seams ships for delegated reading: `scout` finds facts in the code and docs, `reviewer` reviews a named diff. Each returns its conclusions with their citations and what it couldn't confirm. Neither writes: the gate holds both to a short list of reads, whatever the request has declared, so a check or a probe a finding needs is run by the main conversation.
+One of the two agents Seams ships for delegated reading: `scout` finds facts in the code and docs, on Sonnet, and `reviewer` reviews a named diff, on the session's model. Each returns its conclusions with their citations and what it couldn't confirm. Neither writes: the gate holds both to a short list of reads, whatever the request has declared, so a check or a probe a finding needs is run by the main conversation.
 _Avoid_: helper, worker (a subagent is any agent Claude starts)
 
 **Trivial change**:
@@ -46,6 +46,10 @@ _Avoid_: stop guard, completion hook
 
 **Design lens**:
 The ten axes the grill checks its design tree against before calling the frontier empty.
+
+**Shared rules**:
+The one reference that holds each rule several Seams skills follow (effort, the repository facts, the sensitive list, the stages, evidence, worktrees, official docs, the continuous flow, and the table of how much process a change gets by its size and risk); a skill names the section a step needs instead of repeating it.
+_Avoid_: common rules, policy (the bootstrap is the routing policy)
 
 **Handover**:
 The four-part closing message of a ticket: run it, try it, what changed, next.

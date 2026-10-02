@@ -7,7 +7,7 @@ description: Use when starting in a repo for the first time, or when it lacks ru
 
 A senior engineer's first hour in a repo: find out what's there, name what's missing, and offer to set it up. This skill reports first and writes nothing without a yes.
 
-**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the report's line on why each gap matters.
+**Effort** `${CLAUDE_EFFORT}`: at `low`, skip only the report's line on why each gap matters (shared rules: Effort).
 
 ## 1. Survey
 

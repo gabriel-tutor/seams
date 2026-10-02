@@ -7,25 +7,25 @@ description: Use when an agreed design, spec or ticket is ready to build
 
 Build what a spec, a ticket or an agreed design describes: tests first at the agreed seams, a commit, a review of that commit, the definition of done with evidence, and a handover, in this order, since the review sees only what is committed.
 
-**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the offer to add a run command to the README.
+**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read when a step names one of its sections. **Effort** `${CLAUDE_EFFORT}`: at `low`, skip only the offer to add a run command to the README (shared rules: Effort).
 
-**Delegation.** Reading beyond a few files goes to `matt-pocock-workflow:scout` agents; a review's subagents, `code-review`'s two included, are `matt-pocock-workflow:reviewer` agents. Independent ones start together, in one message, and this context keeps the decisions and the edits.
+**Repository facts.** The Seams hook adds them as this skill starts (shared rules: Repository facts).
+
+**Delegation.** Scouts and reviewers as a feature's row sets them (shared rules: Process by size and risk); this context keeps the decisions and the edits.
 
 **Reviews.** `${CLAUDE_SKILL_DIR}/references/reviews.md`: read this when the review starts, and again after a compaction or `/clear`.
 
 **Parallel tickets.** `${CLAUDE_SKILL_DIR}/references/parallel.md`: read this when two or more tickets are unblocked, before the gate's question, and to resume a parallel run.
 
-**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of the status and the progress files. They are a snapshot: once git may have moved (a commit, a checkout, a new worktree, a resumed session), run git again, and look up yourself any fact the hook did not give.
-
 ## Gate
 
-Before reading the work, settle which spec, ticket or design you build, and where, asking only what nothing settled. The flow (the bootstrap's flow rule) brings the next unblocked ticket, or the parallel offer when two or more are; where is what the user said, else the branch the last record names, else what the confirmation recorded. Otherwise offer a worktree through `matt-pocock-workflow:using-git-worktrees`, which asks for consent, or the current branch, and wait for the answer. A ticket resumed as its progress file records skips this (Resuming, below).
+Before reading the work, settle which spec, ticket or design you build, and where, asking only what nothing settled. The flow (shared rules: The continuous flow) brings the next unblocked ticket, or the parallel offer when two or more are; where is what the user said, else the branch the last record names, else what the confirmation recorded. Otherwise offer a worktree through `matt-pocock-workflow:using-git-worktrees` (shared rules: Worktrees), which asks for consent, or the current branch, and wait for the answer. A ticket resumed as its progress file records skips this (Resuming, below).
 
 Then note the starting point for the review's fixed point: the branch and HEAD from the repository facts (in a new worktree, its own), and the base branch.
 
 ## Progress file
 
-The feature's progress file, `.scratch/<feature>/progress.md` beside its spec, lets a fresh context continue this ticket. Read its format in `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` before the first write, and create the file if the feature has none. Keep it current at each step below, with `Updated` set to today, and stage it by name with each of the ticket's commits. Decisions and pointers only: never a secret, a credential, a token or personal data.
+The feature's progress file, `.scratch/<feature>/progress.md` beside its spec, in the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` describes, lets a fresh context continue this ticket. Create it if the feature has none, keep it current at each step below, with `Updated` set to today, and stage it by name with each of the ticket's commits.
 
 - **After the gate:** `Ticket` is this ticket's number, and `Next` names the branch and the starting commit.
 - **With each commit:** `Next` says what the commit does and the step that follows, naming the branch and the SHAs it needs: the review against the fixed point, the fixes, or the definition of done. A commit can't name itself, so `Candidate` is the commit under review, set when the review starts. After the review, list the findings you act on under `## Review`, one line each with its file and line, until they are fixed.
@@ -41,7 +41,7 @@ When the resume note or the user points at a ticket its progress file records in
 
 ## Build
 
-1. **Read the work.** Fetch the ticket and its spec through the issue tracker (`docs/agents/issue-tracker.md`), then `CONTEXT.md` and any ADR in the area you're touching. Work in the glossary's vocabulary.
+1. **Read the work.** Fetch the ticket and its spec through the issue tracker (`docs/agents/issue-tracker.md`), then `CONTEXT.md` and any ADR in the area you're touching. Work in the glossary's vocabulary, and check third-party code against its docs (shared rules: Official docs).
 2. **Test first.** Invoke `tdd` (Matt Pocock's, bare name) with the Skill tool and follow it one slice at a time at the agreed seams: the spec's Testing Decisions, the ticket, or what the grill settled. Seams settled there are not asked again; only when none was ever agreed, ask once with AskUserQuestion before the first test. If `tdd` isn't available, tell the user Matt Pocock's skills aren't installed, and stop.
 3. **Check as you go.** Run the typecheck and the single test file you're working in regularly, and the full suite once at the end. Use the repo's real scripts.
 
@@ -57,7 +57,7 @@ When the resume note or the user points at a ticket its progress file records in
 1. **Fixed point.** On a branch, `git merge-base <base> HEAD`; on the base branch itself, the starting commit noted at the beginning. The candidate is HEAD; do not change it while the review runs.
 2. **Empty diff.** If `git diff --stat <fixed-point>...HEAD` prints nothing, there is nothing to review: say why (nothing committed yet, or the fixed point is HEAD) and fix that first.
 3. Invoke `code-review` (Matt Pocock's, bare name) with the Skill tool, passing the fixed point. It diffs `<fixed-point>...HEAD` and reviews along its two axes, Standards and Spec.
-4. **By risk** (the reference): a correctness review always, a security review on a sensitive change, `/simplify` offered on a large diff; never `ultra` unless the user asks.
+4. **By size and risk**, the other reviews the change's row names (shared rules: Process by size and risk), run as the reference says.
 
 ## Review fixes
 
@@ -71,7 +71,7 @@ Before claiming the work is done, commit the ticket's record (Progress file, abo
 
 | Item | What counts |
 | --- | --- |
-| Candidate | `git rev-parse --short HEAD`, after the record commit |
+| Candidate | `git rev-parse --short HEAD` after the record commit, and `git status --short` |
 | Tests | the tests at the agreed seams pass, and the full suite passes |
 | Typecheck and lint | typecheck passes; lint passes if the repo has one |
 | Acceptance criteria | every criterion on the ticket or spec is met, checked one by one |
@@ -93,6 +93,6 @@ The ticket ends with the handover: exactly these four sections, in this order, a
 1. **Run it.** The exact commands to start and check the work, from the repo's real scripts or README; if it has none, the one-line command that works, and an offer to add it to the README.
 2. **Try it.** One short walkthrough per acceptance criterion, in the user's words: what to do, and what they should see. Refer to things by their glossary names. For a user-facing change to a runnable app, offer `/verify`, which only the user can start.
 3. **What changed.** The candidate SHA, the files and public interfaces touched, in a few lines, and any decision you made that the ticket didn't settle.
-4. **Next.** First the stage reached, one of the six: designed, built, integrated, release-ready, deployed, operated. A ticket that ends here is *built* (the candidate is on a branch) or *integrated* (it is on the base branch); it is never "done" without the stage, and it is never *deployed* until `matt-pocock-workflow:release` has verified the running candidate. Then name the next unblocked ticket, or say there is none. Then say whether to `/clear` before it (it is unrelated to this one, or this session is heavy) or to continue here (it builds on this one). Continuing here with every row met, go on unoffered to the record's `Next`: that ticket, or with none left `matt-pocock-workflow:finishing-a-development-branch` for a branch's candidate, else any release.
+4. **Next.** First the stage reached (shared rules: Stages): a ticket that ends here is *built* or *integrated*. Then name the next unblocked ticket, or say there is none. Then say whether to `/clear` before it (it is unrelated to this one, or this session is heavy) or to continue here (it builds on this one). Continuing here with every row met, go on unoffered to the record's `Next`: that ticket, or with none left `matt-pocock-workflow:finishing-a-development-branch` for a branch's candidate, else any release.
 
 Adapted from Matt Pocock's `implement` skill (github.com/mattpocock/skills, `skills/engineering/implement` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`), MIT License, Copyright (c) 2026 Matt Pocock; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.

@@ -11,11 +11,11 @@ description: Use when implementation is complete, all tests pass, and you need t
 
 **Announce at start:** "I'm using the finishing-a-development-branch skill to complete this work."
 
-**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the announcement.
+**Effort** `${CLAUDE_EFFORT}`: at `low`, skip only the announcement (shared rules: Effort).
 
 ## Step 1: Verify Tests
 
-Run the project's full test suite (`npm test` / `cargo test` / `pytest` / `go test ./...`).
+Run the project's full test suite (`npm test` / `cargo test` / `pytest` / `go test ./...`), or show its run on this same candidate (shared rules: Evidence).
 
 **If tests fail**, report the failures and stop — the menu comes after a green suite:
 
@@ -108,10 +108,8 @@ and recoverable.
 Once the merged result is green, record integration in the feature's
 progress file when the work has one (`.scratch/<feature>/progress.md`, in
 the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md`
-describes; read it before the first write):
-set `Stage: integrated`, `Next` to the next unblocked ticket or the
-release, and `Updated` to today, then commit it by name on <base-branch>.
-Decisions and pointers only: never a secret, a credential, a token or personal data.
+describes): set `Stage: integrated`, `Next` to the next unblocked ticket or
+the release, and `Updated` to today, then commit it by name on <base-branch>.
 Then clean up the worktree (Step 6), and delete the branch:
 
 ```bash
@@ -221,7 +219,7 @@ place. If your platform provides a workspace-exit tool, use it.
 
 | Excuse | Reality |
 |--------|---------|
-| "Tests passed earlier this session" | Run the suite on the tree you are about to integrate. A green run only proves the tree it ran on. |
+| "Tests passed earlier this session" | A green run only proves the tree it ran on: reuse it only on this same candidate (shared rules: Evidence), else run the suite on the tree you are about to integrate. |
 | "They obviously want it merged" | Integration is your human partner's decision. Present the menu and wait. |
 | "They seem done with this feature — I'll offer to discard it" | The menu is complete as written. Discard happens only when your human partner asks for it in so many words. |
 | "'Yeah, get rid of it' counts as confirmation" | Only the typed word `discard` authorizes deletion. |
