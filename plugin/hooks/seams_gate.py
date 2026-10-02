@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import re
 
-from seams_ledger import PLUGIN_PREFIX, config_dir, declared_for, describe, temp_dir
+from seams_ledger import PLUGIN_PREFIX, config_dir, declared_for, describe, ledger_root, temp_dir
 
 # --- Project changes and the decision ------------------------------------------------------
 
@@ -47,12 +47,13 @@ def is_exempt_path(path: str, config: str | None = None, cwd: str | None = None,
     """Temp directories, the session's scratchpad and the Claude config directory are not the project.
 
     A path under the session's working directory is the project wherever that directory
-    lives, so a repo checked out under the temp dir is still gated.
+    lives, so a repo checked out under the temp dir is still gated. So is the gate's own ledger,
+    under the temp directory: a tool call that wrote it could forge a declaration.
     """
     real = os.path.realpath(path)
     if real == "/dev/null":
         return True
-    if cwd and _under(real, cwd):
+    if (cwd and _under(real, cwd)) or _under(real, ledger_root()):
         return False
     roots = (temp_dir(), config_dir(config)) + TEMP_ROOTS + _scratchpad_roots(scratchpad)
     return any(_under(real, root) for root in roots)
@@ -64,11 +65,11 @@ def is_scratch_path(path: str, cwd: str | None = None, scratchpad: object = None
     the session's scratchpad, and outside the session's working directory. Narrower than
     is_exempt_path: the Claude config directory is not scratch, even where it lies inside a temp
     directory (a CI job's or an eval run's does), since a shell command there could delete the
-    user's settings."""
+    user's settings. Nor is the gate's ledger."""
     real = os.path.realpath(path)
     if real == "/dev/null":
         return True
-    if (cwd and _under(real, cwd)) or _under(real, config_dir(config)):
+    if (cwd and _under(real, cwd)) or _under(real, config_dir(config)) or _under(real, ledger_root()):
         return False
     roots = (temp_dir(),) + TEMP_ROOTS + _scratchpad_roots(scratchpad)
     return any(_under(real, root) for root in roots)
@@ -191,6 +192,8 @@ def read_only_problem(event: dict, config: str | None = None) -> str | None:
         if not is_scratch_path(path, cwd, scratchpad, config):
             if _under(os.path.realpath(path), config_dir(config)):
                 return f"writes `{path}`, inside the Claude config directory"
+            if _under(os.path.realpath(path), ledger_root()):
+                return f"writes `{path}`, inside the gate's ledger directory"
             return f"writes `{path}`, outside the temp directory and the session's scratchpad"
         import seams_shell
         return f"writes `{path}`, inside a git directory" if seams_shell.in_git_dir(path) else None

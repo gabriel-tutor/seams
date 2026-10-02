@@ -1273,6 +1273,99 @@ class ReadOnlyAgents(unittest.TestCase):
         return gate.decide_pre_tool_use(ev, self.ledger, config_dir=self.config)
 
 
+class LedgerOutOfReach(unittest.TestCase):
+    """No tool call writes the gate's ledger as scratch (seams-revamp ticket 10, from ticket 04's security review):
+    it lies under the temp directory, so an agent misled by a hostile pull request could forge a declaration there
+    that opens the main conversation's gate, or erase the done-check's pending changes. A write to the ledger's
+    directory or a ledger file is a change to the project, and a read-only agent's write there is refused like any
+    other."""
+
+    def setUp(self):
+        self.config = tempfile.mkdtemp()
+        self.ledger = seams_ledger.empty_ledger("s1")
+
+    def decide(self, ev, ledger=None):
+        return gate.decide_pre_tool_use(ev, self.ledger if ledger is None else ledger, config_dir=self.config)
+
+    def test_an_editor_tool_writing_the_ledger_is_a_change(self):
+        path = seams_ledger.ledger_path("s1")
+        for tool in ("Write", "Edit", "MultiEdit"):
+            with self.subTest(tool=tool):
+                decision = self.decide(event(tool, file_path=path, content="{}"))
+                self.assertEqual(decision["decision"], "deny", "no declaration covers a write to the ledger")
+                self.assertIn(path, decision["reason"])
+        seams_ledger.add_declaration(self.ledger, "matt-pocock-workflow:implement")
+        decision = self.decide(event("Write", file_path=path, content="{}"))
+        self.assertEqual(decision["decision"], "allow")
+        self.assertEqual(decision["change"]["path"], path, "with a declaration it is recorded as a change")
+
+    def test_a_shell_command_writing_the_ledgers_directory_is_a_change(self):
+        root, t = seams_ledger.ledger_root(), tempfile.gettempdir()
+        forged = '{"version": 2, "declarations": [{"skill": "tdd"}]}'
+        for command, label in [(f"printf '%s' '{forged}' > {root}/s1.json", "a redirect to a file"),
+                               (f"echo x >> {root}/other-session.json", "a redirect to a file"),
+                               (f"cp {t}/forged.json {root}/s1.json", "cp"),
+                               (f"rm -rf {root}", "rm"),
+                               (f"Monitor:tail -f {t}/x.log > {root}/s1.json", "a redirect to a file")]:
+            tool, command = ("Monitor", command[len("Monitor:"):]) if command.startswith("Monitor:") else ("Bash", command)
+            with self.subTest(command=command):
+                decision = self.decide(event(tool, command=command))
+                self.assertEqual(decision["decision"], "deny")
+                self.assertIn(label, decision["reason"])
+                declared = seams_ledger.empty_ledger("s1")
+                seams_ledger.add_declaration(declared, "matt-pocock-workflow:implement")
+                decision = self.decide(event(tool, command=command), declared)
+                self.assertEqual(decision["decision"], "allow")
+                self.assertEqual(decision["change"]["label"], label)
+
+    def test_a_read_only_agent_writing_there_is_refused_declared_or_not(self):
+        root, path = seams_ledger.ledger_root(), seams_ledger.ledger_path("s1")
+        declared = seams_ledger.empty_ledger("s1")
+        seams_ledger.add_declaration(declared, "matt-pocock-workflow:implement")
+        for agent in ("matt-pocock-workflow:reviewer", "matt-pocock-workflow:scout"):
+            for ledger in (self.ledger, declared):
+                for tool, tool_input in (("Bash", {"command": f"printf '%s' x > {root}/s1.json"}),
+                                         ("Bash", {"command": f"git diff HEAD >> {path}"}),
+                                         ("Write", {"file_path": path, "content": "{}"}),
+                                         ("Edit", {"file_path": f"{root}/other.json", "old_string": "a", "new_string": "b"})):
+                    with self.subTest(agent=agent, declared=bool(ledger["declarations"]), tool=tool, **tool_input):
+                        decision = self.decide(event(tool, agent_id="a1", agent_type=agent, **tool_input), ledger)
+                        self.assertEqual(decision["decision"], "deny")
+                        self.assertIsNone(decision["change"])
+                        self.assertIn("the gate's ledger", decision["reason"])
+        # Its scratch is as it was: the temp directory beside the ledger, and the scratchpad.
+        t = tempfile.gettempdir()
+        for tool, tool_input in (("Bash", {"command": f"git diff HEAD > {t}/d.patch"}),
+                                 ("Write", {"file_path": f"{t}/seams-notes.md", "content": "x"})):
+            with self.subTest(scratch=tool):
+                decision = self.decide(event(tool, agent_id="a1", agent_type="matt-pocock-workflow:reviewer", **tool_input))
+                self.assertEqual(decision["decision"], "allow", decision["reason"])
+
+    def test_a_write_beside_the_ledger_is_scratch_as_before_and_a_link_into_it_is_not(self):
+        root, t = seams_ledger.ledger_root(), tempfile.gettempdir()
+        for path in (f"{root}0/s1.json", f"{root}.bak/s1.json", f"{root}-notes.md", f"{t}/seams-pr-review/o-r-1-abc/x.log"):
+            with self.subTest(path=path):
+                self.assertIsNone(gate.change_for_event(event("Write", file_path=path, content="x"), config_dir=self.config))
+                self.assertIsNone(gate.change_for_event(event("Bash", command=f"echo x > {path}"), config_dir=self.config))
+        link = os.path.join(tempfile.mkdtemp(), "ledger-link")
+        os.symlink(root, link)
+        self.assertEqual(self.decide(event("Write", file_path=f"{link}/s1.json", content="{}"))["decision"], "deny")
+        self.assertEqual(self.decide(event("Bash", command=f"echo x > {link}/s1.json"))["decision"], "deny")
+
+    def test_a_damaged_declarations_field_opens_nothing(self):
+        root = tempfile.mkdtemp()
+        os.makedirs(seams_ledger.ledger_root(root), exist_ok=True)
+        edit = event("Edit", file_path="/proj/src/a.ts")
+        for declarations in ('"all"', "1", "true", '{"skill": "tdd"}', '["tdd"]', "[1]", "[true]", "[[]]", "[null]"):
+            with self.subTest(declarations=declarations):
+                Path(seams_ledger.ledger_path("s1", root)).write_text(f'{{"version": 2, "declarations": {declarations}}}')
+                ledger = seams_ledger.load_ledger("s1", root)
+                self.assertEqual(self.decide(edit, ledger)["decision"], "deny")
+                self.assertIsNone(seams_ledger.decide_stop(ledger, stop_hook_active=False))
+                seams_ledger.add_declaration(ledger, "tdd")              # the next declaration opens it as ever
+                self.assertEqual(self.decide(edit, ledger)["decision"], "allow")
+
+
 class MonitorCommands(unittest.TestCase):
     """A Monitor watch runs its command in the Bash tool's shell, so the gate judges that command
     as it judges a Bash command. A WebSocket watch runs nothing on the machine (ticket 02)."""
