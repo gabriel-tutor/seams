@@ -16,7 +16,7 @@ ev()   { printf '{"session_id":"s1","cwd":"%s","hook_event_name":"%s",%s}' "$PRO
 pre_edit()   { ev PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$1\",\"old_string\":\"a\",\"new_string\":\"b\"}" | hook pre-tool-use; }
 pre_bash()   { ev PreToolUse "\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"}" | hook pre-tool-use; }
 post_skill() { ev PostToolUse "\"tool_name\":\"Skill\",\"tool_input\":{\"skill\":\"$1\"},\"tool_response\":{}" | hook post-tool-use; }
-prompt()     { ev UserPromptSubmit "\"prompt\":\"$1\"" | hook user-prompt-submit >/dev/null; }   # its hint: say(), in 6b
+prompt()     { ev UserPromptSubmit "\"prompt\":\"$1\"" | hook user-prompt-submit >/dev/null; }   # its output: say(), in 6
 start()      { ev SessionStart "\"source\":\"$1\"" | hook session-start >/dev/null; }
 stop()       { ev Stop "\"stop_hook_active\":$1,\"last_assistant_message\":\"done\"" | hook stop; }
 denied()  { grep -q '"permissionDecision": *"deny"' <<< "$1"; }
@@ -60,25 +60,29 @@ grep -q 'old_string\|new_string' "$LEDGER" && fail "ledger must not record edit 
 grep -q '"skill": *"matt-pocock-workflow:grill"' "$LEDGER" || fail "ledger should record the declaration"
 
 # 5. A Superpowers or domain skill is not a declaration.
-prompt "add a feature"
+start clear
 post_skill "superpowers:brainstorming"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "superpowers skill should not open the gate"
 post_skill "frontend-design"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "domain skill should not open the gate"
 
-# 6. A new prompt starts a new request; a go-ahead keeps it; a typed slash command declares.
+# 6. The route lasts (ADR 0005): a go-ahead, a machine notice, a subagent's hand-back and a typed reply keep it, and
+# the prompt hook adds nothing; a commit keeps it too. A typed process skill replaces it. In a session with no route,
+# a typed command that is no route opens nothing.
+expand() { ev UserPromptExpansion "\"prompt_id\":\"$1\",\"expansion_type\":\"${4:-slash_command}\",\"command_name\":\"$2\",\"command_source\":\"$3\",\"command_args\":\"\",\"prompt\":\"/$2\"" | hook user-prompt-expansion; }
+say()    { ev UserPromptSubmit "\"prompt_id\":\"$1\",\"prompt\":\"$2\"" | hook user-prompt-submit; }
 post_skill "tdd"
-prompt "yes, go ahead"
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a go-ahead should keep the declaration: $OUT"
-prompt "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished"
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a machine-generated notice should keep the declaration: $OUT"
-prompt '<agent-message from=\"a1\">\n[Subagent hand-back] #12: request changes\n</agent-message>'
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a subagent's hand-back should keep the declaration: $OUT"
-prompt "now fix the bug in pricing"
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a new request should need a new declaration"
+for P in "yes, go ahead" "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished" \
+         '<agent-message from=\"a1\">\n[Subagent hand-back] #12: request changes\n</agent-message>' "now fix the bug in pricing"; do
+  OUT=$(say r1 "$P" 2>&1); [[ -z "$OUT" ]] || fail "the prompt hook should add nothing, and not fail: $OUT"
+  OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "the route should last through '$P': $OUT"
+done
 grep -q 'fix the bug' "$LEDGER" && fail "ledger must not record prompt text"
+OUT=$(pre_bash "git commit -m fix"); [[ -z "$OUT" ]] || fail "a commit should pass: $OUT"
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "the route should last through a commit: $OUT"
 prompt "/to-spec"
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a typed /to-spec should declare: $OUT"
+grep -q '"skill": *"to-spec"' "$LEDGER" && ! grep -q '"skill": *"tdd"' "$LEDGER" || fail "a typed /to-spec should replace the route"
+start clear
 prompt "/superpowers:brainstorming"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a typed superpowers command should not declare"
 prompt "/using-matt-pocock-skills"
@@ -87,52 +91,32 @@ prompt "/using-git-worktrees"
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a bare Superpowers-copy name should not declare (the original shares it)"
 
 # 6b. A typed skill is recorded from the expansion that Claude Code runs, once per skill, before the
-# prompt hook; both carry the prompt's id. A typed message that starts a new request after a declared
-# one is told which declaration lapsed, and the hint restores nothing by itself.
-expand() { ev UserPromptExpansion "\"prompt_id\":\"$1\",\"expansion_type\":\"${4:-slash_command}\",\"command_name\":\"$2\",\"command_source\":\"$3\",\"command_args\":\"\",\"prompt\":\"/$2\"" | hook user-prompt-expansion; }
-say()    { ev UserPromptSubmit "\"prompt_id\":\"$1\",\"prompt\":\"$2\"" | hook user-prompt-submit; }
+# prompt hook; both carry the prompt's id.
 OUT=$(expand x1 matt-pocock-workflow:grill plugin)
 "$PY" -c 'import json, sys; o = json.loads(sys.argv[1]); h = o["hookSpecificOutput"]
 assert set(o) == {"hookSpecificOutput"} and set(h) == {"hookEventName", "additionalContext"} and h["hookEventName"] == "UserPromptExpansion"' \
   "$OUT" 2>/dev/null || fail "the expansion hook should add the grill's repository facts (section 15) and nothing else: $OUT"
 expand x1 tdd userSettings >/dev/null
-OUT=$(say x1 "/grill /tdd fix the coupon"); [[ -z "$OUT" ]] || fail "a message that types its own route gets no hint: $OUT"
+OUT=$(say x1 "/grill /tdd fix the coupon"); [[ -z "$OUT" ]] || fail "the prompt hook should add nothing: $OUT"
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a stacked /grill /tdd should declare from its expansions: $OUT"
 grep -q '"skill": *"matt-pocock-workflow:grill"' "$LEDGER" && grep -q '"skill": *"tdd"' "$LEDGER" \
   || fail "both stacked skills should be recorded under the names they expanded to"
 grep -q 'fix the coupon' "$LEDGER" && fail "ledger must not record prompt text"
-OUT=$(say x2 "now make the field required")
-grep -q '"hookEventName": *"UserPromptSubmit"' <<< "$OUT" && grep -q '"additionalContext"' <<< "$OUT" \
-  || fail "a new request after a declared one should get the lapse hint as context: $OUT"
-grep -q '`matt-pocock-workflow:grill`' <<< "$OUT" && grep -q '`tdd`' <<< "$OUT" || fail "the hint should name what lapsed: $OUT"
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "the hint must not restore a declaration by itself: $OUT"
-post_skill "matt-pocock-workflow:grill"
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "invoking the skill again should restore it: $OUT"
-OUT=$(say x3 "yes"); [[ -z "$OUT" ]] || fail "a go-ahead gets no hint: $OUT"
-OUT=$(say x4 "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished"); [[ -z "$OUT" ]] || fail "a machine notice gets no hint: $OUT"
+start clear
 expand x5 tdd mcp mcp_prompt >/dev/null; expand x5 pdf userSettings >/dev/null; say x5 "/mcp__docs__tdd" >/dev/null
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "an MCP prompt or a non-process skill should not declare: $OUT"
-OUT=$(say x6 "and the title"); [[ -z "$OUT" ]] || fail "a request that had no declarations lapses nothing: $OUT"
 expand x7 tdd userSettings >/dev/null
 say x8 "delete the old tables" >/dev/null
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "an expansion must declare only its own prompt's request: $OUT"
-# A skill only the user can type (disable-model-invocation) is named so, and the hint does not send Claude
-# to a Skill call Claude Code would refuse. Once an expansion arrived, the prompt's parse does not decide:
-# a project's own pr-review is not Seams'. In either hook order, an expansion declares its own prompt's request.
-mkdir -p "$CLAUDE_CONFIG_DIR/skills/implement"
-printf -- '---\nname: implement\ndescription: x\ndisable-model-invocation: true\n---\n' > "$CLAUDE_CONFIG_DIR/skills/implement/SKILL.md"
-expand y1 implement userSettings >/dev/null; say y1 "/implement ticket 03" >/dev/null
-OUT=$(say y2 "now fix the failing test")
-grep -q '`implement` (only the user can type it)' <<< "$OUT" || fail "a skill only the user can type should be named so: $OUT"
-grep -q 'with the Skill tool restores' <<< "$OUT" && fail "the hint must not send Claude to the Skill tool for it: $OUT"
+# Once an expansion arrived, the prompt's parse does not decide: a project's own pr-review is not Seams'. In either
+# hook order, an expansion declares its own prompt's request.
 expand y3 pr-review projectSettings >/dev/null; say y3 "/pr-review 42" >/dev/null
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a project's own /pr-review should not declare Seams' skill: $OUT"
-# Seams' pr-review is model-invocable: typed bare, it declares through its expansion. A new request gets no hint for it:
-# a review needs no declaration, and invoking it again would re-arm its pre-approved scripts after the user's answer.
+# Seams' pr-review is model-invocable: typed bare, it declares through its expansion.
 expand y5 matt-pocock-workflow:pr-review plugin >/dev/null; say y5 "/pr-review 42" >/dev/null
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a typed bare /pr-review should declare through its expansion: $OUT"
 grep -q '"skill": *"matt-pocock-workflow:pr-review"' "$LEDGER" || fail "the bare /pr-review should be recorded under its full name"
-OUT=$(say y6 "post it"); [[ -z "$OUT" ]] || fail "the hint should leave pr-review out: $OUT"
+start clear
 say y4 "/grill add coupons" >/dev/null; expand y4 matt-pocock-workflow:grill plugin >/dev/null
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "an expansion after its prompt hook should declare that prompt's request: $OUT"
 grep -q '"prompt"' "$LEDGER" && fail "the ledger keys a prompt by its id, never by a prompt field"
@@ -187,6 +171,27 @@ start compact
 [[ ! -e "$OLD" ]] || fail "an eight-day-old ledger should be removed"
 [[ -e "$LEDGER" ]] || fail "the live ledger should be kept"
 
+# 9b. Upgrading mid-session: a ledger 3.4.0's hooks wrote (captured from 79e1741's, the path this suite's) is read, and
+# its route lasts through a typed reply; a ledger of a shape the gate does not know reads as empty and never fails a hook.
+in_old() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"%s",%s}' "$1" "$PROJ" "$2" "$3"; }
+cat > "$TMPDIR/seams-$(id -u)/old340.json" <<JSON
+{"version": 2, "session": "old340", "started": 1790954127.286871, "seq": 3, "declarations": [{"skill": "matt-pocock-workflow:implement", "at": 1790954127.286873, "seq": 1, "agent": null}, {"skill": "tdd", "at": 1790954127.37248, "seq": 3, "agent": "b1"}], "changes": [{"tool": "Edit", "path": "$PROJ/src/a.ts", "doc": false, "at": 1790954127.324008, "seq": 2}], "verified_at": null, "verified_seq": 0, "expanded": [{"prompt_id": "q2", "skill": null}], "request_prompt": "q1"}
+JSON
+printf '{"version": 7, "declarations": "all"}' > "$TMPDIR/seams-$(id -u)/odd.json"
+OUT=$(in_old old340 UserPromptSubmit '"prompt_id":"q2","prompt":"now make the coupon field required"' | hook user-prompt-submit)
+[[ -z "$OUT" ]] || fail "the prompt hook should add nothing over a 3.4.0 ledger: $OUT"
+OUT=$(in_old old340 PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PROJ/src/b.ts\",\"old_string\":\"a\",\"new_string\":\"b\"}" | hook pre-tool-use)
+[[ -z "$OUT" ]] || fail "a 3.4.0 ledger's route should last through a typed reply: $OUT"
+OUT=$(in_old old340 Stop '"stop_hook_active":false' | hook stop); asks "$OUT" && grep -q "src/b.ts" <<< "$OUT" \
+  || fail "the done-check should count the change made over a 3.4.0 ledger: $OUT"
+OUT=$(in_old odd UserPromptSubmit '"prompt_id":"q1","prompt":"now the label"' | hook user-prompt-submit 2>&1) && [[ -z "$OUT" ]] \
+  || fail "a ledger of an unknown shape should not fail the prompt hook: $OUT"
+OUT=$(in_old odd PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PROJ/src/b.ts\",\"old_string\":\"a\",\"new_string\":\"b\"}" | hook pre-tool-use 2>&1)
+denied "$OUT" && ! grep -q Traceback <<< "$OUT" || fail "a ledger of an unknown shape should read as empty, refused for want of a route: $OUT"
+in_old odd PostToolUse '"tool_name":"Skill","tool_input":{"skill":"tdd"},"tool_response":{}' | hook post-tool-use
+OUT=$(in_old odd PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PROJ/src/b.ts\",\"old_string\":\"a\",\"new_string\":\"b\"}" | hook pre-tool-use)
+[[ -z "$OUT" ]] || fail "a skill invoked over a ledger of an unknown shape should open the gate: $OUT"
+
 # 10. The done-check: a turn that changed code cannot end until verification ran; once per turn. It asks as
 # Stop hook feedback, which keeps the turn going as a block does, without Claude Code's hook-error label.
 prompt "change the label"; post_skill "tdd"
@@ -215,7 +220,7 @@ OUT=$(stop false); [[ -z "$OUT" ]] || fail "a commit after verification should n
 pre_tool() { ev PreToolUse "\"tool_name\":\"$1\",\"tool_input\":$2${3:+,$3}" | hook pre-tool-use; }
 WATCH='{"command":"tail -f server.log | tee src/copy.txt","description":"copy","timeout_ms":300000}'
 REMOVE='{"command":"Remove-Item src -Recurse","description":"clean"}'
-prompt "watch the server"
+start clear
 OUT=$(pre_tool Monitor "$WATCH"); denied "$OUT" || fail "a Monitor watch writing to the project should be denied: $OUT"
 grep -q 'a shell command (`tee`)' <<< "$OUT" || fail "the refusal should name the watch's label: $OUT"
 OUT=$(pre_tool Monitor '{"command":"tail -f server.log | grep --line-buffered ERROR","description":"errors","timeout_ms":300000}')

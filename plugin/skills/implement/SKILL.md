@@ -23,8 +23,6 @@ Before reading anything, confirm which spec, ticket or agreed design you're buil
 
 Then note the starting point for the review's fixed point: the branch and HEAD from the repository facts (in a new worktree, its own), and the base branch.
 
-An answer typed, not picked, starts a new request: when it continues this ticket, invoke `matt-pocock-workflow:implement` again before the next change.
-
 ## Progress file
 
 The feature's progress file, `.scratch/<feature>/progress.md` beside its spec, lets a fresh context continue this ticket. Read its format in `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` before the first write, and create the file if the feature has none. Keep it current at each step below, with `Updated` set to today, and stage it by name with each of the ticket's commits. Decisions and pointers only: never a secret, a credential, a token or personal data.

@@ -36,7 +36,7 @@ The rest of the frontier stays in your design tree until its turn; the count in 
 The grill's record is the feature's progress file, `.scratch/<feature>/progress.md` at the repository root. Read its format in `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` before the first write.
 
 - Create it at the first settled decision: `Status: active`, `Stage: designing`, `Next` saying what the grill asks next, `Updated` today.
-- After each answered round, before asking the next, update it: the answers into Decisions, the frontier into Open questions, the facts worth keeping into Facts, then `Next` and `Updated`. An answer typed as a message, rather than picked in AskUserQuestion, starts a new request, and the Seams gate refuses the update until a process skill is invoked for it: when the message continues this grill, invoke `matt-pocock-workflow:grill` again before the update.
+- After each answered round, before asking the next, update it: the answers into Decisions, the frontier into Open questions, the facts worth keeping into Facts, then `Next` and `Updated`.
 - Decisions and pointers only: never a secret, a credential, a token or personal data.
 
 ## Resuming
