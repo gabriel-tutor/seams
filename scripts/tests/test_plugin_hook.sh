@@ -187,32 +187,6 @@ for H in "$MP_HOME" "$PARTIAL_HOME" "$BARE_HOME"; do
   done
 done
 
-# Guard: with a resume note of the longest kind (four active files whose fields run past their caps, in a
-# repository with a long path), what follows the bootstrap stays under 1,500 characters, so the injection
-# stays within the bootstrap's cap plus the note's, far under Claude Code's 10,000-character hook limit.
-BIG="$HOMES/$(printf '%0*d' 150 0 | tr 0 b)"; mkdir -p "$BIG"; git -C "$BIG" init -q
-for n in 1 2 3 4; do
-  mkdir -p "$BIG/.scratch/feature-$n-$(printf '%0*d' 50 0 | tr 0 f)"
-  printf 'Status: active\nStage: %s\nNext: %s\nUpdated: 2026-09-2%s\nTicket: %s\n' "$(printf '%0*d' 300 0 | tr 0 s)" \
-    "$(printf 'word %.0s' $(seq 100))" "$n" "$(printf '%0*d' 300 0 | tr 0 t)" \
-    > "$BIG/.scratch/feature-$n-$(printf '%0*d' 50 0 | tr 0 f)/progress.md"
-done
-for H in "$MP_HOME" "$PARTIAL_HOME"; do
-  OUT=$(printf '{"source":"compact","cwd":"%s"}' "$BIG" | HOME="$H" CLAUDE_PLUGIN_ROOT="$ROOT120" "$REPO/plugin/hooks/session-start")
-  python3 - "$OUT" <<'PY' || fail "the injection with the longest note is over its caps (HOME=$H)"
-import json, sys
-context = json.loads(sys.argv[1])["hookSpecificOutput"]["additionalContext"]
-at = context.index("\n\n## Work in progress")
-bootstrap, note = context[:at], context[at:]
-entries = [l for l in note.splitlines() if l.startswith("- ")]
-assert entries, "no entry fits"
-assert len(bootstrap.encode()) <= 2900, f"bootstrap {len(bootstrap.encode())} bytes"
-assert len(note) < 1500, f"note {len(note)} characters"
-assert len(context) <= 2900 + 1500, f"injection {len(context)} characters"
-print(f"  {len(bootstrap.encode())} bytes of bootstrap + {len(note)} characters of note ({len(entries)} of 4 entries) = {len(context)} characters")
-PY
-done
-
 # The bootstrap injects even when the gate module is missing beside the hook (the ledger is
 # skipped, the traceback goes to stderr, the context still comes out).
 LONE="$TMP/lone"; mkdir -p "$LONE/hooks"; cp -R "$FIX/skills" "$LONE/skills"; cp "$HOOK" "$LONE/hooks/session-start"
@@ -580,26 +554,39 @@ E=$(entries_of "$(out_field additionalContext <<< "$(batch_out startup "$RREPO" 
 [[ "$E" == "- pr-review batch: stage 2 pull requests: 2 pinned, updated "*"; next: Continue it with pr-review on pull requests 12 and 13 of acme/shop: 2 of 2 unfinished. File: $BT_REAL/seams-pr-review/progress-"*".md" ]] \
   || fail "the batch evidence.py wrote should be listed: $E"
 
-# Guard: three features with fields past their caps and a batch whose fields run past them too, in a repository with a
-# long path: the note stays under 1,500 characters, entries whole or left out.
-BIGB="$HOMES/$(printf '%0*d' 150 0 | tr 0 c)"; mkdir -p "$BIGB"; git -C "$BIGB" init -q
-for n in 1 2 3; do
-  mkdir -p "$BIGB/.scratch/feature-$n-$(printf '%0*d' 50 0 | tr 0 f)"
+# Guard: the longest note, from a cache-length plugin path, in a repository with a long path whose four features'
+# fields run past their caps, with and without a batch whose fields run past them too (the newest entry): what follows
+# the bootstrap stays under 1,500 characters, entries whole or left out, so the injection stays within the bootstrap's
+# cap plus the note's, far under Claude Code's 10,000-character hook limit.
+BIG="$HOMES/$(printf '%0*d' 150 0 | tr 0 b)"; mkdir -p "$BIG"; git -C "$BIG" init -q
+for n in 1 2 3 4; do
+  mkdir -p "$BIG/.scratch/feature-$n-$(printf '%0*d' 50 0 | tr 0 f)"
   printf 'Status: active\nStage: %s\nNext: %s\nUpdated: 2026-09-2%s\nTicket: %s\n' "$(printf '%0*d' 300 0 | tr 0 s)" \
     "$(printf 'word %.0s' $(seq 100))" "$n" "$(printf '%0*d' 300 0 | tr 0 t)" \
-    > "$BIGB/.scratch/feature-$n-$(printf '%0*d' 50 0 | tr 0 f)/progress.md"
+    > "$BIG/.scratch/feature-$n-$(printf '%0*d' 50 0 | tr 0 f)/progress.md"
 done
 BT_BIG="$TMP/batch-tmp-big/$(printf '%0*d' 60 0 | tr 0 d)"; mkdir -p "$BT_BIG"
-batch "$BT_BIG" "$BIGB" active 2026-09-29T10:00 "$(printf '%0*d' 300 0 | tr 0 s)" "$(printf 'word %.0s' $(seq 100))" \
+batch "$BT_BIG" "$BIG" active 2026-09-29T10:00 "$(printf '%0*d' 300 0 | tr 0 s)" "$(printf 'word %.0s' $(seq 100))" \
   "progress-$(printf '%0*d' 40 0 | tr 0 r)-1a2b3c4d.md"
-python3 - "$(batch_out compact "$BIGB" "$BT_BIG")" <<'PY' || fail "the note with a batch is over its cap"
+NO_BATCH="$TMP/batch-tmp-none"; mkdir -p "$NO_BATCH"
+for T in "$BT_BIG" "$NO_BATCH"; do
+  for H in "$MP_HOME" "$PARTIAL_HOME"; do
+    OUT=$(printf '{"source":"compact","cwd":"%s"}' "$BIG" | TMPDIR="$T" HOME="$H" CLAUDE_PLUGIN_ROOT="$ROOT120" "$REPO/plugin/hooks/session-start")
+    python3 - "$OUT" "$([[ $T == "$BT_BIG" ]] && echo batch)" <<'PY' || fail "the injection with the longest note is over its caps (HOME=$H TMPDIR=$T)"
 import json, sys
-context = json.loads(sys.argv[1])["hookSpecificOutput"]["additionalContext"]
-note = context[context.index("\n\n## Work in progress"):]
+context, batch = json.loads(sys.argv[1])["hookSpecificOutput"]["additionalContext"], sys.argv[2]
+at = context.index("\n\n## Work in progress")
+bootstrap, note = context[:at], context[at:]
 entries = [l for l in note.splitlines() if l.startswith("- ")]
-assert entries and entries[0].startswith("- pr-review batch: "), entries[:1]
+assert entries, "no entry fits"
+assert entries[0].startswith("- pr-review batch: ") == bool(batch), entries[:1]
+assert len(bootstrap.encode()) <= 2900, f"bootstrap {len(bootstrap.encode())} bytes"
 assert len(note) < 1500, f"note {len(note)} characters"
-print(f"  a note with a batch: {len(note)} characters ({len(entries)} of 4 entries)")
+assert len(context) <= 2900 + 1500, f"injection {len(context)} characters"
+print(f"  {len(bootstrap.encode())} bytes of bootstrap + {len(note)} characters of note{' with a batch' if batch else ''}"
+      f" ({len(entries)} of {5 if batch else 4} entries) = {len(context)} characters")
 PY
+  done
+done
 
 echo "test_plugin_hook: OK"

@@ -41,6 +41,16 @@ def gone(pid: int, within: float = 5.0) -> bool:
     return False
 
 
+def none_running(mark: str, within: float = 5.0) -> bool:
+    """Whether no process has `mark` among its arguments (polled, bounded)."""
+    deadline = time.monotonic() + within
+    while time.monotonic() < deadline:
+        if mark not in subprocess.run(["ps", "-ww", "-eo", "args"], capture_output=True, text=True).stdout:
+            return True
+        time.sleep(0.05)
+    return False
+
+
 class SuiteRunnerTest(unittest.TestCase):
 
     def setUp(self):
@@ -122,14 +132,16 @@ class SuiteRunnerTest(unittest.TestCase):
 
     def test_a_suite_that_hangs_is_stopped_at_the_budget_and_fails_the_run(self):
         # A hang must not hang the run: on the Mac it would never end, and in CI it would run until the job's timeout.
+        # The hanging process is found by a mark in its arguments, so a suite stopped before it even started passes too.
+        mark = self.tmp / "hang-mark"
         started = time.monotonic()
-        code, out = run("--budget", "1", "--suite", f"hang=echo $$ > {self.tmp}/pid; exec sleep 30",
+        code, out = run("--budget", "0.5", "--suite", f"hang=exec \"$PYTHON\" -c 'import time; time.sleep(30)' {mark}",
                         "--suite", "quick=true", timeout=30)
         self.assertEqual(code, 1, out)
         self.assertLess(time.monotonic() - started, 10, out)
         self.assertRegex(out, r"STOPPED\s+hang\b")
         self.assertIn("over budget", out)
-        self.assertTrue(gone(int((self.tmp / "pid").read_text())), "the hanging suite is still running")
+        self.assertTrue(none_running(str(mark)), "the hanging suite is still running")
 
     def test_a_stopped_run_stops_its_suites(self):
         proc = subprocess.Popen(["bash", str(RUNNER), "--suite", f"long=echo $$ > {self.tmp}/pid; exec sleep 30"],
