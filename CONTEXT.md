@@ -25,7 +25,7 @@ The hook that refuses any change to the project until a declaration has routed t
 _Avoid_: guard, blocker, permission
 
 **Ledger**:
-The per-session record of declarations and changes that the gate and the done-check read, and of the skills a typed prompt expanded to, until that prompt starts its request.
+The per-session record of declarations and changes that the gate and the done-check read, and of the skills a typed prompt expanded to, until that prompt starts its request. The hooks keep it; a tool call that writes it changes the project.
 _Avoid_: state file, cache, log
 
 **Read-only agent**:

@@ -160,10 +160,31 @@ def _safe_name(session_id: str) -> str:
 
 
 def ledger_root(root: str | None = None) -> str:
-    """The ledger directory: per user, the tmux convention (`/tmp/tmux-1000`). On a shared
-    Linux `/tmp` one directory for everyone would belong to whoever's session came first, and
-    the next user's chmod would raise EPERM, failing their gate open."""
-    return root or os.path.join(temp_dir(), f"seams-{os.getuid()}")
+    """The ledger directory: this user's `~/.local/state/seams` (home_state_dir), outside the temp and Claude config
+    directories. A tool call writes the temp directory without a declaration, and an editor tool the config directory,
+    so a ledger in either could be forged; the gate counts a write to it, or to a directory that holds it, as a change
+    (seams-revamp ticket 10). Where the home directory cannot hold it, the temp directory's `seams-<uid>`, per user as
+    tmux's `/tmp/tmux-1000` (on a shared Linux `/tmp` one directory for everyone would belong to whoever's session came
+    first, and the next user's chmod would raise EPERM, failing their gate open); there the gate refuses a write into
+    the ledger, not one into the temp directory that holds it."""
+    return root or home_state_dir() or os.path.join(temp_dir(), f"seams-{os.getuid()}")
+
+
+@lru_cache(maxsize=None)
+def home_state_dir() -> str | None:
+    """`~/.local/state/seams` when this user can make or write it (its nearest existing ancestor is a directory they may
+    write in, which a sandbox's denial also answers), or None, as for a home that is no absolute path. Nothing is
+    created here: the first save does that. Kept for the process, so each hook loads, saves and guards one place."""
+    try:
+        home = os.path.expanduser("~")
+        if not os.path.isabs(home):
+            return None
+        path = existing = os.path.join(home, ".local", "state", "seams")
+        while not os.path.lexists(existing):
+            existing = os.path.dirname(existing)
+        return path if os.path.isdir(existing) and os.access(existing, os.W_OK | os.X_OK) else None
+    except (OSError, ValueError):
+        return None
 
 
 def ledger_path(session_id: str, root: str | None = None) -> str:
@@ -238,7 +259,8 @@ def add_declaration(ledger: dict, skill: str, agent_id: str | None = None, promp
 
 def _stays(declaration: object, owner: str | None, prompt_id: object) -> bool:
     """Whether an earlier declaration stays beside a new one of `owner`'s: another owner's does, and so does one the
-    same typed prompt made. A damaged entry counts as the main conversation's, as declared_for reads it."""
+    same typed prompt made. A damaged entry, which opens nothing, counts as the main conversation's, whose next route
+    drops it."""
     if (subagent_of(declaration) if isinstance(declaration, dict) else None) != owner:
         return True
     return bool(prompt_id) and isinstance(declaration, dict) and declaration.get("prompt_id") == prompt_id
@@ -254,14 +276,11 @@ def subagent_of(declaration: dict) -> str | None:
 def declared_for(ledger: dict, agent_id: object = None) -> bool:
     """Whether a call is covered: by the main conversation's declarations, which cover every call, a subagent's
     included, or by the calling subagent's own, which cover it alone. So a parallel run's builder never opens the
-    gate for the main conversation (user story 48). A ledger whose declarations are not a list keeps the old rule."""
-    declarations = ledger.get("declarations")
-    if not isinstance(declarations, list):
-        return bool(declarations)
+    gate for the main conversation (user story 48). Declarations that are not a list, and entries that are not objects,
+    open nothing: a damaged ledger is never a route."""
     caller = agent_id if isinstance(agent_id, str) and agent_id else None
-    for d in declarations:
-        owner = subagent_of(d) if isinstance(d, dict) else None
-        if owner is None or owner == caller:
+    for d in _listed(ledger, "declarations"):
+        if isinstance(d, dict) and subagent_of(d) in (None, caller):
             return True
     return False
 

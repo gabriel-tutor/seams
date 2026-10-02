@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The gate hooks, fed JSON on stdin the way Claude Code feeds them. Runs in a private TMPDIR so the
+# The gate hooks, fed JSON on stdin the way Claude Code feeds them. Runs in a private TMPDIR and HOME so the
 # ledger never touches the real one. PYTHON=/usr/bin/python3 runs them under another interpreter.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -8,6 +8,7 @@ PY="${PYTHON:-python3}"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 export TMPDIR="$TMP/tmpdir"; mkdir -p "$TMPDIR"
 export CLAUDE_CONFIG_DIR="$TMP/config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+export HOME="$TMP/home"; mkdir -p "$HOME"
 PROJ="$TMP/proj"; mkdir -p "$PROJ/src"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -26,7 +27,7 @@ denied()  { grep -q '"permissionDecision": *"deny"' <<< "$1"; }
 # The done-check asks as hook feedback, never as a block: Claude Code shows a block as a hook error.
 asks()    { grep -q '"hookEventName": *"Stop"' <<< "$1" && grep -q '"additionalContext"' <<< "$1" \
               && ! grep -q '"decision"' <<< "$1"; }
-LEDGER="$TMPDIR/seams-$(id -u)/s1.json"
+LEDGERS="$HOME/.local/state/seams"; LEDGER="$LEDGERS/s1.json"
 
 for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit session-start stop; do
   [[ -x "$HOOKS/$h" ]] || fail "hook missing or not executable: $h"
@@ -106,7 +107,7 @@ OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "startup should reset th
 
 # 4. Old ledgers are swept at session start; the session's own is kept.
 post_skill "tdd"
-OLD="$TMPDIR/seams-$(id -u)/old-session.json"; cp "$LEDGER" "$OLD"; touch -t 202001010000 "$OLD"
+OLD="$LEDGERS/old-session.json"; cp "$LEDGER" "$OLD"; touch -t 202001010000 "$OLD"
 start compact
 [[ ! -e "$OLD" ]] || fail "an eight-day-old ledger should be removed"
 [[ -e "$LEDGER" ]] || fail "the live ledger should be kept"
@@ -115,10 +116,10 @@ start compact
 # path this suite's) is read, and its route lasts through a typed reply; a ledger of a shape the gate does not know reads
 # as empty and never fails a hook.
 in_old() { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"%s",%s}' "$1" "$PROJ" "$2" "$3"; }
-cat > "$TMPDIR/seams-$(id -u)/old340.json" <<JSON
+cat > "$LEDGERS/old340.json" <<JSON
 {"version": 2, "session": "old340", "started": 1790954127.286871, "seq": 3, "declarations": [{"skill": "matt-pocock-workflow:implement", "at": 1790954127.286873, "seq": 1, "agent": null}, {"skill": "tdd", "at": 1790954127.37248, "seq": 3, "agent": "b1"}], "changes": [{"tool": "Edit", "path": "$PROJ/src/a.ts", "doc": false, "at": 1790954127.324008, "seq": 2}], "verified_at": null, "verified_seq": 0, "expanded": [{"prompt_id": "q2", "skill": null}], "request_prompt": "q1"}
 JSON
-printf '{"version": 7, "declarations": "all"}' > "$TMPDIR/seams-$(id -u)/odd.json"
+printf '{"version": 7, "declarations": "all"}' > "$LEDGERS/odd.json"
 OUT=$(in_old old340 UserPromptSubmit '"prompt_id":"q2","prompt":"now make the coupon field required"' | hook user-prompt-submit)
 [[ -z "$OUT" ]] || fail "the prompt hook should add nothing over a 3.4.0 ledger: $OUT"
 OUT=$(in_old old340 PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$PROJ/src/b.ts\",\"old_string\":\"a\",\"new_string\":\"b\"}" | hook pre-tool-use)
@@ -267,7 +268,7 @@ ev_in()    { printf '{"session_id":"%s","cwd":"%s","hook_event_name":"%s",%s}' "
 skill_in() { ev_in "$1" PostToolUse "\"tool_name\":\"Skill\",\"tool_input\":{\"skill\":\"$2\"},\"tool_response\":{}" | hook post-tool-use; }
 typed_in() { ev_in "$1" UserPromptExpansion "\"prompt_id\":\"f1\",\"expansion_type\":\"${3:-slash_command}\",\"command_name\":\"$2\",\"command_source\":\"plugin\",\"command_args\":\"\",\"prompt\":\"/$2\"" | hook user-prompt-expansion; }
 facts_of() { "$PY" -c 'import json, sys; o = json.loads(sys.stdin.read() or "{}").get("hookSpecificOutput") or {}; print(o.get("hookEventName", "")); print(o.get("additionalContext", ""))'; }
-ledger_of() { cat "$TMPDIR/seams-$(id -u)/$1.json" 2>/dev/null; }
+ledger_of() { cat "$LEDGERS/$1.json" 2>/dev/null; }
 fake_git() { mkdir -p "$TMP/git-$1"; printf '#!/bin/sh\n%s\n' "$2" > "$TMP/git-$1/git"; chmod +x "$TMP/git-$1/git"; echo "$TMP/git-$1"; }
 g() { git -C "$1" -c user.email=t@example.com -c user.name=t -c init.defaultBranch=main "${@:2}"; }
 PYABS=$(command -v "$PY"); REALGIT=$(command -v git)
