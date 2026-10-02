@@ -7,18 +7,18 @@ description: Use when a spec exists and needs splitting into tickets
 
 Break a spec, a plan or the current conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it, published to the configured issue tracker.
 
-**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
+**Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
 
 ## Gate
 
-The source is the spec that was just published, or the one the user names (a spec path, an issue, or the conversation). Start at once, with no opening question, when the flow reached this skill from a confirmed design (the bootstrap's flow rule: `matt-pocock-workflow:to-spec` just published the spec, or the progress file records the confirmed design and names the split next), or when the user's last message asks for tickets, says yes to an offer to write them, or asks to build a spec they call agreed. Otherwise confirm the source and ask "Split it into tickets now?" with AskUserQuestion, recommended answer first, and wait for a yes.
+The source is the spec that was just published, or the one the user names (a spec path, an issue, or the conversation). Start at once, with no opening question, when the flow reached this skill from a confirmed design (shared rules: The continuous flow), or when the user's last message asks for tickets, says yes to an offer to write them, or asks to build a spec they call agreed. Otherwise confirm the source and ask "Split it into tickets now?" with AskUserQuestion, recommended answer first, and wait for a yes.
 
 The issue tracker and the triage labels should already be in context (`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`). If the repo has neither, offer `matt-pocock-workflow:foundations` before going on; its `/setup-matt-pocock-skills` step, which only the user can run, writes them.
 
 ## Process
 
 1. **Gather context.** Work from whatever is already in the conversation. If the user passes a reference (a spec path, an issue number or URL), fetch it through the issue-tracker workflow and read its full body and comments.
-2. **Explore the codebase**, if you haven't already, to understand the current state of the code. Ticket titles and descriptions use the project's domain glossary (`CONTEXT.md`) and respect the ADRs in the area you're touching. Look for opportunities to prefactor the code so the implementation is easier: "make the change easy, then make the easy change."
+2. **Explore the codebase**, if you haven't already, to understand the current state of the code (shared rules: Process by size and risk). Ticket titles and descriptions use the project's domain glossary (`CONTEXT.md`) and respect the ADRs in the area you're touching. Look for opportunities to prefactor the code so the implementation is easier: "make the change easy, then make the easy change."
 3. **Draft vertical slices.** Break the work into **tracer bullet** tickets:
    - Each slice cuts a narrow but COMPLETE path through every layer (schema, API, UI, tests): vertical, NOT a horizontal slice of one layer.
    - A completed slice is demoable or verifiable on its own.
@@ -41,7 +41,7 @@ The issue tracker and the triage labels should already be in context (`docs/agen
    Every ticket gets a **How to verify** line after its acceptance criteria: the command, or the short manual steps, that prove those criteria are met (`npm test -- coupons`, or "run `npm start`, add two items, apply SAVE10, the total drops 10%"). Reuse the repo's real scripts; if the repo has no test or run command yet, say so in the line instead of inventing one.
 
    Work the **frontier**: any ticket whose blockers are all done. For a purely linear chain that means top to bottom. Do NOT close or modify any parent issue.
-6. **Progress file.** Record the tickets in the feature's progress file, `.scratch/<feature>/progress.md`, in the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` describes (read it before the first write): the ticket list under `## Tickets` (number, title, blocked by), and `Next` the first unblocked ticket, through `matt-pocock-workflow:implement`, with `Updated` today. Decisions and pointers only: never a secret, a credential, a token or personal data. Then commit the tickets (when they are files) and the progress file by name; the approval covers that commit.
+6. **Progress file.** Record the tickets in the feature's progress file, `.scratch/<feature>/progress.md`, in the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` describes: the ticket list under `## Tickets` (number, title, blocked by), and `Next` the first unblocked ticket, through `matt-pocock-workflow:implement`, with `Updated` today. Then commit the tickets (when they are files) and the progress file by name; the approval covers that commit.
 
 ## Ticket templates
 

@@ -33,7 +33,7 @@ The header is the `Key: value` lines before the first `##` heading, one line eac
 | Key | Value |
 | --- | --- |
 | `Status` | `active` while work remains; `done` once the feature is finished, which takes it out of the resume note |
-| `Stage` | `designing` while the grill runs, then the stage reached: designed, built, integrated, release-ready, deployed or operated |
+| `Stage` | `designing` while the grill runs, then the stage reached (shared rules: Stages) |
 | `Next` | the next step, in one sentence |
 | `Updated` | the date of the last change, `YYYY-MM-DD`, which a time may follow (`2026-09-25T10:00`); the note lists the newest three |
 | `Ticket` | optional: the ticket in progress, by its number or id (`05`, `#123`), or the tickets of a parallel run (`03, 05, 07`) |

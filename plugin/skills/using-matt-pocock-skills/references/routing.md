@@ -1,6 +1,6 @@
 # Routing reference
 
-Read this file when the bootstrap's table is not enough: the path is unclear, a phase has just ended, or the question is how Matt Pocock's skills fit together. The bootstrap's rules still apply.
+Read this file when the bootstrap's table is not enough: the path is unclear, a phase has just ended, or the question is how Matt Pocock's skills fit together. The bootstrap's rules still apply, and the shared rules are `rules.md` beside this file.
 
 ## Matt Pocock's main flow (from `ask-matt`)
 
@@ -9,24 +9,14 @@ Read this file when the bootstrap's table is not enough: the path is unclear, a 
 3. **One session or several?**
    - **One:** run `implement` right here.
    - **Several:** run `to-spec`, then `to-tickets` (vertical slices with blocking edges), then `implement` one ticket at a time. Each ticket ends with a handover that says whether to `/clear` before the next.
-4. **What `implement` does.** It runs `tdd` one slice at a time at the agreed seams, then typecheck, the full suite, a commit, the review scaled to risk (`code-review` and a correctness review, and a security review on a sensitive change) on the candidate (the diff from the fixed point to HEAD), the definition of done, and a handover naming the stage reached.
+4. **What `implement` does.** It runs `tdd` one slice at a time at the agreed seams, then typecheck, the full suite, a commit, the reviews its row names (shared rules: Process by size and risk) on the candidate (the diff from the fixed point to HEAD), the definition of done, and a handover naming the stage reached.
 5. **Past the merge.** `release` takes the integrated candidate to its target (readiness, a deploy behind an explicit yes, verification that the exact candidate runs, an operations handover). An outage goes to `incident`: contain and restore before diagnosis.
 
 Keep grill → spec → tickets in one context window. The spec and the tickets build on the grilling verbatim.
 
 ## The continuous flow
 
-Once the user confirms a design (the grill's last question, or a spec the user calls agreed), the flow runs on: each flow skill goes on to the next step its row names without offering it, and `to-spec`, `to-tickets` and `implement` start without an opening question. The flow reached a step when this conversation or the progress file shows the design confirmed and names that step next; a "continue" on it is the flow going on. Asked directly by the user, a skill starts at once, as before. The flow skips questions, never the record: each step still writes the progress file and commits it, so the file and the handovers show everything the flow did.
-
-It stops only at the real gates:
-
-- **The user's decisions:** the grill's questions, the seams when none were agreed, where to build when nothing settled it, the tickets' breakdown, the parallel offer, the readiness rows to close.
-- **Integrating a branch:** `finishing-a-development-branch`'s menu (merge locally, a pull request, or keep), and a discard only when the user asks for one in so many words.
-- **A push, a deploy, a publish:** the spec's and the tickets' publish, the push behind a pull request, and `release`'s questions: its opening one before readiness, whose rows can build, bill or reach a host, then each deploy's.
-- **Anything destructive:** discarding work, a force, deleting data, a branch or files that exist nowhere else.
-- **A paid run:** a cloud review (`ultra`), a billed eval or service.
-
-Each is asked with a question that names it, when it comes; an earlier general yes ("go all the way") covers none of them. A limit the user set ("just the spec for now") stops the flow there, and so does a ticket with an unmet row in its definition of done. So does a handover that says to `/clear` before the next step, since only the user can type `/clear`: the resume note then brings the step back, and a "continue" goes on.
+Once the user confirms a design, the flow runs on to the real gates (shared rules: The continuous flow).
 
 ## Greenfield
 
@@ -49,7 +39,7 @@ Run `/improve-codebase-architecture` (user-only) every few days. It reports deep
 
 The four skills from Superpowers (three copies, and `finishing-a-development-branch` adapted to record integration in the progress file), named with their prefix because the Superpowers originals share their names and are not declarations:
 
-- **Worktrees:** `matt-pocock-workflow:using-git-worktrees` when feature work needs isolation from the current workspace; `implement` offers it at its gate. A parallel run makes its own, one per ticket under `.claude/worktrees/`, from local HEAD (`implement`'s `references/parallel.md`).
+- **Worktrees:** `matt-pocock-workflow:using-git-worktrees` when feature work needs isolation from the current workspace; `implement` offers it at its gate, and a parallel run makes its own, one per ticket under `.claude/worktrees/` (shared rules: Worktrees).
 - **Review feedback:** `matt-pocock-workflow:receiving-code-review` before acting on any review finding: verify it against the code, then fix or push back with reasons.
 - **Verify** and **finish** are in the bootstrap: `matt-pocock-workflow:verification-before-completion` before any claim, `matt-pocock-workflow:finishing-a-development-branch` on a branch.
 
@@ -69,19 +59,12 @@ A phase ends when its work is done: the grilling, a ticket, or a review. At that
 
 Mid-phase there is no decision to make: continue, or split the remaining work into subagents.
 
-## Evidence
-
-Evidence belongs to a candidate. Evidence gathered on an unchanged candidate is reused, not re-run: two skills asking for the suite share one run, and `release` reuses what `implement`'s definition of done showed for the same SHA. Any change makes a new candidate: in a review-fix loop only the checks the fix affects re-run, and the definition of done then runs the full suite once on the final candidate, which `release` reuses for that SHA.
-
 ## Per-path notes
 
-- **TRIVIAL:** the `trivial` declaration carries the test of what is not trivial; no grill and no new tests. `matt-pocock-workflow:verification-before-completion` still applies before claiming it's done.
-- **SENSITIVE:** any size, on top of its size row. The design lens applies its security and failure axes to a sensitive change whatever the size; `code-review` and a security review (`/security-review`, or a `reviewer` agent where it can't run) are required, not offered.
-- **BUG:** show the ranked hypotheses before testing them. Write the regression test before the fix, at a seam that reproduces the real bug pattern. Offer the reviews (`code-review`, a correctness review) rather than running them.
-- **SMALL:** the grill has only a few questions, but it still settles the seams. Offer the reviews (`code-review`, a correctness review) rather than running them.
+- **Scouts, questions, reviews and checks** for each row (shared rules: Process by size and risk).
+- **BUG:** show the ranked hypotheses before testing them. Write the regression test before the fix, at a seam that reproduces the real bug pattern.
 - **FEATURE:** `implement` starts in a worktree via `matt-pocock-workflow:using-git-worktrees`. `code-review` uses the branch's merge-base as its fixed point.
 - **BIG:** each ticket is sized for one fresh context window. When all tickets are done, `matt-pocock-workflow:finishing-a-development-branch` integrates the work.
-- **RELEASE:** `release` deploys nothing without a yes that names the target, the environment and the candidate, every time; an earlier "go all the way" never covers a deploy or a publish.
 - **Standalone skills:**
   - `research`: a background agent that reads primary sources and writes a cited Markdown file.
   - `resolving-merge-conflicts`: use when already mid-conflict. Resolve by intent, and never `--abort`.

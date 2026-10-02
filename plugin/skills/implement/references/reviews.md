@@ -8,13 +8,7 @@ Read this when `implement`'s review starts, and read it again after a compaction
 
 ## Which reviews run
 
-| The change | Its reviews |
-| --- | --- |
-| Every build `implement` makes | `code-review` (Standards, Spec) and a correctness review |
-| Sensitive: auth, permissions, secrets, billing, migrations, infrastructure, CI or deploy configuration, a public API, anything destructive, or a ticket that says it is sensitive | a security review too, required |
-| Large: `git diff --shortstat <fixed-point>...HEAD` shows over 400 changed lines (insertions plus deletions) or over 15 files | `/simplify` too, offered and never run unasked |
-
-Start the reviewer agents in one message with `code-review`'s two subagents, each named by its axis in its description ("Correctness review", "Security review") and told the range, `<fixed-point>...HEAD`.
+Which reviews run is the change's row (shared rules: Process by size and risk), and a build through `implement` is at least a feature. Start the reviewer agents in one message with `code-review`'s two subagents, each named by its axis in its description ("Correctness review", "Security review") and told the range, `<fixed-point>...HEAD`.
 
 - **Correctness:** a `matt-pocock-workflow:reviewer` agent on the correctness axis. The bundled correctness review, `/review`, is out of Claude's reach: Matt Pocock's `code-review` takes its name, and the Skill tool answers "Unknown skill: review" (Claude Code 2.1.282).
 - **Security:** `/security-review`, through the Skill tool, when its range is this candidate's. It takes no range: it reviews from its merge-base with `origin/HEAD` to the working tree, uncommitted files included, so run it only when `git merge-base origin/HEAD HEAD` prints the fixed point. Otherwise, or when it fails to start, a `matt-pocock-workflow:reviewer` agent on the security axis of `<fixed-point>...HEAD`, for security findings only: that covers no `origin` remote, no `origin/HEAD`, and a merge-base older than the fixed point, as on a base branch ahead of its upstream.
@@ -24,5 +18,3 @@ Start the reviewer agents in one message with `code-review`'s two subagents, eac
 ## Findings
 
 Every finding, from any review, goes through `matt-pocock-workflow:receiving-code-review` before anything changes: verify it against the code first. Act only on correctness bugs and gaps against the ticket or spec. Anything else a reviewer suggests (a refactor, a style change, a feature nobody asked for, hardening the ticket didn't ask for) is reported with the reason it stays as it is, which is what the definition of done's Security row means by a finding left with a reason.
-
-These reviews run because `implement` builds features and tickets. A bounded change, or a bug fixed outside `implement`, is offered them instead (the routing reference).

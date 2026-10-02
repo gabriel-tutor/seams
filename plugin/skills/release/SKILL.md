@@ -7,9 +7,9 @@ description: Use when the user says ship, deploy, release, publish or go live, o
 
 Take an integrated candidate to its target and prove that exact candidate is what runs. Readiness first; a deploy only after a yes that names what is being deployed where; then verification, then the operations handover. Nothing here deploys, publishes or uploads before the Deploy step's yes.
 
-**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
+**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read as this skill starts. **Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
 
-**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of the status and the progress files. They are a snapshot: once git may have moved (a commit, a checkout, a new worktree, a resumed session), run git again, and look up yourself any fact the hook did not give.
+**Repository facts.** The Seams hook adds them as this skill starts (shared rules: Repository facts).
 
 ## Gate
 
@@ -29,7 +29,7 @@ Check every row and report one table: row, ready / unmet / not applicable, and t
 | --- | --- |
 | Target and environment | named (the gate's facts) and reachable: the platform's CLI or skill is installed and signed in. With no deploy target, this row is unmet: report "no deploy target" and ask for one |
 | Integrated candidate | the SHA is on the base branch and `git status --short` is empty; it is the candidate `implement`'s definition of done covered, after its review and fixes, or that candidate as `finishing-a-development-branch` integrated and recorded it, whose suite then runs here |
-| Suite green on that SHA | the full suite ran on the candidate with its output shown; evidence gathered on the same SHA by `matt-pocock-workflow:implement` is reused, not re-run |
+| Suite green on that SHA | the full suite ran on the candidate with its output shown (shared rules: Evidence) |
 | Artifact built and identified | built with the repo's own build command and named by version and SHA (image tag, package version, bundle, installer) |
 | Config and variables per environment | every variable the code reads is named per environment (`.env.example`, the platform's config), secrets live in the platform's store, none in the artifact or the repo |
 | Migration and restore | when data changes shape: an expand–contract plan, the migration rehearsed on a copy, and the restore rehearsed; otherwise not applicable |
@@ -43,7 +43,7 @@ Then ask with AskUserQuestion, recommended answer first: which unmet rows to clo
 
 1. **The question.** Ask with AskUserQuestion, **every time**: "Deploy candidate `<sha>` to `<target>`, environment `<environment>`?" A yes given earlier, to `implement`, to the readiness question, or as "ship it" or "go all the way", never covers a deploy; the question names the target, the environment and the candidate, and the deploy waits for that yes.
 2. **Staged environment first.** When the target has a staged environment (staging, a preview deployment, an internal or test track, a beta channel, a prerelease tag), deploy there first and run the Verify step against it. Production, or the public listing, gets its own question and its own yes after the staged verification passed.
-3. **Through the platform's own tooling.** Use the platform's skill when one is installed (for example `vercel:deploy`, `expo:eas-app-stores`, `wrangler`), otherwise its CLI. Never a hand-rolled upload when the platform has a CLI.
+3. **Through the platform's own tooling.** Use the platform's skill when one is installed (for example `vercel:deploy`, `expo:eas-app-stores`, `wrangler`), otherwise its CLI, as its docs say (shared rules: Official docs). Never a hand-rolled upload when the platform has a CLI.
 4. **Person-only steps** (a store console upload, a review submission, a 2FA or OTP prompt, a signing credential) are handed to the user as exact steps in order, and the release waits for them. Steps that only a person can take are never worked around.
 
 ## Verify
@@ -57,14 +57,14 @@ Against the environment just deployed, with the output shown:
 
 ## Operations handover
 
-First record the release in the feature's progress file, when the work has one (`.scratch/<feature>/progress.md`, in the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` describes; read it before the first write): `Stage` the stage reached below and `Updated` today; `Status: done` once the candidate is verified in the last environment the spec's Release section names, and until then `Next` says what is left (an unmet row, the production deploy). Commit it by name. Decisions and pointers only: never a secret, a credential, a token or personal data.
+First record the release in the feature's progress file, when the work has one (`.scratch/<feature>/progress.md`, in the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` describes): `Stage` the stage reached below and `Updated` today; `Status: done` once the candidate is verified in the last environment the spec's Release section names, and until then `Next` says what is left (an unmet row, the production deploy). Commit it by name.
 
 The closing message, in this order:
 
 1. **Monitoring and alert owner.** Where errors and health are watched, and the person an alert reaches.
 2. **Runbook.** Where the runbook is. When there is none, say so and offer `matt-pocock-workflow:foundations`, whose offer writes the skeleton.
 3. **Follow-ups.** Tickets for anything deferred: an unmet row closed provisionally, a check marked not applicable that should exist, the production deploy still to come.
-4. **Stage reached.** One of the six: designed, built, integrated, release-ready, deployed, operated. *Release-ready* once every readiness row is ready; *deployed* to the named environment once Verify passed there; *operated* once monitoring, the alert owner and the runbook exist for it. A release that stopped at readiness leaves the candidate at the stage it arrived with (*integrated* on the base branch, *built* on a branch) and says why it stopped.
+4. **Stage reached** (shared rules: Stages). A release that stopped at readiness leaves the candidate at the stage it arrived with, and says why it stopped.
 
 ## Targets
 

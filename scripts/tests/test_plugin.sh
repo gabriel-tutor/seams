@@ -17,23 +17,30 @@ last_line_says() {   # $1 = skill name, $2 = file, $3... = phrases its last non-
 }
 section() { awk -v h="## $1" 'index($0, h) == 1 {p=1; next} /^## /{p=0} p' "$2"; }   # $1 = heading text, $2 = file: that section's body
 plugin_guards() {   # $1 = a plugin directory: a line for each SKILL.md over its bound (11,000 bytes; pr-review 11,200), each
-                    # reference over 16,000 bytes, and each model or effort pin
+                    # reference over 16,000 bytes, each effort pin, and each model pin but scout's `sonnet`
   python3 - "$1" <<'PY'
 import pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 skills = sorted(root.glob("skills/*/SKILL.md"))
+agents = sorted(root.glob("agents/**/*.md"))
 bounds = {"pr-review": 11200}   # its core measures about 3.5k tokens on invoke (.scratch/pr-review-invocable decision 10)
+models = {"scout": "sonnet"}    # seams-revamp decision 17: fact-finding on Sonnet; every other agent, and every skill, on the session's
 sized = [(path, bounds.get(path.parent.name, 11000)) for path in skills]
 sized += [(path, 16000) for path in sorted(root.glob("skills/*/references/*.md"))]
 for path, bound in sized:
     if path.stat().st_size > bound:
         print(f"{path.relative_to(root)} is {path.stat().st_size} bytes, over the {bound:,}-byte bound")
-for path in skills + sorted(root.glob("agents/**/*.md")):
+for path in skills + agents:
     front = re.match(r"---\n(.*?)\n---\n", path.read_text(), re.S)
-    keys = {line.split(":", 1)[0].strip() for line in (front.group(1) if front else "").splitlines() if ":" in line and line[:1].isalpha()}
-    for key in ("model", "effort"):
-        if key in keys:
-            print(f"{path.relative_to(root)} sets {key}")
+    fields = {k.strip(): v.strip() for k, v in (line.split(":", 1) for line in (front.group(1) if front else "").splitlines()
+                                                if ":" in line and line[:1].isalpha())}
+    want = models.get(path.stem) if path in agents else None
+    if want and fields.get("model") != want:
+        print(f"{path.relative_to(root)} declares model {fields.get('model', 'none')}, expected {want}")
+    elif not want and "model" in fields:
+        print(f"{path.relative_to(root)} sets model")
+    if "effort" in fields:
+        print(f"{path.relative_to(root)} sets effort")
 PY
 }
 injected_commands() {   # $1 = a plugin directory: a line for each SKILL.md that injects a shell command
@@ -141,8 +148,9 @@ DRIFT=$(upstream_drift "$FIXTURE"); rm -rf "$FIXTURE"
 # The paths a skill gives Claude resolve: each one through ${CLAUDE_SKILL_DIR} or ${CLAUDE_PLUGIN_ROOT}, which Claude
 # Code fills in when the skill loads (to a file, or a directory before a glob or a <placeholder>), and each bare
 # references/<name>.md, which Claude reads beside the skill. Claude Code fills those two in only in a SKILL.md and its
-# allowed-tools, so no reference names a path through them. A fixture breaking each rule, beside pointers that hold,
-# shows the check catching what it is for.
+# allowed-tools, so no reference names a path through them. A pointer into the shared rules (seams-revamp ticket 07),
+# "(shared rules: Evidence)", names a section the rules have, so a step that sends Claude there finds what it needs. A
+# fixture breaking each rule, beside pointers that hold, shows the check catching what it is for.
 pointer_problems() {   # $1 = a plugin directory: a line for each pointer that does not resolve, or that is not filled in
   python3 - "$1" <<'PY'
 import pathlib, re, sys
@@ -160,33 +168,48 @@ for path in sorted(root.glob("skills/*/SKILL.md")):
 for path in sorted(root.glob("skills/*/references/*.md")):
     for var in sorted(set(var for var, _ in VARIABLE.findall(path.read_text()))):
         print(f"{path.relative_to(root)} names a path through ${{{var}}}, which Claude Code fills in only in a SKILL.md")
+RULES = root / "skills/using-matt-pocock-skills/references/rules.md"
+sections = set(re.findall(r"(?m)^## (.+?)\s*$", RULES.read_text())) if RULES.is_file() else set()
+for path in sorted(root.glob("skills/*/SKILL.md")) + sorted(root.glob("skills/*/references/*.md")):
+    for names in re.findall(r"\(shared rules: ([^)]+)\)", path.read_text()):
+        for section in names.split(", "):
+            if section not in sections:
+                print(f"{path.relative_to(root)} points at the shared rules' {section}, which rules.md has no section for")
 PY
 }
-PTR_FIX=$(mktemp -d); mkdir -p "$PTR_FIX"/skills/{a,b}/references "$PTR_FIX/skills/a/scripts" "$PTR_FIX/hooks"
+PTR_FIX=$(mktemp -d); mkdir -p "$PTR_FIX"/skills/{a,b,using-matt-pocock-skills}/references "$PTR_FIX/skills/a/scripts" "$PTR_FIX/hooks"
+printf '# Shared rules\n\n## Evidence\n\nx\n\n## Process by size and risk\n\nx\n' > "$PTR_FIX/skills/using-matt-pocock-skills/references/rules.md"
 printf -- '---\nname: a\ndescription: x\n---\n\n%s\n' \
   'Read `${CLAUDE_SKILL_DIR}/references/here.md`, then `${CLAUDE_SKILL_DIR}/references/missing.md`.' \
   'Shared: ${CLAUDE_PLUGIN_ROOT}/skills/b/references/gone.md and ${CLAUDE_PLUGIN_ROOT}/skills/b/references/there.md.' \
   'Pre-approved as `Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*)`; the hooks are in ${CLAUDE_PLUGIN_ROOT}/hooks/; see [it](${CLAUDE_SKILL_DIR}/references/here.md#top).' \
   'Beside it: `references/here.md` (next to this file), and `references/lost.md`.' \
   'Inside the references, `<skill-dir>` is `${CLAUDE_SKILL_DIR}`; a script runs as `${CLAUDE_SKILL_DIR}/scripts/<name>.py`.' \
+  'Reuse it (shared rules: Evidence), scaled (shared rules: Process by size and risk, Evidence), cited (shared rules: Docs).' \
   > "$PTR_FIX/skills/a/SKILL.md"
 printf 'Run `python3 ${CLAUDE_SKILL_DIR}/scripts/x.py`; here `${CLAUDE_SKILL_DIR}` stands for the skill.\n' > "$PTR_FIX/skills/a/references/here.md"
-printf 'See ${CLAUDE_PLUGIN_ROOT}/skills/a/SKILL.md.\n' > "$PTR_FIX/skills/b/references/there.md"
+printf 'See ${CLAUDE_PLUGIN_ROOT}/skills/a/SKILL.md (shared rules: Stages).\n' > "$PTR_FIX/skills/b/references/there.md"
 PTR_OUT=$(pointer_problems "$PTR_FIX"); rm -rf "$PTR_FIX"
 for want in "skills/a/SKILL.md points at \${CLAUDE_SKILL_DIR}/references/missing.md" \
   "skills/a/SKILL.md points at \${CLAUDE_PLUGIN_ROOT}/skills/b/references/gone.md" "skills/a/SKILL.md points at references/lost.md" \
   "skills/a/references/here.md names a path through \${CLAUDE_SKILL_DIR}" \
-  "skills/b/references/there.md names a path through \${CLAUDE_PLUGIN_ROOT}"; do
+  "skills/b/references/there.md names a path through \${CLAUDE_PLUGIN_ROOT}" \
+  "skills/a/SKILL.md points at the shared rules' Docs, which rules.md has no section for" \
+  "skills/b/references/there.md points at the shared rules' Stages, which rules.md has no section for"; do
   [[ $PTR_OUT == *"$want"* ]] || fail "the pointer check missed: $want (it said: $PTR_OUT)"
 done
-[[ $(wc -l <<< "$PTR_OUT") -eq 5 ]] || fail "the pointer check flagged a pointer that resolves: $PTR_OUT"
+[[ $(wc -l <<< "$PTR_OUT") -eq 7 ]] || fail "the pointer check flagged a pointer that resolves: $PTR_OUT"
 PTR_OUT=$(pointer_problems "$PLUGIN")
 [[ -z $PTR_OUT ]] || fail "$PTR_OUT"
 
 # Every skill stays whole in what compaction keeps of an invoked skill (lean-and-durable ticket 08): at most 11,000
-# bytes, about 4,000 tokens (the spec's bound, calibrated from `claude plugin details`). No skill or agent pins a model
-# or an effort level: a pin overrides the level the user chose, both ways, and a model that differs from the session's
-# costs a prompt-cache miss. A fixture that breaks each rule shows the guard catching what it is for.
+# bytes, about 4,000 tokens (the spec's bound, calibrated from `claude plugin details`). No skill or agent pins an effort
+# level, and no skill a model: a pin overrides the level the user chose, both ways, and a model that differs from the
+# session's costs a prompt-cache miss. The one model pin is scout's `sonnet` (seams-revamp decision 17): fact-finding runs
+# on Sonnet, which the alias makes Sonnet 5.5 on the Anthropic API from Claude Code 2.1.284 and the provider's own Sonnet
+# elsewhere (code.claude.com/docs/en/model-config, "Model aliases"; a full model ID would fail where a provider lacks
+# it); reviewer, where quality decides, keeps the session's model. A fixture that breaks each rule shows the guard
+# catching what it is for.
 GUARD_FIX=$(mktemp -d); mkdir -p "$GUARD_FIX"/skills/{big,at-bound,pinned} "$GUARD_FIX/agents" "$GUARD_FIX/skills/big/references"
 # A reference is read whole with the Read tool each time its step comes, and again after a compaction, which keeps none
 # of it: at most 16,000 bytes, about 5,800 tokens at the calibration above, with room over the largest
@@ -203,7 +226,15 @@ for s in big at-bound; do
 done
 printf -- '---\nname: pinned\ndescription: x\nmodel: claude-opus-5\neffort: high\n---\n' > "$GUARD_FIX/skills/pinned/SKILL.md"
 printf -- '---\nname: scout\ndescription: x\neffort: low\n---\n' > "$GUARD_FIX/agents/scout.md"
+printf -- '---\nname: reviewer\ndescription: x\nmodel: sonnet\n---\n' > "$GUARD_FIX/agents/reviewer.md"
 printf -- '---\nname: fine\ndescription: x\n---\n\nmodel: effort: lines in the body are not frontmatter\n' > "$GUARD_FIX/agents/fine.md"
+GUARD_SCOUT=$(mktemp -d); mkdir -p "$GUARD_SCOUT/agents"   # scout on another model, and scout as decision 17 has it
+printf -- '---\nname: scout\ndescription: x\nmodel: claude-opus-5-5\n---\n' > "$GUARD_SCOUT/agents/scout.md"
+OUT_SCOUT=$(plugin_guards "$GUARD_SCOUT")
+[[ $OUT_SCOUT == "agents/scout.md declares model claude-opus-5-5, expected sonnet" ]] || fail "the guard missed scout on another model: $OUT_SCOUT"
+printf -- '---\nname: scout\ndescription: x\nmodel: sonnet\n---\n' > "$GUARD_SCOUT/agents/scout.md"
+OUT_SCOUT=$(plugin_guards "$GUARD_SCOUT"); rm -rf "$GUARD_SCOUT"
+[[ -z $OUT_SCOUT ]] || fail "the guard flagged scout on sonnet: $OUT_SCOUT"
 GUARD_OUT=$(plugin_guards "$GUARD_FIX"); rm -rf "$GUARD_FIX"
 for size in 11200 11201; do
   printf -- '---\nname: pr-review\ndescription: x\n---\n' > "$GUARD_BIG/skills/pr-review/SKILL.md"
@@ -213,8 +244,8 @@ for size in 11200 11201; do
   else [[ $OUT_BIG == *"skills/pr-review/SKILL.md is 11201 bytes, over the 11,200-byte bound"* ]] || fail "pr-review over its allowance was missed: $OUT_BIG"; fi
 done; rm -rf "$GUARD_BIG"
 for want in "skills/big/SKILL.md is 11001 bytes, over the 11,000-byte bound" "skills/pinned/SKILL.md sets model" \
-  "skills/pinned/SKILL.md sets effort" "agents/scout.md sets effort" \
-  "skills/big/references/long.md is 16001 bytes, over the 16,000-byte bound"; do
+  "skills/pinned/SKILL.md sets effort" "agents/scout.md sets effort" "agents/scout.md declares model none, expected sonnet" \
+  "agents/reviewer.md sets model" "skills/big/references/long.md is 16001 bytes, over the 16,000-byte bound"; do
   [[ $GUARD_OUT == *"$want"* ]] || fail "the guard missed: $want (it said: $GUARD_OUT)"
 done
 [[ $GUARD_OUT != *at-bound* && $GUARD_OUT != *fine* ]] || fail "the guard flagged a file within its rules: $GUARD_OUT"
@@ -441,7 +472,11 @@ grep -qE "<[A-Z_-]+>" <<< "$BOOT_BODY" && fail "a pseudo-tag in the bootstrap: $
 # spec's and the tickets' publish, a parallel run's integrations, a branch's integration and its discard, release's
 # readiness, deploy and production questions, an incident's outward action, the paid cloud review. Every skill that
 # keeps the progress file still points at its format where it writes it, since the flow skips questions, never the
-# record. A copy with each stop dropped in turn shows the check catching that stop alone.
+# record. The shared rules' process table (ticket 07) lets a small change skip extras, so its floor is held the same
+# way: the sensitive list is checked before the size, a sensitive change of any size gets code-review, a correctness
+# review and the security review, required, and verification, and a feature gets its two reviewers; and the docs rule
+# is in the bootstrap and in the shared rules. A copy with each stop dropped in turn shows the check catching that stop
+# alone.
 flow_stop_problems() {   # $1 = a plugin directory, $2 = "probe" to drop each stop from a copy: a line for each stop missed
   python3 - "$1" "${2:-}" <<'PY'
 import pathlib, re, shutil, sys, tempfile
@@ -470,6 +505,16 @@ STOPS += [(what, path, None, pattern) for what, path, pattern in (
      r"\*\*Never `ultra`\*\*[^\n]*unless the user asks"))]
 STOPS += [(f"{s} keeps the progress file in its format", f"skills/{s}/SKILL.md", None, r"references/progress-file\.md")
           for s in ("grill", "to-spec", "to-tickets", "implement", "finishing-a-development-branch", "release")]
+RULES = "skills/using-matt-pocock-skills/references/rules.md"
+SENSITIVE, SENSITIVE_ROW, FEATURE_ROW = r"(?ms)^## Sensitive changes\n.*?(?=^## |\Z)", r"(?m)^\| Sensitive.*$", r"(?m)^\| Feature.*$"
+STOPS += [("the shared rules check the sensitive list before the size", RULES, SENSITIVE, r"\bfirst\b")]
+STOPS += [(f"a sensitive change gets {what}", RULES, SENSITIVE_ROW, pattern) for what, pattern in (
+    ("code-review", r"`code-review`"), ("a correctness review", r"correctness review"), ("the security review", r"security review"),
+    ("its reviews as required", r"\brequired\b"), ("verification", r"verification-before-completion"))]
+STOPS += [(f"a feature gets {what}", RULES, FEATURE_ROW, pattern) for what, pattern in (
+    ("code-review", r"`code-review`"), ("a correctness review", r"correctness review"))]
+STOPS += [(f"the docs rule is in {where}", path, None, r"official docs[^\n]*version in use")
+          for where, path in (("the bootstrap", BOOT), ("the shared rules", RULES))]
 
 def missed(plugin):
     out = []

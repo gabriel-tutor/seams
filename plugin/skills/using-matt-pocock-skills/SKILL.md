@@ -23,8 +23,7 @@ Development work in this project starts with the skill its row below names, invo
 **Quality bar.** What ships meets a definition of done covering how it fails, is attacked, performs, is observed, is documented and is rolled back, each item proven; nothing is added that nobody asked for.
 
 **Rules.**
-1. Questions use AskUserQuestion, recommended answer first.
-2. Seams are settled in the grill; `tdd` and `to-spec` do not ask again.
-3. `code-review` runs on features and builds, is offered on bounded changes and bugs.
-4. Flow: once the user confirms a design, later steps start unasked, stopping only for the user's decisions, integrating a branch, push, deploy, publish, anything destructive or paid.
-5. Grill → spec → tickets share one context. Phase boundaries, durable state, on-ramps, Superpowers overlaps: `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/routing.md`
+1. Questions use AskUserQuestion, recommended answer first; seams the grill settled are never asked again.
+2. Third-party code follows its official docs for the version in use, cited.
+3. Flow: once the user confirms a design, later steps start unasked, stopping only for the user's decisions, integrating a branch, push, deploy, publish, anything destructive or paid.
+4. Grill → spec → tickets share one context. Phase boundaries, on-ramps, Superpowers: `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/routing.md`; shared rules (process by size, evidence): `rules.md` beside it.

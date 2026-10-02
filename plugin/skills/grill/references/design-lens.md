@@ -2,12 +2,7 @@
 
 The axes a senior engineer's design review covers. The grill consults this before declaring the frontier empty: any axis that applies to the change and is still unsettled becomes a frontier question. An axis that doesn't apply is skipped without comment. Facts go in the question's facts section; only the decision goes to the user.
 
-How much of the lens applies scales with the change:
-
-- **Bounded change to existing code:** interfaces and seams, failure modes, testing. The rest only if the change touches it.
-- **New behavior that fits one session:** every axis that applies.
-- **A build spanning several sessions:** every axis, and the answers go into the spec.
-- **A sensitive change, at any size** (auth, permissions, secrets, billing, migrations, infrastructure, CI or deploy configuration, a public API, anything destructive): security boundaries and failure modes, on top of whatever its size applies.
+How much of the lens applies scales with the change: the axes its row's questions name (shared rules: Process by size and risk), and for a bounded change the rest only where the change touches them.
 
 ## The axes
 

@@ -7,15 +7,15 @@ description: Use before building a feature or changing behavior, when a plan or 
 
 This is Matt Pocock's grilling, presented as clickable questions, every independent one at once, with its record kept in the feature's progress file so that `/clear` or compaction loses nothing.
 
-**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; at `low`, skip only the count of decisions left.
+**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read as the grill starts. **Effort** `${CLAUDE_EFFORT}`: at `low`, skip only the count of decisions left (shared rules: Effort).
 
-**Repository facts.** As this skill starts, the Seams hook adds the branch, the short HEAD, the first lines of the status and the progress files. They are a snapshot: once git may have moved (a commit, a checkout, a new worktree, a resumed session), run git again, and look up yourself any fact the hook did not give.
+**Repository facts.** The Seams hook adds them as this skill starts (shared rules: Repository facts).
 
 ## Method
 
 1. Invoke Matt Pocock's `grilling` skill with the Skill tool, and follow its method exactly:
    - Keep the design tree and its frontier.
-   - Find facts yourself, through `matt-pocock-workflow:scout` agents: when a frontier question needs facts from the code or the docs, start one scout per independent question, all in one message, however small the codebase. A fact already in view needs no scout, and neither do the reads under Resuming.
+   - Find facts yourself, through `matt-pocock-workflow:scout` agents when a frontier question needs facts from the code or the docs that the conversation lacks (shared rules: Process by size and risk, Official docs). The reads under Resuming need none.
    - Put every decision to the user.
    - Keep going until the frontier is empty and the user confirms you share an understanding. Nothing gets built before that confirmation.
 
@@ -33,11 +33,10 @@ The rest of the frontier stays in your design tree until its turn; the count in 
 
 ## Progress file
 
-The grill's record is the feature's progress file, `.scratch/<feature>/progress.md` at the repository root. Read its format in `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` before the first write.
+The grill's record is the feature's progress file, `.scratch/<feature>/progress.md`, in the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` describes.
 
 - Create it at the first settled decision: `Status: active`, `Stage: designing`, `Next` saying what the grill asks next, `Updated` today.
 - After each answered round, before asking the next, update it: the answers into Decisions, the frontier into Open questions, the facts worth keeping into Facts, then `Next` and `Updated`.
-- Decisions and pointers only: never a secret, a credential, a token or personal data.
 
 ## Resuming
 
@@ -53,4 +52,4 @@ Before you call the frontier empty, check the design tree against the design len
 
 ## Done
 
-The grill is done when the frontier is empty, the lens has been checked, every branch has been visited, and the user has confirmed the shared understanding. Ask for that confirmation with AskUserQuestion, naming the next step from the bootstrap's routing that a yes starts (such as `tdd`, `matt-pocock-workflow:implement` or `matt-pocock-workflow:to-spec`) and that the flow then runs on to its next stop; when the work will be built through `implement`, ask in the same call where: a worktree through `matt-pocock-workflow:using-git-worktrees` (recommended for a feature) or the current branch, by name. The yes starts the continuous flow (the bootstrap's flow rule): record the confirmation and where to build (the branch's name, or a new worktree) under Decisions, set `Stage: designed` and the progress file's `Next` to that step, and go on to it at once, without asking again. When that step is `tdd` (a bounded change: no spec, no `implement`, so no later skill keeps the file), `Next` also says to set `Status: done` in the commit that ships the change, and you do so when you make that commit. For a sensitive change, `Next` also names the reviews it needs before it ships: `code-review` and a security review (`/security-review`, or a `matt-pocock-workflow:reviewer` agent where it can't run).
+The grill is done when the frontier is empty, the lens has been checked, every branch has been visited, and the user has confirmed the shared understanding. Ask for that confirmation with AskUserQuestion, naming the next step from the bootstrap's routing that a yes starts (such as `tdd`, `matt-pocock-workflow:implement` or `matt-pocock-workflow:to-spec`) and that the flow then runs on to its next stop; when the work will be built through `implement`, ask in the same call where: a worktree through `matt-pocock-workflow:using-git-worktrees` (recommended for a feature) or the current branch, by name. The yes starts the continuous flow (shared rules: The continuous flow): record the confirmation and where to build (the branch's name, or a new worktree) under Decisions, set `Stage: designed` and the progress file's `Next` to that step, and go on to it at once, without asking again. When that step is `tdd` (a bounded change: no spec, no `implement`, so no later skill keeps the file), `Next` also says to set `Status: done` in the commit that ships the change, and you do so when you make that commit. For a sensitive change, `Next` also names the reviews it needs before it ships (shared rules: Sensitive changes).

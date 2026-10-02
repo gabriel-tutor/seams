@@ -2,6 +2,7 @@
 name: scout
 description: Read-only fact-finding in code and docs
 tools: Read, Glob, Grep, WebFetch, WebSearch
+model: sonnet
 maxTurns: 25
 omitClaudeMd: true
 ---

@@ -7,7 +7,7 @@ description: Use when users are affected now, production down, degraded, errorin
 
 An outage or degradation that users feel now. Contain and restore come before diagnosis: users stop being affected first, the cause is found second, and the fix takes the normal route with a regression test. The steps run in this order; a session that ends before the fix still ends with the post-mortem note (what is known, the rest pending), the fix ticket and the incident handover. Nothing outward (a rollback, a redeploy, a config or flag change on the host, a restart, a message to users) happens before the user's yes to that action.
 
-**Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
+**Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
 
 ## Impact
 
@@ -35,7 +35,7 @@ With users no longer affected, find the root cause. Invoke `diagnosing-bugs` (Ma
 
 ## Fix
 
-The fix takes the normal route, never a shortcut from the incident. It is a ticket, opened through the issue tracker (`docs/agents/issue-tracker.md`) with the regression test as its first acceptance criterion, at the seam that reproduces the real failure as `diagnosing-bugs` requires, and built through `matt-pocock-workflow:implement`: the regression test first, watched failing, then the fix, then the commit, the reviews its risk calls for on the candidate (`code-review` and a correctness review, and a security review when it is sensitive), the definition of done and a handover naming the fix's stage. When the fix changes behavior beyond restoring it, or is a sensitive change (auth, permissions, secrets, billing, a migration, infrastructure or deploy configuration, a public API, anything destructive), `matt-pocock-workflow:grill` comes before the ticket. The containing action stays in place until `matt-pocock-workflow:release` has put the integrated candidate on the environment the containment protected and verified it running.
+The fix takes the normal route, never a shortcut from the incident. It is a ticket, opened through the issue tracker (`docs/agents/issue-tracker.md`) with the regression test as its first acceptance criterion, at the seam that reproduces the real failure as `diagnosing-bugs` requires, and built through `matt-pocock-workflow:implement`: the regression test first, watched failing, then the fix, then the commit, the reviews its row calls for on the candidate (shared rules: Process by size and risk), the definition of done and a handover naming the fix's stage. When the fix changes behavior beyond restoring it, or is sensitive (shared rules: Sensitive changes), `matt-pocock-workflow:grill` comes before the ticket. The containing action stays in place until `matt-pocock-workflow:release` has put the integrated candidate on the environment the containment protected and verified it running.
 
 ## Post-mortem
 
@@ -47,5 +47,5 @@ The closing message, in this order:
 
 1. **The service now.** What runs (version and environment), whether users are still affected, and the containing action still in place, if any.
 2. **What changed.** The fix's candidate SHA, or that there is no fix yet; the post-mortem note's path; the follow-up tickets.
-3. **Stage reached.** For the fix, one of the six: designed, built, integrated, release-ready, deployed, operated. *Deployed* only once `matt-pocock-workflow:release` verified the fixed candidate running. An incident handed over before a fix exists says so, and names the step it stopped at: impact, contain, restore or diagnose.
+3. **Stage reached.** The fix's (shared rules: Stages). An incident handed over before a fix exists says so, and names the step it stopped at: impact, contain, restore or diagnose.
 4. **Next.** The next step and who owns it: the next containing action, the diagnosis, the fix ticket, its release, or the note's follow-ups. When the session ends before the fix, the fix ticket carries it, with an owner and the containing action it will replace.
