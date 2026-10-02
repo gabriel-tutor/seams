@@ -115,7 +115,7 @@ Seams 4.0 keeps everything the user values and removes the waiting around it.
 
 - One runner starts the suites in parallel and reports each one's result and time; the whole run has a time budget its own test enforces.
 - The Python 3.9 compatibility check becomes a CI job; the local run uses one interpreter.
-- Wording pins shrink to the contracts: skill and reference size bounds, frontmatter fields, the routing table's rows, the injected commands, the version's single source, the third-party notices. Everything else tests behavior.
+- Wording pins shrink to the contracts: skill and reference size bounds, frontmatter fields, the routing table's rows, the injected commands, the version's single source, the third-party notices, and, added by tickets 06 and 07, the continuous flow's stops, the process table's floor and the docs rule. Everything else tests behavior.
 - Tests that sleep use a fake clock or a condition to wait on.
 - Duplicated tests are merged: the gate's rules are tested once in process, and each hook event once through its command line.
 - The custom eval harness, its workspace builder, its Node fixture and their tests are removed; `plugin/evals` stays for `claude plugin eval`.

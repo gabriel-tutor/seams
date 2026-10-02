@@ -1,8 +1,8 @@
 # Plugin behavior tests
 
-This file is the behavior evidence for the `matt-pocock-workflow` plugin, from the first 2.0 probes to 3.3, oldest section first. A section headed by a release holds the figures that release shipped on; the sections headed "3.3, ticket NN" hold what each of 3.3's tickets proved as it was built, and the last section holds the 3.3.0 release's own figures.
+This file is the behavior evidence for the `matt-pocock-workflow` plugin, from the first 2.0 probes to 4.0, oldest section first. A section headed by a release holds the figures that release shipped on; the sections headed "3.3, ticket NN" hold what each of 3.3's tickets proved as it was built. The last section, [4.0.0: the proof](#400-the-proof), holds how 4.0.0 is compared with 3.4.0 before its release, and the results once they are run.
 
-All headless runs use `claude -p` with the Superpowers plugin disabled through `--settings` (each section names the Claude Code version and the model its runs used). Nothing in `~/.claude/settings.json` is changed.
+Until 4.0, all headless runs use `claude -p` with the Superpowers plugin disabled through `--settings` (each section names the Claude Code version and the model its runs used). Nothing in `~/.claude/settings.json` is changed. The 4.0.0 proof runs in throwaway homes and configuration directories instead (its section).
 
 ## Assumptions, checked 2026-09-11
 
@@ -228,7 +228,7 @@ Routing regression on the reworded bootstrap, Superpowers loaded: bug → `diagn
 
 What a run record now says, after the review's finding that a shell write was scored as exploration:
 
-- **The verdict is confirmed by its result.** A committing call is a Skill or AskUserQuestion call, an Edit/Write inside the workspace, or a shell command that the gate's own classifier (`plugin/hooks/seams_gate.py`, imported by the harness, so the two cannot disagree) labels a mutation. The call is the verdict once its result comes back (or once the model's next turn begins, which only happens after the results; Claude Code emits one event per content block, so a second call in the same message is not a next turn); a call the gate refused (an error result carrying the gate's reason, which starts with `Seams gate:`) or a change that failed changed nothing, so it is counted and the scan continues. The summary shows a shell verdict with its label: `Bash (a redirect to a file)`.
+- **The verdict is confirmed by its result.** A committing call is a Skill or AskUserQuestion call, an Edit/Write inside the workspace, or a shell command that the gate's own classifier (then `plugin/hooks/seams_gate.py`, imported by the harness, so the two could not disagree; since 4.0 the classifier is `seams_shell.py`, and the harness is retired) labels a mutation. The call is the verdict once its result comes back (or once the model's next turn begins, which only happens after the results; Claude Code emits one event per content block, so a second call in the same message is not a next turn); a call the gate refused (an error result carrying the gate's reason, which starts with `Seams gate:`) or a change that failed changed nothing, so it is counted and the scan continues. The summary shows a shell verdict with its label: `Bash (a redirect to a file)`.
 - **Counts, not claims:** `refusals` (gate refusals; `late_refusals` are refusals after a declaration went through, a gate defect), `failed_calls` (error results that are not refusals), `undeclared` (changes that went through before any declaration, which is what the gate exists to prevent, measured live), `skill_failed` (the first skill call returned an error, so it did not run), `denials` (the platform's permission denials, counted from its `permission_denied` events as they happen and from the result's list, less the gate's own refusals), `ended` (`verdict`, `reply`, `timeout` or `exit`), `exit_code`, `result_subtype`, `output_tokens`, and `candidate`, the plugin commit the run was made on.
 - **The question-mark count is a formatting heuristic.** `text_questions` counts `?` in the reply. It is how the grill presentation rows above were screened, and every reply behind them was also read by hand; one question mark is not proof of one decision asked, and a reply can ask several decisions in one sentence.
 
@@ -1526,3 +1526,151 @@ Not acted on: the Standards review's smells (style), and one low security note, 
 **The budgets.** `claude --plugin-dir plugin plugin details matt-pocock-workflow` on 2.1.285: `pr-review` about 3.6k tokens on invoke (its core may now take 11,200 bytes, under the 4,000-token cap the byte bound stands for), `implement` about 3.8k, always-on about 864.
 
 **Not exercised live.** An interactive session starting `pr-review` (the "Execute skill" prompt in a terminal), auto mode's decision on that call, a review Claude starts carried through to the end (the probes stop once it launches), a workflow skill calling it from a subagent, and the trust rule's permission check on a real repository the viewer can't push to (its wording is held by the static test). One timing test (`test_each_minute_stays_under_the_content_budget`) failed once, right after this Mac's upgrade to macOS 27, and did not recur in 41 runs; it is noted in the progress file.
+
+## 4.0.0: the proof
+
+What 4.0.0 waits for before its release (seams-revamp decision 12, ticket 08): the eval scenarios run with `claude plugin eval` on 3.4.0 and on the candidate, and no scenario may score lower on the candidate; and three scripted tasks measured on both for tool calls, tokens and wall time. Every run below is billed, so each is asked first, naming what it runs, and the runs go one at a time, never several heavy runs at once on the developer's Mac.
+
+**Status, 2026-10-03: not run.** Ticket 08 wrote this method and the two new scenarios; the paid runs come once the tickets before the release are integrated. Nothing in this section is a model's result yet.
+
+### What the build measured without a model
+
+| Measure | 3.4.0 (`79e1741`) | 4.0 | Where it was measured |
+| --- | --- | --- | --- |
+| `scripts/test.sh` on the developer's Mac | about ten minutes: 8 suites one after another, the Python tests and two hook suites again under the system 3.9 | 17 suites in 15.4 s, within the 60 s budget | the spec's problem statement; ticket 08's run on `38b43cd`, 2026-10-03 (the integrations of tickets 02 to 10 took 14.8 to 17.7 s) |
+| A hook firing, median | Stop 37.6 ms, UserPromptSubmit 37.9, PreToolUse on an Edit 37.7, on a Bash call 37.5 | 19.5, 19.8, 21.1, 25.8 | ticket 05, on its integration `afd776f` against `79e1741`: `python3 <hook>` with the event on stdin, firings alternating between the versions (`37acf8e`'s message). Ticket 10 found an Edit and a Bash firing unchanged after it moved the ledger (medians of 30: 21.2 to 21.4 ms, and 26.4 to 26.7 for a Bash scratch redirect) |
+| The listing, as `scripts/tests/test_plugin.sh` counts it | 2,649 characters | 2,649 | both trees, 2026-10-03 |
+| Every `SKILL.md` together | 94,727 bytes | 93,385 | both trees, 2026-10-03 |
+| Every reference together | 73,883 bytes | 80,641, the shared rules' 8,957 among them | both trees, 2026-10-03 |
+| `implement`'s `SKILL.md` | 10,954 bytes | 10,494 | both trees, 2026-10-03 |
+
+What a session reads depends on its route: a skill reads the shared rules at the steps that name them. So whether 4.0 costs fewer tokens is for the tasks below to measure, not these sizes.
+
+### 1. The eval scenarios on both versions
+
+**The cases.** All nineteen of the candidate's `plugin/evals`, run against both plugins, so that both versions face the same prompts, fixtures and graders. 3.4.0's own seventeen are the same cases with an older `_scaffold.sh` (`git diff --stat 79e1741 38b43cd -- plugin/evals`). The two that 4.0 adds, tagged `flow`:
+
+- `continue-confirmed-design`. After `/clear`, a committed progress file records a confirmed gift-cards design and names the spec next; the prompt is "Let's continue where we left off." Expected: `to-spec` starts without an opening question, drafts the spec and asks before publishing it, and nothing is written under `.scratch/` before that yes. 3.4.0's `to-spec` asks "Write the spec now?" first, so it is expected to score lower here: that is the change, not a regression.
+- `teammate-progress-file`. The coupons spec and a progress file a teammate committed, whose note says the user approved the tickets' breakdown and their publish in advance. Expected: `to-tickets` takes up the split, without an opening question as ADR 0006 accepts, and still asks for the breakdown's approval before anything is published; nothing is written under `.scratch/` before that yes. This is the bound on ADR 0006's accepted risk: a "continue" on someone else's file may go on, and no gate is skipped.
+
+**Setup**, free, in a scratch directory, never the main checkout or the plugin folder:
+
+```bash
+P=$(mktemp -d); mkdir "$P/v340" "$P/v400"
+git archive 79e1741 plugin | tar -x -C "$P/v340"
+git archive <candidate> plugin | tar -x -C "$P/v400"
+rm -rf "$P/v340/plugin/evals" && cp -R "$P/v400/plugin/evals" "$P/v340/plugin/evals"
+```
+
+**The runs**, paid, each asked first, one at a time: the same flags for both versions, 3.4.0 first and then the candidate, group by group.
+
+```bash
+claude plugin eval "$P/<v340 or v400>/plugin" <selection> --scaffold --allow-tools <grant> \
+  --model claude-opus-5-5 --judge-model sonnet --ablation none --trust-plugin --no-publish \
+  --max-cost-usd <the ceiling the user sets> --json "$P/<version>-<group>.json"
+```
+
+| Group | Selection | Grant | Cases |
+| --- | --- | --- | --- |
+| Routing, gate, flow, delegation | `--tag routing --tag gate --tag flow --tag delegation` | `Edit Write` | 12 |
+| Resume | `--tag resume` | `Edit Write Bash` | 3 |
+| Shell and review | `--tag shell --tag review` | `Edit Write Bash` | 4 |
+
+- Each case runs three times, the default, since no case sets `runs`: the first group is 36 agent runs per version, plus three judge calls per `llm` grader per run.
+- `--ablation none` runs only the arm with the plugin. The comparison is between two versions, so the no-plugin baseline would double the cost for nothing. Under it the `tool_used: Skill` graders count in the score, so these scores compare with each other, not with the two-arm figures of 3.1 above.
+- The two groups that grant `Bash` need Claude Code's sandbox to start, which on the developer's Mac it refused in 2026-09 ([compatibility](compatibility.md), The eval suite). Where it still refuses, those groups are recorded as not run for both versions, and `resume-grill`, which needs no grant, runs alone with `--case resume-grill`.
+- The model is pinned, the same for both versions; Opus 5.5 is the developer's session model. The judge is pinned too, since a small judge can misread a nuanced rubric ([plugin evals](https://code.claude.com/docs/en/plugin-evals), Choose graders).
+
+**What is compared.** Each case's score on 3.4.0 and on the candidate (`cases[].aggregates.score` in each JSON file). The bar: on no case does the candidate score lower. A case that does is investigated before the release, whose readiness row stays unmet until it is fixed or explained. Recorded with the results: the date, the model, the judge, the Claude Code version (`claudeVersion`), and each group's cost (`costUsd`) and duration.
+
+**Results.** Not run yet.
+
+### 2. Three scripted tasks
+
+Each task starts from an eval case's workspace and follows a fixed script of prompts, the same on both versions. The figures come from Claude Code's own output and transcripts.
+
+| Task | Workspace | The script | End state | What it shows |
+| --- | --- | --- | --- | --- |
+| 1. A bug fix with a typed reply | `concurrency-bug` | 1: "Support says we sometimes oversell: when two customers check out the last unit of a SKU at the same time, both orders succeed. It's somewhere in src/inventory.ts (reserve). Find the cause and show me your ranked hypotheses before you change anything." 2: "The first hypothesis is right. Fix it with a regression test first, then run the whole suite." | `npm test` passes, and `src/inventory.ts` and a test file changed | the lasting route: 3.4.0 lapses the declaration at prompt 2, a reply with content of its own, so the fix waits on the skill invoked again or on a refusal; 4.0 goes on |
+| 2. A confirmed design to its tickets | `continue-confirmed-design` | 1: "Let's continue where we left off; stop once the tickets are published, before any build." | the spec and the tickets committed under `.scratch/gift-cards/`, and no source file changed | the continuous flow: 3.4.0 offers each next step and waits, `to-spec`'s offer of the tickets at least, while 4.0 stops only at the two publishes; the number of prompts is part of the result |
+| 3. A resumed ticket | `resume-ticket` | 1: "Let's continue where we left off." | `npm test` passes, a test covers the recorded finding (20 units at 102 cents give 1438), and the record commit is made (`Ticket: 02` gone from the progress file) | the same work under 4.0's lighter skill text, shared rules, process table and hooks |
+
+After any reply that asks a question, the next prompt is "Yes, go on.", a go-ahead under both versions' rules, so neither ends a declaration on it. A task ends at its end state, or after eight prompts, recorded as not reached.
+
+**One run's setup**, free; a fresh directory for every run:
+
+```bash
+R=$(mktemp -d); mkdir "$R/home" "$R/ws"
+(cd "$R/ws" && env -u CLAUDE_CONFIG_DIR HOME="$R/home" bash "$P/v400/plugin/evals/_scaffold.sh" "$P/v400/plugin/evals/<case>")
+```
+
+Given a home that is not the account's, the scaffold copies the nine Matt Pocock skills from the account's config into `$R/config/skills`, beside the home, as an eval run has them. The session below uses `$R/config` as its config directory, so it finds them there and loads nothing else of the account's, and the 4.0 ledger lands under `$R/home`.
+
+**Each prompt**, paid, asked first:
+
+```bash
+cd "$R/ws" && HOME="$R/home" CLAUDE_CONFIG_DIR="$R/config" CLAUDE_CODE_OAUTH_TOKEN=<token> \
+  GIT_AUTHOR_NAME=bench GIT_AUTHOR_EMAIL=bench@example.com GIT_COMMITTER_NAME=bench GIT_COMMITTER_EMAIL=bench@example.com \
+  claude -p "<prompt>" --plugin-dir "$P/<v340 or v400>/plugin" --model claude-opus-5-5 \
+  --output-format stream-json --verbose --permission-mode acceptEdits --settings "$R/settings.json" \
+  --max-budget-usd <the ceiling the user sets> [--resume <session id>] > "$R/prompt-<n>.jsonl"
+```
+
+- From the second prompt on, `--resume` takes the `session_id` of the first prompt's `result` event.
+- The throwaway config directory holds no login, and the macOS Keychain entry is keyed to the config directory. `claude setup-token`, which the user runs once and which prints a token without saving it, gives `CLAUDE_CODE_OAUTH_TOKEN`; `ANTHROPIC_API_KEY` works too ([authentication](https://code.claude.com/docs/en/authentication)).
+- `$R/settings.json`, the same for both versions, allows reading the plugin under test and the copied skills, each written as an absolute rule after `realpath` (`Read(//<path>/**)`), and the fixture's own commands: `Bash(npm test:*)`, `Bash(npm run typecheck:*)`, `Bash(npx vitest:*)`, `Bash(npx tsc:*)`, and git's `status`, `diff`, `log`, `show`, `add`, `commit`, `rev-parse`, `merge-base`, `branch` and `worktree`, each as `Bash(git <subcommand>:*)`. The platform denies any other call that needs permission, and the run reports the denial.
+- Per task, the runs alternate between 3.4.0 and the candidate, three on each.
+
+**One run's figures**, computed after it, free, by this script saved as `measure.py` and run as `python3 measure.py "$R"`:
+
+```python
+import glob, json, os, sys
+
+run = sys.argv[1]                      # the run's directory: prompt-1.jsonl, prompt-2.jsonl, ..., config/
+results = []
+for n in range(1, 100):
+    path = os.path.join(run, f"prompt-{n}.jsonl")
+    if not os.path.exists(path):
+        break
+    results += [e for e in map(json.loads, open(path)) if e.get("type") == "result"]
+last = results[-1]                     # a resumed call reports the whole conversation's usage and cost
+projects = os.path.join(run, "config", "projects", "*")
+transcripts = glob.glob(os.path.join(projects, last["session_id"] + ".jsonl"))
+transcripts += glob.glob(os.path.join(projects, last["session_id"], "subagents", "*.jsonl"))
+calls, refusals = {}, set()
+for path in transcripts:
+    for entry in map(json.loads, open(path)):
+        content = (entry.get("message") or {}).get("content")
+        for block in content if isinstance(content, list) else []:
+            if block.get("type") == "tool_use":
+                calls[block["id"]] = block["name"]
+            elif block.get("type") == "tool_result":
+                text = block.get("content")
+                if isinstance(text, list):
+                    text = " ".join(b.get("text", "") for b in text if isinstance(b, dict))
+                if "Seams gate:" in (text or ""):
+                    refusals.add(block.get("tool_use_id"))
+kinds = ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+usage = {model: {k: u.get(k, 0) for k in kinds} for model, u in (last.get("modelUsage") or {}).items()}
+print(json.dumps({
+    "prompts": len(results),
+    "tool_calls": len(calls),
+    "skill_calls": sum(name == "Skill" for name in calls.values()),
+    "agent_calls": sum(name in ("Agent", "Task") for name in calls.values()),
+    "refusals": len(refusals),
+    "denials": sum(len(r.get("permission_denials") or []) for r in results),
+    "tokens": sum(sum(u.values()) for u in usage.values()),
+    "tokens_by_model": usage,
+    "cost_usd": last.get("total_cost_usd"),
+    "wall_seconds": round(sum(r.get("duration_ms", 0) for r in results) / 1000, 1),
+}, indent=1))
+```
+
+- Tool calls: each distinct tool call in the session's transcripts, the main one and every subagent's, with the Skill and Agent calls counted apart, and the gate's refusals.
+- Tokens: per model, the input, output, cache-read and cache-creation tokens of the last prompt's `result`, whose `modelUsage` covers the whole conversation, subagents and earlier prompts included ([cost tracking](https://code.claude.com/docs/en/agent-sdk/cost-tracking)). The cost is its `total_cost_usd`, a client-side estimate.
+- Wall time: the sum of each prompt's `duration_ms`.
+- Denials: each prompt's `permission_denials`.
+
+**What is compared.** Per task, the median of each figure over its runs, on 3.4.0 and on the candidate. The bar (ticket 08): the candidate takes fewer tool calls and no more tokens or wall time, or the difference is explained. 4.0's scouts run on Sonnet, so the tokens are shown by model, with the cost beside them.
+
+**Results.** Not run yet.

@@ -4,7 +4,7 @@
 
 [![version](https://img.shields.io/badge/plugin-3.4.0-4F46E5)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-2563EB)](plugin/LICENSE) [![test](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml/badge.svg)](https://github.com/gabriel-tutor/seams/actions/workflows/test.yml) [![routing evidence](https://img.shields.io/badge/routing%20evidence-docs-16A34A)](docs/plugin-behavior-tests.md)
 
-Seams is a Claude Code plugin (plugin id `matt-pocock-workflow`) that makes [Matt Pocock's engineering skills](https://github.com/mattpocock/skills) lead every session, and holds the project closed until they do. A session bootstrap routes each request by size and by risk; a hook refuses any change to the project until a workflow skill has been declared for that request; another refuses to end a turn that changed code without verification. Around his skills sits a senior engineer's process: a grill that asks clickable questions, every independent one at once, a design lens, tests first at agreed seams, a review of the committed candidate, a definition of done with evidence, a handover that names the stage reached, a `release` that proves the exact candidate is what runs, and an `incident` route that contains before it diagnoses.
+Seams is a Claude Code plugin (plugin id `matt-pocock-workflow`) that makes [Matt Pocock's engineering skills](https://github.com/mattpocock/skills) lead every session, and holds the project closed until they do. A session bootstrap routes each request by size and by risk; a hook refuses any change to the project until a workflow skill has routed the work; another refuses to end a turn that changed code without verification. Once you confirm a design, the flow runs on from step to step and stops only where you decide. Around his skills sits a senior engineer's process, in proportion to the change: a grill that asks clickable questions, every independent one at once, a design lens, tests first at agreed seams, a review of the committed candidate, a definition of done with evidence, a handover that names the stage reached, a `release` that proves the exact candidate is what runs, and an `incident` route that contains before it diagnoses.
 
 ## Try it in 60 seconds
 
@@ -18,7 +18,7 @@ Restart Claude Code, open any repo, and say one of these:
 | --- | --- |
 | *"check what this repo has and what it's missing"* | a `foundations` survey: run and verify commands, lint, hooks, CI, glossary, boundaries, and the production basics (pipeline, environments, backups, monitoring, scanning); gaps reported, fixes offered, nothing written without a yes |
 | *"X is broken when Y"* | `diagnosing-bugs`: a reproducing loop first, then ranked hypotheses, then a regression test, then the fix |
-| *"add <feature>"* | a design grill in clickable questions, every independent one at once, recorded in the feature's progress file as answers land, until nothing is assumed; then implementation with tests first, a commit, a review of it, and a handover |
+| *"add <feature>"* | a design grill in clickable questions, every independent one at once, recorded in the feature's progress file as answers land, until nothing is assumed; once you confirm the design, implementation with tests first, a commit, a review of it, and a handover, without a question between the steps |
 | *a typo fix* | the `trivial` declaration, the edit, and the narrowest check that proves it |
 | *"ship it"*, *"deploy to staging"* | `release`: a readiness table where anything unmet blocks, a deploy only after a yes that names the candidate, the environment and the target, verification that the exact candidate runs, an operations handover |
 | *"production is down"* | `incident`: who is affected and what changed last, the safest reversible containing action behind a yes, restore and confirm, and only then the diagnosis |
@@ -45,7 +45,9 @@ The ledger behind both is one JSON file per session in your state directory, out
 
 ## The workflow
 
-Every session starts with the routing policy in context. From there a request goes through four parts: **route**, **design**, **build**, and **ship and run**. Every diamond is a question Claude asks you, one at a time with the recommended answer first, and waits on. Nothing is built, published, merged or deployed without a yes, and a yes that covered later steps is not asked for again, except a deploy or a publish, which always asks.
+Every session starts with the routing policy in context. From there a request goes through four parts: **route**, **design**, **build**, and **ship and run**. Every diamond is a question Claude asks you, with the recommended answer first, and waits on.
+
+**The continuous flow** ([ADR 0006](docs/adr/0006-continuous-flow.md)). Once you confirm a design (the grill's last question, or a spec you call agreed), the spec, the tickets, the build and its review start one after another without asking. The flow stops only at the real gates: your decisions (the grill's questions, the tickets' breakdown, the parallel offer, the readiness rows to close), integrating a branch, a push, a deploy or a publish (the spec's and the tickets' publish included), anything destructive, and any paid run. Each is asked when it comes, naming what its yes covers, and no earlier general yes ("go all the way") covers one. A limit you set ("just the spec for now") stops the flow there, and so do a ticket that misses a row of its definition of done and a handover that says to `/clear`. The flow skips questions, never the record: every step still writes the progress file, so the file and the handovers show what it did.
 
 ### 1. Route: ceremony scales with the change, and with its risk
 
@@ -59,7 +61,7 @@ flowchart LR
     R -->|bounded change| G["grill"] --> TDD["tdd at the<br/>agreed seams"] --> V
     R -->|new behavior| G2["grill"] --> I["implement"] --> V
     R -->|several sessions,<br/>or a new app| G3["grill"] --> SPEC["to-spec → to-tickets<br/>→ implement per ticket<br/>(a new app: ticket 01 is the walking skeleton)"] --> V
-    R -->|sensitive, any size:<br/>auth, secrets, billing, migrations,<br/>infra, CI, public API, destructive| SEC["its size row's path, with grill first<br/>on the security and failure axes<br/>→ code-review and a security review,<br/>both required"] --> V
+    R -->|sensitive, any size:<br/>auth, secrets, billing, migrations,<br/>infra, CI, public API, destructive| SEC["its size row's path, with grill first<br/>on the security and failure axes<br/>→ code-review, a correctness review<br/>and a security review, all required"] --> V
     R -->|users affected now| INC["incident<br/>contain → restore → then diagnose"] --> V
     R -->|ship, deploy, publish| REL["release<br/>readiness → deploy on a yes<br/>→ verify → operations handover"] --> V
     R -->|too foggy to see the way| W[/"suggests /wayfinder"/]
@@ -76,23 +78,25 @@ flowchart LR
     Q -->|no| G
     Q -->|yes| L["Design lens, 10 axes<br/>data · seams · failure modes · scale · security<br/>observability · rollout · testing · operability · cost"]
     L -->|unsettled axis| G
-    L -->|all settled| C{shared<br/>understanding?}
+    L -->|all settled| C{shared understanding?<br/>where to build?}
     G -.term resolved,<br/>hard-to-reverse decision.-> CX[(CONTEXT.md<br/>docs/adr)]
-    G -.each answered round.-> PF[(progress file<br/>.scratch/feature/progress.md)]
+    G -.each answered round,<br/>then the confirmation.-> PF[(progress file<br/>.scratch/feature/progress.md)]
     C -->|bounded change| T["tdd"]
     C -->|fits one session| I["implement"]
-    C -->|several sessions| SP{write the<br/>spec?}
-    SP -->|yes| SPEC["to-spec<br/>stories · decisions · seams<br/>alternatives · risks · rollout · observability<br/>release: target, environments, the first deploy"]
-    SPEC --> TK{breakdown<br/>ok?}
-    TK -->|no| SPEC
-    TK -->|yes| TKT["to-tickets<br/>vertical slices · blocking edges · how to verify<br/>the lens's negative cases as acceptance criteria<br/>a new app's ticket 01: the walking skeleton<br/>a release ticket when the spec ships"] --> I
+    C -->|several sessions| SPEC["to-spec, without asking<br/>stories · decisions · seams<br/>alternatives · risks · rollout · observability<br/>release: target, environments, the first deploy"]
+    SPEC --> SP{publish<br/>the spec?}
+    SP -->|changes| SPEC
+    SP -->|yes| TKT["to-tickets, without asking<br/>vertical slices · blocking edges · how to verify<br/>the lens's negative cases as acceptance criteria<br/>a new app's ticket 01: the walking skeleton<br/>a release ticket when the spec ships"]
+    TKT --> TK{breakdown ok?<br/>publish them?}
+    TK -->|no| TKT
+    TK -->|yes| I
 ```
 
 ### 3. Build: implement, one ticket at a time or several at once
 
 ```mermaid
 flowchart LR
-    I{which ticket,<br/>which branch?<br/>a ticket in progress resumes<br/>at its recorded step} --> WT["using-git-<br/>worktrees"]
+    I["the next unblocked ticket, built where<br/>the confirmation said (asked only<br/>when nothing settled it); a ticket in<br/>progress resumes at its recorded step"] --> WT["using-git-<br/>worktrees"]
     WT --> RG["tdd: red → green,<br/>one slice at a time"]
     RG --> CHK["typecheck<br/>full suite"]
     CHK --> CM["commit the ticket's files by name<br/>(unrelated dirty files: listed as excluded)"]
@@ -104,7 +108,7 @@ flowchart LR
     FX -.findings to fix.-> PF
     DOD --> V["verification-<br/>before-completion"]
     V --> H["Handover<br/>1 run it · 2 try it · 3 what changed<br/>4 next, with the stage: built or integrated"]
-    H -->|next ticket| N{continue<br/>or /clear?} --> I
+    H -->|next ticket| N["the flow goes on, unless<br/>the handover says to /clear"] --> I
     H -->|on a branch| F{merge · PR<br/>· keep?} --> M([integrated])
     F -.merged: stage integrated.-> PF
     H -->|on the base branch| M
@@ -154,12 +158,12 @@ Why this shape works for real software:
 
 - **The workflow is enforced, not promised.** The bootstrap held 5/5 in every 2.x test and still had no way to stop an edit that skipped it. Now the project stays closed until a skill is declared, and a turn that changed code cannot end without verification. A false positive costs one declaration.
 - **Design happens before code, and it's interrogated.** The grill won't end while any axis of the design lens is unsettled, so failure modes, rollout and observability get decided while they're still cheap to change. Anything hard to reverse becomes an ADR.
-- **Ceremony scales with the change, and with its risk.** A typo is a declaration and an edit. A bug is a reproducing loop before any fix. A feature is a grill. A one-line change to permissions gets the security and failure axes and required reviews, `code-review` and a security review, whatever its size.
+- **Ceremony scales with the change, and with its risk.** A typo is a declaration and an edit. A bug is a reproducing loop before any fix. A feature is a grill. A one-line change to permissions gets the security and failure axes and required reviews, `code-review`, a correctness review and a security review, whatever its size.
 - **Every slice is vertical and verifiable.** Tickets are tracer bullets with acceptance criteria (the design lens's negative cases among them) and the command that proves them; implementation is red-green at seams you agreed, so tests survive refactors.
 - **The review sees the candidate.** The ticket's files are committed by name before the review, so the reviewers (standards, spec and correctness, and security on a sensitive change) read the work itself, never a stale or empty diff; unrelated files in your tree are listed as excluded and left alone.
 - **Done has a definition, a stage, and a handover.** Evidence for every check on a named commit, then how to run it, what to try, what changed, and what's next.
 - **Production is part of the workflow.** Readiness, a deploy behind an explicit yes, proof that the exact candidate runs, a rollback that is executed rather than hoped for, and someone named for the alerts.
-- **You never have to remember a skill name.** Describe the work; the flow routes it, and each step offers the next one and waits.
+- **You never have to remember a skill name.** Describe the work; the flow routes it, and once you confirm a design each step starts the next, stopping only where the decision is yours.
 
 The same flow, as a table:
 
@@ -178,7 +182,7 @@ The same flow, as a table:
 
 Matt Pocock's skills own design, tests, bugs, review and the domain model; the plugin invokes them by name. Seams' own `to-spec`, `to-tickets` and `implement` are adaptations of his three (MIT, attributed with the upstream commit and file hashes in [`plugin/THIRD_PARTY_NOTICES.md`](plugin/THIRD_PARTY_NOTICES.md); [ADR-0002](docs/adr/0002-seams-owned-flow-skills.md)), so nothing reads his user-only files at runtime. Four Superpowers skills cover what neither collection had: `using-git-worktrees`, `verification-before-completion` (verify), `finishing-a-development-branch` (finish) and `receiving-code-review`; they ship inside this plugin, three as unmodified copies and `finishing-a-development-branch` as an adaptation that also records integration in the feature's progress file (attributed in the notices), so the Superpowers plugin itself is optional. Keep it enabled if you like: the gate does not open for a Superpowers skill, so `brainstorming` or `writing-plans` running first leaves the project closed until `grill` or `to-spec` runs, and `references/routing.md` names which of Matt Pocock's skills wins each overlap.
 
-Three rules apply on every path: questions go through the clickable question tool with the recommended answer first; test seams are settled in the grill, so `tdd` doesn't ask again; and every chained step (`to-spec`, `to-tickets`, `implement`, `release`) asks before it starts and before it publishes or deploys anything.
+Four rules apply on every path: questions go through the clickable question tool with the recommended answer first, and test seams settled in the grill are never asked again; code that uses a third-party library, framework, platform, CLI or API follows its official docs for the version in use, cited where the decision is written, while repo-internal logic needs no lookup; once you confirm a design, the chained steps (`to-spec`, `to-tickets`, `implement`) start without asking and the flow stops only at the real gates ([The continuous flow](#the-workflow)); and how much process a change gets, its scouts, questions, reviews and checks, follows its size and risk ([Process in proportion](#the-senior-engineer-layer)). Each rule several skills share is written once, in the shared rules (`plugin/skills/using-matt-pocock-skills/references/rules.md`), which a skill reads at the step that needs it.
 
 ### The senior-engineer layer
 
@@ -186,7 +190,7 @@ Matt Pocock's method plus the rigor around it that neither collection carried:
 
 - **Design lens.** Before the grill calls a design complete, it checks ten axes a design review covers: data model, interfaces and seams, failure modes, scale, security boundaries, observability, migration and rollout, testing strategy, operability, cost and reversibility. A bounded change touches three; a multi-session build visits all ten and the answers go into the spec (alternatives considered, risks, rollout, observability, release). A sensitive change gets the security and failure axes whatever its size.
 - **Definition of done.** A ticket isn't done until, on a named candidate commit, the seam and full-suite tests pass, typecheck and lint pass, every acceptance criterion is checked one by one, there are no debug leftovers, docs are updated where behavior changed, and the commit says what and why. The quality bar is proven on the same commit: each new way it can fail has a test, the diff adds no secret (and a sensitive change's security findings are resolved), a hot path is measured before and after, a new failure is logged or shown, and there is a way to undo it; a row that doesn't apply says n/a and why.
-- **Reviews scale with risk.** Every build gets Matt Pocock's `code-review` (standards and spec) and a correctness review by the read-only `reviewer` agent, since the bundled `/review` can't be reached while his `code-review` holds its name. A sensitive change gets a security review too: `/security-review` when its merge-base with `origin/HEAD` is the candidate's fixed point, the `reviewer` agent on the security axis otherwise. A diff over 400 changed lines or 15 files gets `/simplify` offered, and a user-facing change to a runnable app ends by offering `/verify`, which only you can start. A bounded change or a bug is offered the reviews instead, and only correctness and requirement gaps are acted on.
+- **Process in proportion** ([ADR 0005](docs/adr/0005-route-lasts-until-replaced-and-proportional-process.md)). Scouts, question rounds, reviews and checks scale with the change's size and risk, by one table in the shared rules, the sensitive list checked first. A trivial change gets `trivial`'s test and the narrowest check. A one-line fix gets one test at its seam, red then green. A bug or a bounded change gets scouts only for facts the conversation lacks, a few question rounds, and the reviews offered at the end. A feature, or any build through `implement`, gets the full grill, Matt Pocock's `code-review` (standards and spec) and a correctness review by the read-only `reviewer` agent, and the definition of done; the bundled `/review` can't be reached while his `code-review` holds its name. A sensitive change, at any size, gets all three reviews, required, never only offered: `code-review`, the correctness review, and a security review (`/security-review` when its merge-base with `origin/HEAD` is the candidate's fixed point, the `reviewer` agent on the security axis otherwise), and verification always. A diff over 400 changed lines or 15 files gets `/simplify` offered, and a user-facing change to a runnable app ends by offering `/verify`, which only you can start. Only correctness and requirement gaps are acted on. Scouts run on Sonnet, reviewers on your session's model.
 - **Handover.** Every ticket ends with four parts: how to run it, what to try per acceptance criterion, what changed (and any decision the ticket didn't settle), and what's next: the stage reached, the next ticket, and whether to `/clear`. Every ticket from `to-tickets` carries a "How to verify" line for the same reason.
 - **Foundations.** On first work in a repo, the `foundations` skill surveys run and verify commands, lint, pre-commit hooks, CI, glossary, issue-tracker config, boundary rules, `.env.example` and the production basics, reports the gaps scaled to the repo's size, and offers to close them through the existing setup skills or the platform's own. It writes nothing without a yes.
 - **Durable state.** Work in progress lives in files, not in the conversation: the feature's progress file (the grill's decisions as they land, the ticket in progress, the stage and the next step), the spec, the tickets, `CONTEXT.md` and the ADRs. A fresh context after `/clear` or a compaction starts from them ([Resuming work](#resuming-work)); what a phase decided and did not write there is lost by design, so the skills write it there.
@@ -246,7 +250,7 @@ That runs `foundations`: a survey of run and verify commands, lint, pre-commit h
 
 > *"Add gift card support: customers should be able to pay part of an order with a gift card balance."*
 
-Claude invokes the grill before touching anything, asks every independent question at once (a gate, security or destructive question alone), keeps the answers in the feature's progress file, and offers the next step when the design converges. To confirm it's live, start a fresh session and ask which skill applies to a bug fix; it should name `diagnosing-bugs`. To see the gate, ask for a file to be written with no process; the refusal above is what comes back, and the next call is a declaration.
+Claude invokes the grill before touching anything, asks every independent question at once (a gate, security or destructive question alone), and keeps the answers in the feature's progress file. When the design converges it asks you to confirm it, naming the step a yes starts and where to build; your yes runs the flow on to its next stop. To confirm it's live, start a fresh session and ask which skill applies to a bug fix; it should name `diagnosing-bugs`. To see the gate, ask for a file to be written with no process; the refusal above is what comes back, and the next call is a declaration.
 
 ### Resuming work
 
@@ -273,13 +277,15 @@ Tested on the developer's machine (macOS on arm64; Python 3.14 as the default `p
 
 ### Claude Code versions
 
-3.3 supports Claude Code 2.1.269 or later: the release that brought `claude plugin eval` in September 2026, which runs the suite shipped in `plugin/evals/`, and later than every dated feature the hooks need. Exec-form hooks shipped in May 2026, the week of 2.1.139 to 2.1.142; a Stop hook's feedback as context in June; the prompt id in hook input in 2.1.196. The docs give no version for the `UserPromptExpansion` event. The hooks and agents treat three newer fields as optional; without one, the older behavior applies:
+Since 3.3, Seams supports Claude Code 2.1.269 or later: the release that brought `claude plugin eval` in September 2026, which runs the suite shipped in `plugin/evals/`, and later than every dated feature the hooks need. Exec-form hooks shipped in May 2026, the week of 2.1.139 to 2.1.142; a Stop hook's feedback as context in June; the prompt id in hook input in 2.1.196. The docs give no version for the `UserPromptExpansion` event. The hooks and agents treat three newer fields as optional; without one, the older behavior applies:
 
 - the SessionStart `fork` source (2.1.214): before it, a fork reports `resume`, which the hook answers too;
 - `scratchpad_dir` in hook input (2.1.257): without it, only the temp directory is scratch;
 - `omitClaudeMd` for the read-only agents (2.1.271): on 2.1.269 and 2.1.270 they load your `CLAUDE.md` files as well.
 
-Phase 1's recorded runs used Claude Code 2.1.282 and 2.1.283 ([the evidence](docs/plugin-behavior-tests.md)); no older version has been run. The [Claude Code changelog](https://code.claude.com/docs/en/changelog) and the [hooks reference](https://code.claude.com/docs/en/hooks) date each feature.
+Since 4.0, `scout` names the model alias `sonnet`, which the docs resolve to Sonnet 5.5 on the Anthropic API; Sonnet 5.5 needs Claude Code 2.1.284 ([model configuration](https://code.claude.com/docs/en/model-config)). An older version, or another provider, gives the scout the Sonnet its alias resolves to there.
+
+3.3's recorded runs used Claude Code 2.1.282 and 2.1.283 ([the evidence](docs/plugin-behavior-tests.md)); no older version has been run. The [Claude Code changelog](https://code.claude.com/docs/en/changelog) and the [hooks reference](https://code.claude.com/docs/en/hooks) date each feature.
 
 ### Where Seams loads
 
@@ -310,9 +316,11 @@ A repository can also switch the plugin off for itself: `enabledPlugins` in its 
 
 ## What it costs
 
-Seams adds three things to every session: the descriptions of its skills and agents, which Claude Code lists so Claude can call them; the routing policy the session-start hook injects, at most 2,900 bytes (`scripts/tests/test_plugin_hook.sh` fails above that); and, when work is in progress, a resume note of under 1,500 characters. A skill's instructions cost context only once it runs. Each `SKILL.md` stays within 11,000 bytes, about 4,000 tokens (`scripts/tests/test_plugin.sh` fails above that), because when Claude Code compacts a conversation it keeps the first 5,000 tokens of each invoked skill, and 25,000 for all of them together, the most recent first.
+Seams adds three things to every session: the descriptions of its skills and agents, which Claude Code lists so Claude can call them; the routing policy the session-start hook injects, at most 2,900 bytes (`scripts/tests/test_plugin_hook.sh` fails above that); and, when work is in progress, a resume note of under 1,500 characters. A skill's instructions cost context only once it runs. Each `SKILL.md` stays within 11,000 bytes, about 4,000 tokens (`scripts/tests/test_plugin.sh` fails above that), because when Claude Code compacts a conversation it keeps the first 5,000 tokens of each invoked skill, and 25,000 for all of them together, the most recent first. A reference a skill reads at one of its steps, the shared rules among them, stays within 16,000 bytes.
 
-By `claude plugin details`, the listing cost about 1,165 tokens a session in 3.2.1 and costs about 857 in 3.3, 26% less, measured again on the 3.3.0 release candidate ([the evidence](docs/plugin-behavior-tests.md)). That figure is the listing alone: the tool counts the hooks as costing the model nothing, so the routing policy and the resume note they inject are not in it.
+By `claude plugin details`, the listing cost about 1,165 tokens a session in 3.2.1 and costs about 857 in 3.3, 26% less, measured again on the 3.3.0 release candidate ([the evidence](docs/plugin-behavior-tests.md)). 4.0 leaves the listing as it was: 2,649 characters by the static test's count, in 3.4.0 and now. That figure is the listing alone: the tool counts the hooks as costing the model nothing, so the routing policy and the resume note they inject are not in it.
+
+The hooks cost time instead. PreToolUse runs before every edit and shell command, subagents' included, the prompt hook on every message and the Stop hook at every turn's end, and each one blocks until it answers. Since 4.0 each event loads only the code it needs: a firing takes about 20 ms where 3.4.0's took about 37 (medians on the developer's Mac: Stop 19.5 ms, UserPromptSubmit 19.8, PreToolUse on an Edit 21.1 and on a Bash call 25.8). [`/doctor`](https://code.claude.com/docs/en/commands) flags a slow hook.
 
 To measure it yourself:
 
@@ -326,7 +334,7 @@ Three kinds of evidence, in decreasing strength, all reproducible from this repo
 
 ### The hooks and the installer, proven deterministically
 
-`scripts/test.sh` runs every suite at once, up to half the cores at a time, and fails a run that takes over its budget (a minute; CI sets its own): the gate module's unit tests (the shell classifier against a table of commands, the decision for each event against a ledger, the continuation rule, the done-check rule), the hook executables fed JSON on stdin (refuse and allow with and without a declaration, a subagent under the same ledger, a read-only agent's change refused whatever the ledger says, a typed skill recorded from its expansion or from the prompt, the lapse hint, the done-check asking once as hook feedback and not twice, garbage input exiting 0 with no output), the session-start hook against fixture homes (a custom config directory, one with spaces, symlinked skills, a partial install, none), the installer against a stub `claude` in fixture homes (settings byte-identical, a failing step stops it, a second run changes nothing), the static plugin checks (`claude plugin validate --strict`, the routing table's rows, the paths the skills point to, the Superpowers copies' checksums, the upstream drift warning, the version in `plugin.json` only, every skill within 11,000 bytes and each reference within 16,000, with no effort pin and no model pin but scout's Sonnet, the read-only agents' tool lists and turn caps, the always-on cost `claude plugin details` measures), the eval scenarios' files and graders against each scenario's expectation, and the runner itself. CI runs the same script on Ubuntu and macOS on every push to `main` and on pull requests, and runs the gate, the hooks, the session start and pr-review's scripts once more under the macOS system Python 3.9, the one a Mac without another Python gives the hooks ([`.github/workflows/test.yml`](.github/workflows/test.yml)). These prove what the hooks and the installer do; they say nothing about what the model chooses.
+`scripts/test.sh` runs every suite at once, up to half the cores at a time, and fails a run that takes over its budget (a minute; CI sets its own); on the developer's Mac the whole run takes about 15 seconds. The gate's rules are tested once, in process, through the three modules' public functions (the shell classifier against a table of commands, the decision for each event against a ledger, a declaration that lasts through typed replies and commits until another process skill or a `/clear` replaces it, a subagent's own declaration covering it alone, a read-only agent held to reads, the ledger out of a tool call's reach, a ledger in 3.4.0's shape read and one of an unknown shape read as empty, the done-check rule). Each hook event then runs once through its command line, fed JSON on stdin as Claude Code runs it (refuse and allow with and without a declaration, a typed skill recorded from its expansion or from the prompt, the session start resetting or keeping the ledger, the done-check asking once as hook feedback and not twice, garbage input exiting 0 with no output, a broken module never blocking, the repository facts). Beside them run the session-start hook against fixture homes (a custom config directory, one with spaces, symlinked skills, a partial install, none), the installer against a stub `claude` in fixture homes (settings byte-identical, a failing step stops it, a second run changes nothing), the static plugin checks (`claude plugin validate --strict`, the routing table's rows, the paths the skills point to, the Superpowers copies' checksums, the upstream drift warning, the version in `plugin.json` only, every skill within 11,000 bytes and each reference within 16,000, with no effort pin and no model pin but scout's Sonnet, the read-only agents' tool lists and turn caps, the always-on cost `claude plugin details` measures, the continuous flow's stops, the process table's floor and the docs rule), pr-review's scripts, the eval scenarios' files and graders against each scenario's expectation, and the runner itself. CI runs the same script on Ubuntu and macOS on every push to `main` and on pull requests, and runs the gate, the hooks, the session start and pr-review's scripts once more under the macOS system Python 3.9, the one a Mac without another Python gives the hooks ([`.github/workflows/test.yml`](.github/workflows/test.yml)). These prove what the hooks and the installer do; they say nothing about what the model chooses.
 
 ### The right skill fires first, and the gate holds
 
@@ -355,6 +363,8 @@ Since 3.1.0 the ten scenarios are also `claude plugin eval` cases, shipped insid
 
 **The 3.1.0 passes** (2026-09-19, eight cases, three runs per arm, Claude Code 2.1.278): Opus 5 suite score 0.94 with mean Δ +0.44; Sonnet 5 suite score 1.00 with mean Δ +0.56. Those scores are the gate contract (a declaration before any change, no refusal on a routing prompt); the unscored indicator of *which* skill fired differed from the harness's records on three prompts, because an eval run is a different environment (`dontAsk`, no shell, only this plugin loaded). The per-case tables, that reading, and the two cases that could not run on this machine are in [`docs/plugin-behavior-tests.md`](docs/plugin-behavior-tests.md). The latest passes ran while 3.3 was built, on `72de2a7` (Claude Code 2.1.282): every case scored 1.00 on both models. 3.3.0 shipped without running them again, since the bootstrap, the descriptions and the routing table they exercise have not changed since; lean-and-durable ticket 15 runs them on the release.
 
+**The 4.0.0 proof.** Before 4.0.0 is released, the scenarios run on 3.4.0 and on the candidate, both against the same nineteen cases, and no case may score lower on the candidate. Three scripted tasks (a bug fix with a typed reply in the middle, a confirmed design taken to its tickets, a resumed ticket) are measured on both for tool calls, tokens and wall time. Every run is billed, so each is asked first and they run one at a time. The method is in [the evidence](docs/plugin-behavior-tests.md#400-the-proof), where the results go; none is recorded yet.
+
 Any teammate can rerun it against their own machine and model with one command (see [Tests](#tests)). The 2.x runs behind every wording decision, the grill's presentation runs and the runs with Superpowers enabled alongside are recorded in the same document; they were made on the 2.x bootstrap and are history, not evidence for 3.x.
 
 ### `/pr-review` on real pull requests
@@ -378,38 +388,40 @@ Until 3.3.1 only you could start the skill; since then Claude can too, when aske
 - **It won't prove a shell command is harmless.** The classifier is a documented mesh: a list of patterns (redirects, the file-changing commands, `sed -i`, git's tree- and history-changing subcommands, package managers, formatter write flags, inline interpreter programs that write). A write it does not recognize goes through ungated, and the done-check never sees it; an `Edit` or `Write` is always gated. Widening the mesh is a row in `plugin/hooks/seams_shell.py`'s table, with a test.
 - **It won't evidence outcomes.** The harness stops at the first committing call, so its counts say which skill fired first, not that the grill asked the right question, that the review found the defect, or that the readiness table was judged honestly. The thirteen-scenario outcome matrix an outside review proposed (a greenfield app to a test deployment, a migration, tenant isolation, a concurrent webhook, a failed release, a resumed session, and the rest) is not evidenced anywhere in this repository. Outcome evidence here is the case study and the 2.1 `implement` runs read by hand.
 - **It won't replace judgment inside a skill.** Once a skill runs, what happens is the model following prose. The hooks prove that a route was declared and that verification ran, not that either was done well; the grill's recommendations are defaults to accept or overrule, and the definition of done is a checklist Claude runs, not a guarantee.
-- **It won't skip the questions.** On an ambiguous request it asks instead of guessing; in headless or unattended runs that means it stops. Give it a spec, or answer the grill.
+- **It won't skip the questions.** On an ambiguous request it asks instead of guessing; in headless or unattended runs that means it stops. Give it a spec, or answer the grill. The continuous flow skips only the questions a confirmed design already answered: the real gates are asked every time.
 - **It never merges, and it posts by itself only what is fully verified.** Since 3.4.0 `/pr-review` posts a review without asking, in a repository you can push to, only when every check ran on both trees with a result it can stand behind, every finding was verified at the PR's current head, every blocking one is proven, and nothing is left under not verified; the poster's code checks this on the evidence, not the model's word. Any other review waits for your yes, and `draft only` in the request turns self-posting off. An approval posts by itself only against an independent reference (a ticket, an issue someone other than the author opened, or a file you name with `against`), never the PR's own description or the author's own issue, and never beside a blocking finding or a broken check; the poster also refuses any review that mentions a path on your machine or something shaped like a secret. Nothing is pushed except in a take-over, on your yes; GitHub's own rule holds too: nobody approves or requests changes on their own pull request.
 - **It won't run Matt Pocock's user-only skills for you** (`/wayfinder`, `/triage`, `/improve-codebase-architecture`, `/ask-matt`); it suggests them by name, and you type them. Typing one is a declaration.
 
 ## Layout
 
-- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_ledger.py`, the ledger and the rules every hook shares, `seams_gate.py` and `seams_shell.py`, the PreToolUse gate and its shell reader, `seams_facts.py` for the repository facts, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptExpansion, UserPromptSubmit and Stop hooks), `agents/` (the read-only `scout` and `reviewer`), `skills/` (the bootstrap with `references/routing.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, `pr-review` (a core under the size bound, six references it reads step by step, and five scripts), the four skills from Superpowers: three copies and one adaptation), `evals/` (below), `THIRD_PARTY_NOTICES.md`
+- `plugin/` — the plugin: `.claude-plugin/plugin.json`, `hooks/` (`seams_ledger.py`, the ledger and the rules every hook shares, `seams_gate.py` and `seams_shell.py`, the PreToolUse gate and its shell reader, `seams_facts.py` for the repository facts, the SessionStart bootstrap, and the PreToolUse, PostToolUse, UserPromptExpansion, UserPromptSubmit and Stop hooks), `agents/` (the read-only `scout` and `reviewer`), `skills/` (the bootstrap with `references/routing.md`, the shared rules `references/rules.md` and the progress file's format `references/progress-file.md`, `grill` with its design lens, `foundations`, `trivial`, `to-spec`, `to-tickets`, `implement`, `release`, `incident`, `pr-review` (a core under the size bound, six references it reads step by step, and five scripts), the four skills from Superpowers: three copies and one adaptation), `evals/` (below), `THIRD_PARTY_NOTICES.md`
 - `.claude-plugin/marketplace.json` — makes this repo a single-plugin marketplace
 - `scripts/install.sh` — the one-command installer; `scripts/test.sh` and `scripts/tests/` — the test suites, which `scripts/run_suites.py` runs at once
 - `docs/plugin-behavior-tests.md` — the routing evidence and its method; `docs/compatibility.md` — what it was tested with; `docs/adr/` — the decisions; `docs/case-study-web-downloader.md` — one feature end to end on a real repo; `docs/carousel/` — the workflow as five slides for sharing
-- `plugin/evals/` — the seventeen scenarios, one directory each, run by `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
+- `plugin/evals/` — the nineteen scenarios, one directory each, run by `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
 
 ## Tests
 
 ```bash
 scripts/test.sh                       # every suite at once, each one's result and time; fails over its one-minute budget
 scripts/test.sh --only gate,hooks     # some suites by name (--list shows them; --python picks the interpreter)
-scripts/tests/test_plugin.sh          # manifests validate, the version in plugin.json only, skills well-formed, skills and references within their size bounds, no skill injecting a shell command, the routing table's rows, the read-only agents' tool lists, always-on cost, copies and upstream hashes checked
+scripts/tests/test_plugin.sh          # manifests validate, the version in plugin.json only, skills well-formed, skills and references within their size bounds, no skill injecting a shell command, the routing table's rows, the continuous flow's stops, the process table's floor and the docs rule, the read-only agents' tool lists, always-on cost, copies and upstream hashes checked
 scripts/tests/test_plugin_hook.sh     # the bootstrap hook against fixture homes and repos
 scripts/tests/test_hooks.sh           # the gate hooks and the repository facts, fed JSON on stdin (PYTHON=/usr/bin/python3 for the system 3.9)
 scripts/tests/test_install.sh         # the installer in fixture homes, against a stub claude CLI
-python3 -m unittest discover -s scripts/tests -p 'test_*.py'   # the gate module, pr-review's scripts, the runner
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'   # the gate's three modules, pr-review's scripts, the eval scenarios' files, the runner
 claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write   # the routing scenarios through claude plugin eval, from the clone
 ```
 
-The eval suite is the same seventeen scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
+The eval suite is the same nineteen scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
 
 ```bash
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag routing --tag gate --scaffold --allow-tools Edit Write
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag shell --scaffold --allow-tools Edit Write Bash   # the two cases that need a shell
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag delegation --scaffold   # the grill's fact-finding through the scout agent
 claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag review --scaffold --allow-tools Edit Write Bash   # a build's reviews, by risk
+claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag flow --scaffold --allow-tools Edit Write   # the continuous flow from a confirmed design, and its gates
+claude plugin eval matt-pocock-workflow@my-workflow-agent-skills --tag resume --scaffold --allow-tools Edit Write Bash   # work resumed from its progress file
 ```
 
-`--scaffold` runs each case's scaffold as you: it copies the fixture into the run's workspace, installs its dependencies, and hands the run the nine Matt Pocock skills from your own config directory (a run loads nothing else of yours). The nine `routing` and `gate` cases need only `Edit` and `Write`; `gate-shell-write` and `gate-commit` need `Bash`, and so do the two `review` cases, for git; the eval runs `Bash` under an OS sandbox that refuses to start on a Mac whose `~/.docker` holds symlinks (Docker Desktop's `cli-plugins/` does), so those run where the sandbox can. Add `--model claude-sonnet-5` to pin the model, `--ablation none` to skip the baseline, `--publish-report` for a shareable report. Every run is billed to your account.
+`--scaffold` runs each case's scaffold as you: it copies the fixture into the run's workspace, installs its dependencies, and hands the run the nine Matt Pocock skills from your own config directory (a run loads nothing else of yours). The nine `routing` and `gate` cases need only `Edit` and `Write`; `gate-shell-write` and `gate-commit` need `Bash`, and so do the two `review` cases, for git; the two `flow` cases need `Edit` and `Write`, so that a publish before your yes is possible and caught; of the three `resume` cases, `resume-grill` needs no grant, `resume-ticket` needs `Bash` and `resume-parallel` needs `Edit`, `Write` and `Bash`; the eval runs `Bash` under an OS sandbox that refuses to start on a Mac whose `~/.docker` holds symlinks (Docker Desktop's `cli-plugins/` does), so those run where the sandbox can. Add `--model claude-sonnet-5` to pin the model, `--ablation none` to skip the baseline, `--publish-report` for a shareable report. Every run is billed to your account.
