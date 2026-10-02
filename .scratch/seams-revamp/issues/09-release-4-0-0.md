@@ -2,7 +2,7 @@
 
 **What to build:** 4.0.0 reaches the marketplace repository `gabriel-tutor/seams` through `matt-pocock-workflow:release`: a throwaway staging pull request whose CI passes on macOS, Ubuntu and the Python 3.9 job, then `main` fast-forwarded on the user's yes, then verified.
 
-**Blocked by:** 08 (Docs and proof).
+**Blocked by:** 08 (Docs and proof), 10 (The ledger out of an agent's reach).
 
 **Status:** ready-for-agent
 

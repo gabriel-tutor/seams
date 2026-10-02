@@ -2,7 +2,7 @@
 
 Status: active
 Stage: integrated
-Next: Build ticket 02, 03 or 04 with implement, each in its own worktree under .worktrees/ off main, never live in plugin/ (02 and 03 build on the suite, 04 on the gate); /clear first.
+Next: Tickets 05 (Lighter hooks) and 06 (A continuous flow) are unblocked: offer them as a parallel run with implement, worktrees under .worktrees/ off main, never live in plugin/; /clear first.
 Updated: 2026-10-02
 
 ## Spec
@@ -12,14 +12,15 @@ Updated: 2026-10-02
 ## Tickets
 
 - 01 A suite that runs in under a minute (blocked by: none) — done, integrated on main from seams-4/01-fast-suite (7f4d79d); at the merge, tests/fixture-deps/, the retired harness's leftover, was ignored again
-- 02 No test sleeps, each behavior tested once (blocked by: 01)
-- 03 Wording pins shrink to the contracts (blocked by: 01)
-- 04 A route lasts (blocked by: 01)
+- 02 No test sleeps, each behavior tested once (blocked by: 01) — done, integrated on main at 7a618e9 (built at 8eeb0a7); the test_hooks.sh conflict with 04 resolved in 02's layout, 04's 3.4.0-ledger check kept as section 4b
+- 03 Wording pins shrink to the contracts (blocked by: 01) — done, integrated on main at 2ecba9b (built at b63794a)
+- 04 A route lasts (blocked by: 01) — done, integrated on main at 5037a63 (built at 3765110); the test_plugin.sh conflict with 03 resolved with 03's file
 - 05 Lighter hooks (blocked by: 04)
 - 06 A continuous flow (blocked by: 03, 04)
 - 07 One shared reference, process in proportion (blocked by: 03, 06)
 - 08 Docs and proof (blocked by: 02, 05, 07)
-- 09 Release 4.0.0 (blocked by: 08)
+- 09 Release 4.0.0 (blocked by: 08, 10)
+- 10 The ledger out of an agent's reach (blocked by: 05) — added 2026-10-02 from ticket 04's security review, the user's choice: 4.0.0 waits for it
 
 ## Decisions
 
@@ -47,6 +48,8 @@ Updated: 2026-10-02
 
 21. Ticket 01's build (mine, the user may overrule them): the runner caps suites at half the cores at once (decision 4, the Mac stays usable), so "every suite starts at once" means up to that cap; `expect.json` stays in each scenario as its own expectation, and the harness's checks that tie graders to it moved to `scripts/tests/test_evals.py`; the CI system-Python job also runs pr-review's suites, which the old local rerun covered.
 
+22. The parallel run of tickets 02, 03 and 04 (the user's pick, 2026-10-02): ticket 04's conflict with ticket 03 in `scripts/tests/test_plugin.sh` was resolved with 03's version whole (the user's choice), since it checks no skill wording; ticket 04's medium security finding, a ledger any tool call can forge, became ticket 10, which 4.0.0 waits for (the user's choice).
+
 ## Outline of phases 2 and 3 (grilled in full when each starts)
 
 - Phase 2, the project's own stack and its official docs: the session start or `foundations` reads the stack from its manifests (package.json, pyproject, go.mod, Cargo.toml, app.json, Podfile, build.gradle, Dockerfile) and the drivers installed; an e2e check uses the stack's driver, CLI first where the vendor says it is cheaper (Playwright CLI or MCP and Chrome DevTools for the web, Claude in Chrome when the plan allows it, Maestro, MobileBuildMCP, the Android CLI and adb for mobile, plain runs for CLIs and APIs, computer use last); missing drivers are offered, never installed unasked; Context7 or the vendor's docs back decision 3.
@@ -64,6 +67,8 @@ Updated: 2026-10-02
 - The test suite: `scripts/test.sh` runs 8 suites one after another; 326 Python tests and about 329 shell checks test behavior, and `test_plugin.sh` holds about 750 pins on skill and README wording. On macOS every Python test, `test_hooks.sh` and `test_plugin_hook.sh` run a second time under the system Python 3.9. 1,136 test lines guard the eval tooling (`behavior_test.py`, `prepare_run.sh`, `fixture_deps.sh`), the only part that needs Node. Rewriting the runner in Rust or Go would remove almost none of the time: it waits on the processes it must start (the hooks and scripts under test are Python), on git, bash and Node, and on fixed sleeps and timeouts.
 - E2E drivers (official docs, 2026-10-02): Playwright MCP (`@playwright/mcp`, or the token-cheaper `@playwright/cli` with skills), Chrome DevTools MCP, Claude in Chrome (Pro/Max/Team/Enterprise with `/login`), Maestro MCP (`maestro mcp`, needs Java), Expo MCP (Expo account, SDK 54+), MobileBuildMCP (XcodeBuildMCP's new name since 2026-09-23), the Android CLI and adb, computer use (macOS research preview, Pro/Max, interactive only, used last). Docs lookup: Context7 (free 1,000 calls a month), Microsoft Learn MCP, AWS Knowledge MCP. Anthropic and Microsoft both say CLI tools are more context-efficient than MCP servers.
 
+- The parallel run of 02, 03 and 04 (2026-10-02): the reports of a builder's own scouts and reviewers were delivered to the main conversation, not to the builder, which waited idle for them; the main conversation forwarded each report's output file (`<tmp>/claude-<uid>/<project>/<session>/tasks/<agent-id>.output`, the report being the final SubagentHandback call). The suite went from 21.5 s (03 and 04 merged) to 16.1 s with 02.
+- Left for later tickets, from the run's reviews: README.md:329 still names the lapse hint and a subagent under the same ledger among what the hook executables test (ticket 08); `plugin/skills/trivial/SKILL.md:8` and `references/routing.md:79` still say a declaration is for the request, and CONTEXT.md's Route entry is the old sense (tickets 06 and 07); ADR 0001 still says "for the current request" without pointing to ADR 0005.
 - Bundled skills (Claude Code docs mirror, 2026-09-24): /code-review is model-invocable; /verify runs only when the user invokes it (since 2.1.215) and cannot be preloaded into a subagent; /security-review and /init can be called through the Skill tool; /run and /verify find how to launch an app from the project type and README, package.json or Makefile, and /run-skill-generator records it as a project skill; a plugin skill loads beside a bundled one of the same name; a plugin can ship MCP servers in `.mcp.json` that start when it is enabled.
 - Hooks: PreToolUse and PostToolUse fire on every tool call and block until they finish; Stop fires at the end of every reply; SessionStart hooks should be fast (the docs); /doctor flags slow hooks.
 - The skill listing budget is 1% of the context window, at most 1,536 characters a description.
