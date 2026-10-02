@@ -1,9 +1,8 @@
 # Progress: Seams revamp, faster and lighter at the same quality
 
 Status: active
-Stage: designed
-Ticket: 01
-Next: Ticket 01 is built on branch seams-4/01-fast-suite (worktree .worktrees/seams-4-01) in the commit after 038aa5b; review it against the fixed point 038aa5b (code-review, a correctness review, and a security review since it changes CI), then the definition of done.
+Stage: built
+Next: Ticket 01 is built on branch seams-4/01-fast-suite (worktree .worktrees/seams-4-01); integrate it (finishing-a-development-branch asks how), then tickets 02, 03 and 04 are unblocked: 02 and 03 build on this suite, 04 on the gate. /clear first: this session is heavy.
 Updated: 2026-10-02
 
 ## Spec
@@ -12,7 +11,7 @@ Updated: 2026-10-02
 
 ## Tickets
 
-- 01 A suite that runs in under a minute (blocked by: none)
+- 01 A suite that runs in under a minute (blocked by: none) — done, f988c12 on seams-4/01-fast-suite
 - 02 No test sleeps, each behavior tested once (blocked by: 01)
 - 03 Wording pins shrink to the contracts (blocked by: 01)
 - 04 A route lasts (blocked by: 01)
@@ -45,6 +44,8 @@ Updated: 2026-10-02
 19. Design-lens points, mine (the user may overrule them): the merged hook still fails open, as every hook does today (a crash never blocks the user's work); 4.0.0 reads 3.4.0's per-session ledger or starts it fresh, never refuses on an old one; removing the eval harness and the duplicated tests touches nobody's install; CI gains one Python 3.9 job (a CI change, so it gets the security review); a rollback is reinstalling 3.4.0. The stale manual-only declaration code in the gate goes with the split.
 
 20. ADR 0005 records decisions 6, 10 and 15 (the user's yes, 2026-10-02). The user confirmed the shared understanding of phase 1 and asked for the spec.
+
+21. Ticket 01's build (mine, the user may overrule them): the runner caps suites at half the cores at once (decision 4, the Mac stays usable), so "every suite starts at once" means up to that cap; `expect.json` stays in each scenario as its own expectation, and the harness's checks that tie graders to it moved to `scripts/tests/test_evals.py`; the CI system-Python job also runs pr-review's suites, which the old local rerun covered.
 
 ## Outline of phases 2 and 3 (grilled in full when each starts)
 
