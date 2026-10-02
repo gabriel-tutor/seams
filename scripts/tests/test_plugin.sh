@@ -437,17 +437,19 @@ grep -qE "<[A-Z_-]+>" <<< "$BOOT_BODY" && fail "a pseudo-tag in the bootstrap: $
 
 # The continuous flow's stops (seams-revamp ticket 06): once the user confirms a design, each step starts the next
 # unasked, so a question is all that stands between the flow and an outward, irreversible or paid action. The
-# bootstrap's flow rule names every stop, and each skill that owns one still asks before it acts: the spec's and the
-# tickets' publish, a parallel run's integrations, a branch's integration and its discard, the deploy, an incident's
-# outward action, the paid cloud review. Every skill that keeps the progress file still names it, since the flow skips
-# questions, never the record. A copy with each stop dropped in turn shows the check catching that stop alone.
+# bootstrap's flow rule says so and names every stop, and each skill that owns one still asks before it acts: the
+# spec's and the tickets' publish, a parallel run's integrations, a branch's integration and its discard, release's
+# readiness, deploy and production questions, an incident's outward action, the paid cloud review. Every skill that
+# keeps the progress file still points at its format where it writes it, since the flow skips questions, never the
+# record. A copy with each stop dropped in turn shows the check catching that stop alone.
 flow_stop_problems() {   # $1 = a plugin directory, $2 = "probe" to drop each stop from a copy: a line for each stop missed
   python3 - "$1" "${2:-}" <<'PY'
 import pathlib, re, shutil, sys, tempfile
 root, probe = pathlib.Path(sys.argv[1]), sys.argv[2] == "probe"
 BOOT, FLOW = "skills/using-matt-pocock-skills/SKILL.md", r"(?m)^\d+\. Flow:.*$"
 FIN = "skills/finishing-a-development-branch/SKILL.md"
-STOPS = [(f"the bootstrap's flow rule names {what}", BOOT, FLOW, pattern) for what, pattern in (
+STOPS = [("the bootstrap's flow rule lets the next steps start unasked", BOOT, FLOW, r"\bunasked\b")]
+STOPS += [(f"the bootstrap's flow rule names {what}", BOOT, FLOW, pattern) for what, pattern in (
     ("the user's decisions", r"user's decisions"), ("integrating a branch", r"integrat\w*\s+(?:a\s+|the\s+)?branch"),
     ("a push", r"\bpush"), ("a deploy", r"\bdeploy"), ("a publish", r"\bpublish"),
     ("anything destructive", r"\bdestructive"), ("a paid run", r"\bpaid\b"))]
@@ -460,11 +462,13 @@ STOPS += [(what, path, None, pattern) for what, path, pattern in (
     ("finishing-a-development-branch waits for the integration choice", FIN,
      r"Wait for their answer;\s+the integration decision\s+is theirs"),
     ("finishing-a-development-branch discards only on the typed word", FIN, r"Type 'discard' to confirm"),
+    ("release asks before its readiness checks", "skills/release/SKILL.md", r"check readiness now\?"),
     ("release asks before every deploy", "skills/release/SKILL.md", r"\*\*every time\*\*: \"Deploy candidate"),
+    ("release asks again before production", "skills/release/SKILL.md", r"Production, or the public listing, gets its own question"),
     ("incident asks before any outward action", "skills/incident/SKILL.md", r"\*\*Ask before any outward action\.\*\*"),
     ("implement never starts the paid cloud review unasked", "skills/implement/references/reviews.md",
      r"\*\*Never `ultra`\*\*[^\n]*unless the user asks"))]
-STOPS += [(f"{s} keeps the progress file", f"skills/{s}/SKILL.md", None, r"progress file")
+STOPS += [(f"{s} keeps the progress file in its format", f"skills/{s}/SKILL.md", None, r"references/progress-file\.md")
           for s in ("grill", "to-spec", "to-tickets", "implement", "finishing-a-development-branch", "release")]
 
 def missed(plugin):

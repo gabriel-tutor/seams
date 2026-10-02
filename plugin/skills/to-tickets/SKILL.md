@@ -89,6 +89,6 @@ In either form, avoid specific file paths or code snippets: they go stale fast. 
 
 ## Next
 
-Go on to `matt-pocock-workflow:implement` for the first ticket whose blockers are done, without offering it: the flow continues (the bootstrap's flow rule). When two or more have no open blocker, `implement`'s parallel offer is the question.
+When the flow brought you here or the user asked for the build (Gate, above), go on to `matt-pocock-workflow:implement` for the first ticket whose blockers are done, without offering it (when two or more have no open blocker, `implement`'s parallel offer is the question); otherwise offer it and wait for a yes.
 
 Adapted from Matt Pocock's `to-tickets` skill (github.com/mattpocock/skills, `skills/engineering/to-tickets` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`), MIT License, Copyright (c) 2026 Matt Pocock; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.

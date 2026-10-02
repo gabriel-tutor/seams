@@ -16,17 +16,17 @@ Keep grill → spec → tickets in one context window. The spec and the tickets 
 
 ## The continuous flow
 
-Once the user confirms a design (the grill's last question, or a spec the user calls agreed), the flow runs on: each flow skill goes on to the next step its row names without offering it, and `to-spec`, `to-tickets`, `implement` and `release` start without an opening question. The flow reached a step when this conversation or the progress file shows the design confirmed and names that step next; a "continue" on it is the flow going on. Asked directly by the user, a skill starts at once, as before. The flow skips questions, never the record: each step still writes the progress file and commits it, so the file and the handovers show everything the flow did.
+Once the user confirms a design (the grill's last question, or a spec the user calls agreed), the flow runs on: each flow skill goes on to the next step its row names without offering it, and `to-spec`, `to-tickets` and `implement` start without an opening question. The flow reached a step when this conversation or the progress file shows the design confirmed and names that step next; a "continue" on it is the flow going on. Asked directly by the user, a skill starts at once, as before. The flow skips questions, never the record: each step still writes the progress file and commits it, so the file and the handovers show everything the flow did.
 
 It stops only at the real gates:
 
 - **The user's decisions:** the grill's questions, the seams when none were agreed, where to build when nothing settled it, the tickets' breakdown, the parallel offer, the readiness rows to close.
 - **Integrating a branch:** `finishing-a-development-branch`'s menu (merge locally, a pull request, or keep), and a discard only when the user asks for one in so many words.
-- **A push, a deploy, a publish:** the spec's and the tickets' publish, the push behind a pull request, `release`'s deploy question.
+- **A push, a deploy, a publish:** the spec's and the tickets' publish, the push behind a pull request, and `release`'s questions: its opening one before readiness, whose rows can build, bill or reach a host, then each deploy's.
 - **Anything destructive:** discarding work, a force, deleting data, a branch or files that exist nowhere else.
 - **A paid run:** a cloud review (`ultra`), a billed eval or service.
 
-Each is asked with a question that names it, when it comes; an earlier general yes ("go all the way") covers none of them. A limit the user set ("just the spec for now") stops the flow there. So does a handover that says to `/clear` before the next step, since only the user can type `/clear`: the resume note then brings the step back, and a "continue" goes on.
+Each is asked with a question that names it, when it comes; an earlier general yes ("go all the way") covers none of them. A limit the user set ("just the spec for now") stops the flow there, and so does a ticket with an unmet row in its definition of done. So does a handover that says to `/clear` before the next step, since only the user can type `/clear`: the resume note then brings the step back, and a "continue" goes on.
 
 ## Greenfield
 

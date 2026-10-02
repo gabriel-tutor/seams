@@ -88,6 +88,6 @@ Any further notes about the feature, then the subsections from step 3: Alternati
 
 ## Next
 
-Go on to `matt-pocock-workflow:to-tickets` without offering it: the flow continues (the bootstrap's flow rule).
+When the flow brought you here (Gate, above), go on to `matt-pocock-workflow:to-tickets` without offering it; otherwise offer it and wait for a yes.
 
 Adapted from Matt Pocock's `to-spec` skill (github.com/mattpocock/skills, `skills/engineering/to-spec` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`), MIT License, Copyright (c) 2026 Matt Pocock; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.
