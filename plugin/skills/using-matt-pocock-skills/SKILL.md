@@ -26,4 +26,4 @@ Development work in this project starts with the skill its row below names, invo
 1. Questions use AskUserQuestion, recommended answer first; seams the grill settled are never asked again.
 2. Third-party code follows its official docs for the version in use, cited.
 3. Flow: once the user confirms a design, later steps start unasked, stopping only for the user's decisions, integrating a branch, push, deploy, publish, anything destructive or paid.
-4. Grill → spec → tickets share one context. Phase boundaries, on-ramps, Superpowers: `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/routing.md`; shared rules (process by size, evidence): `rules.md` beside it.
+4. Grill → spec → tickets share one context. Phase boundaries, on-ramps, Superpowers: `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/routing.md`; shared rules, which a bug fix reads too: `rules.md` beside it.

@@ -7,7 +7,7 @@ description: Use when the user says ship, deploy, release, publish or go live, o
 
 Take an integrated candidate to its target and prove that exact candidate is what runs. Readiness first; a deploy only after a yes that names what is being deployed where; then verification, then the operations handover. Nothing here deploys, publishes or uploads before the Deploy step's yes.
 
-**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read as this skill starts. **Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
+**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read when a step names one of its sections. **Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
 
 **Repository facts.** The Seams hook adds them as this skill starts (shared rules: Repository facts).
 

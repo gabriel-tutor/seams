@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Static checks on the plugin, held to the contracts Claude Code and the routing rely on (seams-revamp ticket 03):
 # the manifests validate and nothing stray ships; the version has one source; the frontmatter fields Claude Code
-# reads; the size bounds of the skills, their references and the listing, and the paths a skill gives Claude; no
-# skill injects a shell command; the routing table's rows; the continuous flow's stops (ticket 06); the third-party
+# reads, scout's model the only pin; the size bounds of the skills, their references and the listing, and the paths a
+# skill gives Claude, the shared rules' sections among them; no skill injects a shell command; the routing table's rows;
+# the continuous flow's stops (ticket 06); the process table's floor and the docs rule (ticket 07); the third-party
 # notices and the copies' checksums. No other check pins a skill's or the README's wording: rewording a sentence that
 # changes none of these leaves it green.
 set -euo pipefail
@@ -230,10 +231,10 @@ printf -- '---\nname: reviewer\ndescription: x\nmodel: sonnet\n---\n' > "$GUARD_
 printf -- '---\nname: fine\ndescription: x\n---\n\nmodel: effort: lines in the body are not frontmatter\n' > "$GUARD_FIX/agents/fine.md"
 GUARD_SCOUT=$(mktemp -d); mkdir -p "$GUARD_SCOUT/agents"   # scout on another model, and scout as decision 17 has it
 printf -- '---\nname: scout\ndescription: x\nmodel: claude-opus-5-5\n---\n' > "$GUARD_SCOUT/agents/scout.md"
-OUT_SCOUT=$(plugin_guards "$GUARD_SCOUT")
-[[ $OUT_SCOUT == "agents/scout.md declares model claude-opus-5-5, expected sonnet" ]] || fail "the guard missed scout on another model: $OUT_SCOUT"
+OUT_OTHER=$(plugin_guards "$GUARD_SCOUT")
 printf -- '---\nname: scout\ndescription: x\nmodel: sonnet\n---\n' > "$GUARD_SCOUT/agents/scout.md"
 OUT_SCOUT=$(plugin_guards "$GUARD_SCOUT"); rm -rf "$GUARD_SCOUT"
+[[ $OUT_OTHER == "agents/scout.md declares model claude-opus-5-5, expected sonnet" ]] || fail "the guard missed scout on another model: $OUT_OTHER"
 [[ -z $OUT_SCOUT ]] || fail "the guard flagged scout on sonnet: $OUT_SCOUT"
 GUARD_OUT=$(plugin_guards "$GUARD_FIX"); rm -rf "$GUARD_FIX"
 for size in 11200 11201; do
@@ -507,12 +508,12 @@ STOPS += [(f"{s} keeps the progress file in its format", f"skills/{s}/SKILL.md",
           for s in ("grill", "to-spec", "to-tickets", "implement", "finishing-a-development-branch", "release")]
 RULES = "skills/using-matt-pocock-skills/references/rules.md"
 SENSITIVE, SENSITIVE_ROW, FEATURE_ROW = r"(?ms)^## Sensitive changes\n.*?(?=^## |\Z)", r"(?m)^\| Sensitive.*$", r"(?m)^\| Feature.*$"
-STOPS += [("the shared rules check the sensitive list before the size", RULES, SENSITIVE, r"\bfirst\b")]
+STOPS += [("the shared rules check the sensitive list before the size", RULES, SENSITIVE, r"checked first")]
 STOPS += [(f"a sensitive change gets {what}", RULES, SENSITIVE_ROW, pattern) for what, pattern in (
     ("code-review", r"`code-review`"), ("a correctness review", r"correctness review"), ("the security review", r"security review"),
     ("its reviews as required", r"\brequired\b"), ("verification", r"verification-before-completion"))]
 STOPS += [(f"a feature gets {what}", RULES, FEATURE_ROW, pattern) for what, pattern in (
-    ("code-review", r"`code-review`"), ("a correctness review", r"correctness review"))]
+    ("code-review", r"`code-review`"), ("a correctness review", r"correctness review"), ("both reviews run, not offered", r"\bboth run\b"))]
 STOPS += [(f"the docs rule is in {where}", path, None, r"official docs[^\n]*version in use")
           for where, path in (("the bootstrap", BOOT), ("the shared rules", RULES))]
 
@@ -547,7 +548,7 @@ for what, path, scope, pattern in STOPS:
 PY
 }
 STOP_OUT=$(flow_stop_problems "$PLUGIN")
-[[ -z $STOP_OUT ]] || fail "a stop of the continuous flow is gone: $STOP_OUT"
+[[ -z $STOP_OUT ]] || fail "a stop of the continuous flow, or a floor of the process table, is gone: $STOP_OUT"
 STOP_OUT=$(flow_stop_problems "$PLUGIN" probe)
 [[ -z $STOP_OUT ]] || fail "$STOP_OUT"
 

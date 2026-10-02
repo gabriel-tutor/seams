@@ -7,7 +7,7 @@ description: Use when an agreed design, spec or ticket is ready to build
 
 Build what a spec, a ticket or an agreed design describes: tests first at the agreed seams, a commit, a review of that commit, the definition of done with evidence, and a handover, in this order, since the review sees only what is committed.
 
-**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read as this skill starts. **Effort** `${CLAUDE_EFFORT}`: at `low`, skip only the offer to add a run command to the README (shared rules: Effort).
+**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read when a step names one of its sections. **Effort** `${CLAUDE_EFFORT}`: at `low`, skip only the offer to add a run command to the README (shared rules: Effort).
 
 **Repository facts.** The Seams hook adds them as this skill starts (shared rules: Repository facts).
 
@@ -71,7 +71,7 @@ Before claiming the work is done, commit the ticket's record (Progress file, abo
 
 | Item | What counts |
 | --- | --- |
-| Candidate | `git rev-parse --short HEAD`, after the record commit |
+| Candidate | `git rev-parse --short HEAD` after the record commit, and `git status --short` |
 | Tests | the tests at the agreed seams pass, and the full suite passes |
 | Typecheck and lint | typecheck passes; lint passes if the repo has one |
 | Acceptance criteria | every criterion on the ticket or spec is met, checked one by one |

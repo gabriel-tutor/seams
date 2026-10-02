@@ -16,7 +16,7 @@ Its format, who writes what in it, and its rules (what never goes in it, `Update
 
 ## Sensitive changes
 
-A change is sensitive, at any size, when it touches auth, permissions, secrets, billing, data migrations, infrastructure, CI or deploy configuration, a public API, or anything destructive, or when its ticket says it is. This is checked first, before the size: a sensitive change is never trivial and never small, however few its lines, and gets its row below whatever its size row says.
+A change is sensitive, at any size, when it touches auth, permissions, secrets, billing, migrations, infrastructure, CI or deploy configuration, a public API, or anything destructive, or when its ticket says it is. This is checked first, before the size: a sensitive change is never trivial, however few its lines, and the Sensitive row below adds to whatever its size row gives.
 
 ## Process by size and risk
 
@@ -42,7 +42,7 @@ The furthest point a piece of work has evidence for, one of six, which every han
 
 ## Evidence
 
-Evidence belongs to a candidate: the commit it ran on, with a clean tree. Evidence gathered in this conversation on an unchanged candidate (the same `git rev-parse HEAD`, `git status --short` empty, both checked now) is reused, not re-run: two skills asking for the suite share one run, `finishing-a-development-branch`'s first step and `release`'s readiness reuse what `implement`'s definition of done showed for that SHA, and the claim shows that evidence again with its command, its output and the SHA. That is what `verification-before-completion`'s fresh evidence means here: evidence from this candidate. Any change (an edit, a commit, a merge) makes a new candidate: in a review-fix loop only the checks the fix affects re-run, and the definition of done then runs the full suite once on the final candidate.
+Evidence belongs to a candidate: the commit it ran on, with a clean tree. Evidence gathered in this conversation on an unchanged candidate (the same `git rev-parse HEAD` and an empty `git status --short`, both shown when it ran and checked again now) is reused, not re-run: two skills asking for the suite share one run, `finishing-a-development-branch`'s first step and `release`'s readiness reuse what `implement`'s definition of done showed for that SHA, and the claim shows that evidence again with its command, its output and the SHA. That is what `verification-before-completion`'s fresh evidence means here: evidence from this candidate. Any change (an edit, a commit, a merge) makes a new candidate: in a review-fix loop only the checks the fix affects re-run, and the definition of done then runs the full suite once on the final candidate.
 
 ## Worktrees
 

@@ -7,7 +7,7 @@ description: Use before building a feature or changing behavior, when a plan or 
 
 This is Matt Pocock's grilling, presented as clickable questions, every independent one at once, with its record kept in the feature's progress file so that `/clear` or compaction loses nothing.
 
-**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read as the grill starts. **Effort** `${CLAUDE_EFFORT}`: at `low`, skip only the count of decisions left (shared rules: Effort).
+**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read when a step names one of its sections. **Effort** `${CLAUDE_EFFORT}`: at `low`, skip only the count of decisions left (shared rules: Effort).
 
 **Repository facts.** The Seams hook adds them as this skill starts (shared rules: Repository facts).
 
