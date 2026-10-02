@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designing
-Next: Ask the next round: the design depth per phase, how unchanged results are proved, whether pr-review is in phase 1, and the version; then the seams of phase 1's tests.
+Next: Ask when a declaration ends, whether finished branches merge by themselves, the subagents' models, and the seams of phase 1's tests; then check the design lens and confirm.
 Updated: 2026-10-02
 
 ## Decisions
@@ -17,6 +17,10 @@ Updated: 2026-10-02
 8. The eval scenarios stay, the custom harness goes (the user's choice): `plugin/evals` stays for Claude Code's own `claude plugin eval`; `scripts/behavior_test.py`, `scripts/prepare_run.sh`, `scripts/fixture_deps.sh` and their tests are removed, and with them the suite's only need for Node.
 9. Python and bash stay, made fast (the user's choice): the time is in waiting, not in Python; the gate is split so each hook loads only what it needs (37 ms toward about 20), the suites run in parallel, and no test sleeps.
 10. Process is proportional to size and risk (the user's choice): scouts, reviewers and question rounds scale with the change; a one-line fix gets one check, a feature or anything sensitive gets the full set (both reviews, the security review, verification). Each rule is written once, in one shared reference the skills point to.
+11. Design depth (the user's choice): phase 1 is grilled to the end and specced now; phases 2 (stack intelligence, e2e drivers, docs lookup) and 3 (bundled skills in the flow) are outlined now and grilled in full when each starts, with that day's facts.
+12. Proof (the user's choice): the eval scenarios run with `claude plugin eval` on 3.4.0 and on the candidate (paid, each run asked first): no scenario may get worse; and cost is measured on 3 scripted tasks (tool calls, tokens, wall time), one run at a time so the Mac stays usable.
+13. pr-review in phase 1 (the user's choice): only the shared rules; it points to the one shared reference like the other skills, and its steps, scripts and checks stay exactly as in 3.4.0. The cancelled lighter-checks change is not revived.
+14. Phase 1 ships as 4.0.0 (the user's choice): the continuous flow and the declaration's new lifetime change how every session works.
 
 ## Open questions
 
