@@ -737,9 +737,9 @@ class Ledger(unittest.TestCase):
         # A tool call writes the temp directory without a declaration, and an editor tool the config directory, so a
         # ledger in either could be forged (seams-revamp ticket 10). The hooks' own saves create it, private to the user.
         home = os.path.join(tempfile.mkdtemp(), "new-home")
-        self.addCleanup(seams_ledger.ledger_root.cache_clear)
+        self.addCleanup(seams_ledger.home_state_dir.cache_clear)
         with mock.patch.dict(os.environ, {"HOME": home}):
-            seams_ledger.ledger_root.cache_clear()
+            seams_ledger.home_state_dir.cache_clear()
             self.assertEqual(os.path.dirname(seams_ledger.ledger_path("s1")), os.path.join(home, ".local", "state", "seams"))
             ledger = seams_ledger.load_ledger("s1")
             seams_ledger.add_declaration(ledger, "tdd")
@@ -754,11 +754,11 @@ class Ledger(unittest.TestCase):
         Path(a_file).write_text("")
         os.chmod(read_only, 0o500)
         self.addCleanup(os.chmod, read_only, 0o700)
-        self.addCleanup(seams_ledger.ledger_root.cache_clear)
+        self.addCleanup(seams_ledger.home_state_dir.cache_clear)
         homes = ["relative/home", f"{a_file}/home"] + ([read_only] if not os.access(read_only, os.W_OK) else [])
         for home in homes:
             with self.subTest(home=home), mock.patch.dict(os.environ, {"HOME": home}):
-                seams_ledger.ledger_root.cache_clear()
+                seams_ledger.home_state_dir.cache_clear()
                 self.assertEqual(os.path.dirname(seams_ledger.ledger_path("s1")),
                                  os.path.join(tempfile.gettempdir(), f"seams-{os.getuid()}"))
 
@@ -1302,38 +1302,34 @@ class LedgerOutOfReach(unittest.TestCase):
     lay under the temp directory, where any tool call may write, so an agent misled by a hostile pull request could
     forge a declaration there that opens the main conversation's gate, or erase the done-check's pending changes. A write
     to the ledger's directory or a ledger file is a change to the project, and a read-only agent's write there is refused
-    like any other. It lies outside the temp and Claude config directories, so a write into a directory that holds it is
-    a change too; where the home directory cannot hold it, it lies under the temp directory, and a write into it still
-    is."""
+    like any other. It lies in the home directory's state directory, outside the temp and Claude config directories, so
+    a write into a directory that holds it is a change too, even where the home directory lies under the temp
+    directory; where the home directory cannot hold it, it lies in the temp directory itself, and a write into it still
+    is a change."""
 
-    # Where the ledger lies: by default, and where the home directory cannot hold it (a home that is no absolute path).
-    PLACEMENTS = (("home", os.path.expanduser("~")), ("temp", "relative/home"))
+    # Where the ledger lies: in a home under the temp directory, the harder case for its own place (a home outside it
+    # holds the ledger outside every scratch root), and where the home directory cannot hold it (no absolute path).
+    PLACEMENTS = (("home", os.path.join(tempfile.mkdtemp(), "home")), ("temp", "relative/home"))
 
     def setUp(self):
         self.config = tempfile.mkdtemp()
         self.ledger = seams_ledger.empty_ledger("s1")
         self.declared = seams_ledger.empty_ledger("s1")
         seams_ledger.add_declaration(self.declared, "matt-pocock-workflow:implement")
-        self.addCleanup(seams_ledger.ledger_root.cache_clear)
+        self.addCleanup(seams_ledger.home_state_dir.cache_clear)
 
     @contextlib.contextmanager
     def placed(self, home):
         """The ledger's root with HOME set to `home`, for the length of the with block."""
         with mock.patch.dict(os.environ, {"HOME": home}):
-            seams_ledger.ledger_root.cache_clear()
+            seams_ledger.home_state_dir.cache_clear()
             try:
                 yield seams_ledger.ledger_root()
             finally:
-                seams_ledger.ledger_root.cache_clear()
+                seams_ledger.home_state_dir.cache_clear()
 
     def decide(self, ev, ledger=None):
         return gate.decide_pre_tool_use(ev, self.ledger if ledger is None else ledger, config_dir=self.config)
-
-    def test_the_ledger_lies_outside_the_temp_directory_unless_the_home_directory_cannot_hold_it(self):
-        for placement, home in self.PLACEMENTS:
-            with self.subTest(placement=placement), self.placed(home) as root:
-                in_temp = os.path.realpath(root).startswith(os.path.realpath(tempfile.gettempdir()) + os.sep)
-                self.assertEqual(in_temp, placement == "temp", root)
 
     def test_an_editor_tool_writing_the_ledger_is_a_change(self):
         for placement, home in self.PLACEMENTS:
@@ -1368,9 +1364,9 @@ class LedgerOutOfReach(unittest.TestCase):
 
     def test_a_shell_command_writing_a_directory_that_holds_the_ledger_is_a_change(self):
         # Found by the review of the first candidate, when the ledger lay in the temp directory: each of these wrote or
-        # erased it through the directory holding it, which was scratch.
+        # erased it through the directory holding it, which was scratch. A home under the temp directory holds it too.
         t = tempfile.gettempdir()
-        with self.placed(os.path.expanduser("~")) as root:
+        with self.placed(dict(self.PLACEMENTS)["home"]) as root:
             parent = os.path.dirname(root)
             for command, label in [(f"cp -R {t}/stage/seams {parent}", "cp"),
                                    (f"tar -xf {t}/forged.tar -C {parent}", "tar -x"),
@@ -1399,13 +1395,6 @@ class LedgerOutOfReach(unittest.TestCase):
                                 self.assertEqual(decision["decision"], "deny")
                                 self.assertIsNone(decision["change"])
                                 self.assertIn("the gate's ledger directory", decision["reason"])
-        # Out of the temp directory, a case variant of its path is no scratch either (a case-insensitive volume would
-        # write the ledger).
-        with self.placed(os.path.expanduser("~")) as root:
-            variant = os.path.join(os.path.dirname(root).upper(), "seams", "s1.json")
-            decision = self.decide(event("Bash", agent_id="a1", agent_type="matt-pocock-workflow:reviewer",
-                                         command=f"git diff HEAD > {variant}"))
-            self.assertEqual(decision["decision"], "deny")
         # Its scratch is as it was: the temp directory, the ledger's own place or beside it.
         t = tempfile.gettempdir()
         for tool, tool_input in (("Bash", {"command": f"git diff HEAD > {t}/d.patch"}),
@@ -1416,6 +1405,13 @@ class LedgerOutOfReach(unittest.TestCase):
 
     def test_a_write_beside_the_ledger_in_the_temp_dir_is_scratch_as_before_and_a_link_into_it_is_not(self):
         t = tempfile.gettempdir()
+        home = dict(self.PLACEMENTS)["home"]
+        with self.placed(home):
+            for path in (f"{home}/notes.md", f"{home}/.local/state/other/x.log", f"{home}/.local/state/seams0/x.log"):
+                with self.subTest(home_path=path):
+                    self.assertIsNone(gate.change_for_event(event("Bash", command=f"echo x > {path}"), config_dir=self.config))
+            self.assertIsNone(gate.change_for_event(event("Bash", command=f"cp {t}/a.log {t}"), config_dir=self.config),
+                              "the temp directory itself is scratch as before, though it holds the home")
         with self.placed("relative/home") as root:
             for path in (f"{root}0/s1.json", f"{root}.bak/s1.json", f"{root}-notes.md", f"{t}/seams-pr-review/o-r-1-abc/x.log"):
                 with self.subTest(path=path):

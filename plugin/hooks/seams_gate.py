@@ -66,13 +66,19 @@ def is_scratch_path(path: str, cwd: str | None = None, scratchpad: object = None
     the session's scratchpad, and outside the session's working directory. Narrower than
     is_exempt_path: the Claude config directory is not scratch, even where it lies inside a temp
     directory (a CI job's or an eval run's does), since a shell command there could delete the
-    user's settings. Nor is the gate's ledger."""
+    user's settings. Nor is the gate's ledger, nor a directory that holds it below a temp root (a home under the temp
+    directory): a recursive copy, an archive or a find there reaches it. A temp root itself stays scratch."""
     real = os.path.realpath(path)
     if real == "/dev/null":
         return True
-    if (cwd and _under(real, cwd)) or _under(real, config_dir(config)) or _under(real, ledger_root()):
+    if (cwd and _under(real, cwd)) or _under(real, config_dir(config)):
+        return False
+    ledger = os.path.realpath(ledger_root())
+    if _under(real, ledger):
         return False
     roots = (temp_dir(),) + TEMP_ROOTS + _scratchpad_roots(scratchpad)
+    if _under(ledger, real) and real not in {os.path.realpath(root) for root in roots}:
+        return False
     return any(_under(real, root) for root in roots)
 
 

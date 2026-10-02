@@ -159,21 +159,22 @@ def _safe_name(session_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", session_id or "unknown")[:120]
 
 
-@lru_cache(maxsize=None)
 def ledger_root(root: str | None = None) -> str:
-    """The ledger directory: this user's `~/.local/state/seams`, outside the temp and Claude config directories. A tool
-    call writes the temp directory without a declaration, and an editor tool the config directory, so a ledger in either
-    could be forged; out here a write to it, or to a directory that holds it, is a change like any other (seams-revamp
-    ticket 10). Where the home directory cannot hold it, the temp directory's `seams-<uid>`, per user as tmux's
-    `/tmp/tmux-1000` (on a shared Linux `/tmp` one directory for everyone would belong to whoever's session came first,
-    and the next user's chmod would raise EPERM, failing their gate open); there the gate refuses a write into the
-    ledger, not one into the temp directory that holds it. Kept for the process, so each hook loads and saves one."""
-    return root or _home_state_dir() or os.path.join(temp_dir(), f"seams-{os.getuid()}")
+    """The ledger directory: this user's `~/.local/state/seams` (home_state_dir), outside the temp and Claude config
+    directories. A tool call writes the temp directory without a declaration, and an editor tool the config directory,
+    so a ledger in either could be forged; the gate counts a write to it, or to a directory that holds it, as a change
+    (seams-revamp ticket 10). Where the home directory cannot hold it, the temp directory's `seams-<uid>`, per user as
+    tmux's `/tmp/tmux-1000` (on a shared Linux `/tmp` one directory for everyone would belong to whoever's session came
+    first, and the next user's chmod would raise EPERM, failing their gate open); there the gate refuses a write into
+    the ledger, not one into the temp directory that holds it."""
+    return root or home_state_dir() or os.path.join(temp_dir(), f"seams-{os.getuid()}")
 
 
-def _home_state_dir() -> str | None:
+@lru_cache(maxsize=None)
+def home_state_dir() -> str | None:
     """`~/.local/state/seams` when this user can make or write it (its nearest existing ancestor is a directory they may
-    write in), or None, as for a home that is no absolute path. Nothing is created here: the first save does that."""
+    write in, which a sandbox's denial also answers), or None, as for a home that is no absolute path. Nothing is
+    created here: the first save does that. Kept for the process, so each hook loads, saves and guards one place."""
     try:
         home = os.path.expanduser("~")
         if not os.path.isabs(home):
