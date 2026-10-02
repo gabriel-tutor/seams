@@ -138,32 +138,34 @@ DRIFT=$(upstream_drift "$FIXTURE"); rm -rf "$FIXTURE"
 [[ $DRIFT == *"note: $FIXTURE/skills/implement/SKILL.md is not installed"* ]] || fail "the drift check did not note a missing upstream file: $DRIFT"
 
 # The paths a skill gives Claude resolve: each one through ${CLAUDE_SKILL_DIR} or ${CLAUDE_PLUGIN_ROOT}, which Claude
-# Code fills in when the skill loads, and each bare references/<name>.md, which Claude reads beside the skill. Claude
-# Code fills those two in only in a SKILL.md and its allowed-tools, so no reference names a path through them. A
-# fixture breaking each rule, beside pointers that hold, shows the check catching what it is for.
+# Code fills in when the skill loads (to a file, or a directory before a glob or a <placeholder>), and each bare
+# references/<name>.md, which Claude reads beside the skill. Claude Code fills those two in only in a SKILL.md and its
+# allowed-tools, so no reference names a path through them. A fixture breaking each rule, beside pointers that hold,
+# shows the check catching what it is for.
 pointer_problems() {   # $1 = a plugin directory: a line for each pointer that does not resolve, or that is not filled in
   python3 - "$1" <<'PY'
 import pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
-VARIABLE = re.compile(r"\$\{(CLAUDE_SKILL_DIR|CLAUDE_PLUGIN_ROOT)\}/([^\s`'\"()*,;:]+)")
+VARIABLE = re.compile(r"\$\{(CLAUDE_SKILL_DIR|CLAUDE_PLUGIN_ROOT)\}/([^\s`'\"()\[\]<>*!#,;:]+)")   # ends at a glob, an anchor or a <placeholder>
 BARE = re.compile(r"(?<![\w/.}-])(references/[\w.-]+\.md)")
 for path in sorted(root.glob("skills/*/SKILL.md")):
     name, text = path.relative_to(root), path.read_text()
     pointers = [(f"${{{var}}}/{rel.rstrip('.')}", (path.parent if var == "CLAUDE_SKILL_DIR" else root) / rel.rstrip("."))
-                for var, rel in VARIABLE.findall(text) if "<" not in rel]          # <name> is a placeholder, not a path
+                for var, rel in VARIABLE.findall(text)]
     pointers += [(rel, path.parent / rel) for rel in BARE.findall(text)]
     for pointer, target in pointers:
-        if not target.is_file():
+        if not target.exists():                                  # a file, or a directory it names
             print(f"{name} points at {pointer}, which is not in the plugin")
 for path in sorted(root.glob("skills/*/references/*.md")):
     for var in sorted(set(var for var, _ in VARIABLE.findall(path.read_text()))):
         print(f"{path.relative_to(root)} names a path through ${{{var}}}, which Claude Code fills in only in a SKILL.md")
 PY
 }
-PTR_FIX=$(mktemp -d); mkdir -p "$PTR_FIX"/skills/{a,b}/references
+PTR_FIX=$(mktemp -d); mkdir -p "$PTR_FIX"/skills/{a,b}/references "$PTR_FIX/skills/a/scripts" "$PTR_FIX/hooks"
 printf -- '---\nname: a\ndescription: x\n---\n\n%s\n' \
   'Read `${CLAUDE_SKILL_DIR}/references/here.md`, then `${CLAUDE_SKILL_DIR}/references/missing.md`.' \
-  'Shared: ${CLAUDE_PLUGIN_ROOT}/skills/b/references/there.md and ${CLAUDE_PLUGIN_ROOT}/skills/b/references/gone.md.' \
+  'Shared: ${CLAUDE_PLUGIN_ROOT}/skills/b/references/gone.md and ${CLAUDE_PLUGIN_ROOT}/skills/b/references/there.md.' \
+  'Pre-approved as `Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*)`; the hooks are in ${CLAUDE_PLUGIN_ROOT}/hooks/; see [it](${CLAUDE_SKILL_DIR}/references/here.md#top).' \
   'Beside it: `references/here.md` (next to this file), and `references/lost.md`.' \
   'Inside the references, `<skill-dir>` is `${CLAUDE_SKILL_DIR}`; a script runs as `${CLAUDE_SKILL_DIR}/scripts/<name>.py`.' \
   > "$PTR_FIX/skills/a/SKILL.md"
@@ -176,8 +178,7 @@ for want in "skills/a/SKILL.md points at \${CLAUDE_SKILL_DIR}/references/missing
   "skills/b/references/there.md names a path through \${CLAUDE_PLUGIN_ROOT}"; do
   [[ $PTR_OUT == *"$want"* ]] || fail "the pointer check missed: $want (it said: $PTR_OUT)"
 done
-[[ $PTR_OUT != *here.md,* && $PTR_OUT != *there.md,* && $PTR_OUT != *"<name>"* ]] \
-  || fail "the pointer check flagged a pointer that resolves: $PTR_OUT"
+[[ $(wc -l <<< "$PTR_OUT") -eq 5 ]] || fail "the pointer check flagged a pointer that resolves: $PTR_OUT"
 PTR_OUT=$(pointer_problems "$PLUGIN")
 [[ -z $PTR_OUT ]] || fail "$PTR_OUT"
 
@@ -315,35 +316,62 @@ GATE_AGENTS=$(PYTHONDONTWRITEBYTECODE=1 python3 -c 'import sys; sys.path.insert(
 [[ $GATE_AGENTS == "matt-pocock-workflow:reviewer matt-pocock-workflow:scout" ]] \
   || fail "the gate's read-only agents ($GATE_AGENTS) are not the agents the plugin ships"
 
-# pr-review's scripts run without a permission prompt from any directory (lean-and-durable ticket 06): the core runs each
-# as `python3 ${CLAUDE_SKILL_DIR}/scripts/<name>.py` and its allowed-tools pre-approves exactly that command, as the
-# skills docs show; Claude Code fills in ${CLAUDE_SKILL_DIR} in both places.
+# pr-review's permissions are the two lists in its frontmatter, which Claude Code enforces whatever the text says
+# (lean-and-durable ticket 06, 3.4.0's take-over). allowed-tools pre-approves the gh commands that only read, and each
+# script as the core runs it, `python3 ${CLAUDE_SKILL_DIR}/scripts/<name>.py`: Claude Code fills in ${CLAUDE_SKILL_DIR}
+# in both places, so the rule matches the command, from any directory. takeover.py is pre-approved for `target` alone,
+# which only decides; `push` pushes to someone else's branch, so Claude Code's own prompt, showing the branch and the
+# commit, is the user's yes. disallowed-tools refuses pushing, merging, closing, reopening, editing, marking ready and
+# reviewing. Each list is read under its own key and held to exactly these entries; a fixture with a refused command
+# moved into the pre-approved list, and one with an extra pre-approval, shows the check catching both.
 PRR="$PLUGIN/skills/pr-review/SKILL.md"
-PRR_FRONT=$(awk 'NR > 1 && /^---$/ {exit} NR > 1' "$PRR")
+PRR_SCRIPTS="evidence run_checks review_payload post_reviews batch_report requirements"
+PRR_ALLOWED=("Bash(gh auth status:*)" "Bash(gh repo view:*)" "Bash(gh pr view:*)" "Bash(gh pr list:*)" "Bash(gh pr diff:*)"
+  "Bash(gh pr checks:*)" "Bash(gh issue view:*)")
+for s in $PRR_SCRIPTS; do PRR_ALLOWED+=("Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py *)"); done
+PRR_ALLOWED+=("Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/takeover.py target *)")
+PRR_DISALLOWED=("Bash(git push:*)" "Bash(gh pr merge:*)" "Bash(gh pr close:*)" "Bash(gh pr reopen:*)" "Bash(gh pr edit:*)"
+  "Bash(gh pr ready:*)" "Bash(gh pr review:*)")
+permission_problems() {   # $1 = a SKILL.md: how its allowed-tools and disallowed-tools differ from PRR_ALLOWED and PRR_DISALLOWED
+  python3 - "$1" "${#PRR_ALLOWED[@]}" "${PRR_ALLOWED[@]}" "${PRR_DISALLOWED[@]}" <<'PY'
+import re, sys
+n = int(sys.argv[2])
+want = {"allowed-tools": sys.argv[3:3 + n], "disallowed-tools": sys.argv[3 + n:]}
+front = re.match(r"---\n(.*?)\n---\n", open(sys.argv[1]).read(), re.S)
+lists, key = {}, None
+for line in (front.group(1) if front else "").splitlines():
+    if line[:1].isalpha():
+        key = line.split(":", 1)[0].strip()
+        lists.setdefault(key, [])
+    elif key and re.match(r"\s+- ", line):
+        lists[key].append(line.split("- ", 1)[1].strip())
+for key, entries in want.items():
+    have = lists.get(key, [])
+    for line in [f"{key} lacks {e}" for e in entries if e not in have] + [f"{key} adds {e}" for e in have if e not in entries]:
+        print(line)
+PY
+}
+PERM_FIX=$(mktemp -d)
+grep -vxF -- "  - Bash(gh pr merge:*)" "$PRR" | awk '{print} $0 == "allowed-tools:" {print "  - Bash(gh pr merge:*)"}' > "$PERM_FIX/moved"
+awk '{print} $0 == "allowed-tools:" {print "  - Bash(rm:*)"}' "$PRR" > "$PERM_FIX/extra"
+PERM_OUT="$(permission_problems "$PERM_FIX/moved")"$'\n'"$(permission_problems "$PERM_FIX/extra")"; rm -rf "$PERM_FIX"
+for want in "allowed-tools adds Bash(gh pr merge:*)" "disallowed-tools lacks Bash(gh pr merge:*)" "allowed-tools adds Bash(rm:*)"; do
+  [[ $PERM_OUT == *"$want"* ]] || fail "the permission check missed: $want (it said: $PERM_OUT)"
+done
+PERM_OUT=$(permission_problems "$PRR")
+[[ -z $PERM_OUT ]] || fail "pr-review's permissions changed: $PERM_OUT"
 PRR_BODY=$(awk 'body; NR > 1 && /^---$/ {body = 1}' "$PRR")
-for s in evidence run_checks review_payload batch_report post_reviews requirements; do
+for s in $PRR_SCRIPTS takeover; do
   [[ -x "$PLUGIN/skills/pr-review/scripts/$s.py" ]] || fail "pr-review/scripts/$s.py missing or not executable"
-  grep -qxF -- "  - Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py *)" <<< "$PRR_FRONT" \
-    || fail "pr-review's allowed-tools does not pre-approve: Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py *)"
   [[ $PRR_BODY == *"\`python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py\`"* ]] \
     || fail "pr-review's core does not name its script as: python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py"
 done
-# takeover.py: `target` only decides, so it is pre-approved; `push` pushes to someone else's branch, so it is not, and
-# `git push` stays disallowed: Claude Code's own permission prompt, showing the exact branch and commit, is the user's yes.
-[[ -x "$PLUGIN/skills/pr-review/scripts/takeover.py" ]] || fail "pr-review/scripts/takeover.py missing or not executable"
-grep -qxF -- "  - Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/takeover.py target *)" <<< "$PRR_FRONT" \
-  || fail "pr-review's allowed-tools does not pre-approve takeover.py target"
-grep -F "takeover.py" <<< "$PRR_FRONT" | grep -v "takeover.py target" && fail "pr-review pre-approves more of takeover.py than target"
-# Claude Code refuses what disallowed-tools lists, whatever the text says: the review never merges, closes, reopens,
-# edits, marks ready or reviews through gh, and pushes only through takeover.py.
-for cmd in "git push" "gh pr merge" "gh pr close" "gh pr reopen" "gh pr edit" "gh pr ready" "gh pr review"; do
-  grep -qxF -- "  - Bash($cmd:*)" <<< "$PRR_FRONT" || fail "pr-review no longer disallows $cmd"
-done
-[[ $PRR_BODY == *"\`python3 \${CLAUDE_SKILL_DIR}/scripts/takeover.py\`"* ]] || fail "pr-review's core does not name takeover.py"
 
-# The routing (ticket 07): every Seams skill directory is named in the bootstrap or in routing.md, so none is
-# unreachable, and the bootstrap's table keeps its rows, in their order, since between two rows the lower applies; a
-# table with a row dropped, reworded, swapped or added shows the check catching each. The session-start hook injects
+# The routing (seams-3 ticket 07): every Seams skill directory is named in the bootstrap or in routing.md, so none is
+# unreachable, and every name they give as this plugin's (`<name>`* or matt-pocock-workflow:<name>) is a skill or an
+# agent it ships, so no route leads nowhere. The bootstrap's table keeps its rows, in their order, since between two
+# rows the lower applies; a table with a row dropped, reworded, swapped or added shows the check catching each, and one
+# with another table above it shows the check finding the routing table by its rows. The session-start hook injects
 # the bootstrap, so it carries no pseudo-tag: Claude Code's hook docs warn that text framed as out-of-band system
 # commands can trip Claude's prompt-injection defenses.
 ROUTING="$PLUGIN/skills/using-matt-pocock-skills/references/routing.md"
@@ -352,6 +380,9 @@ NAMED="$(cat "$BOOT" "$ROUTING")"
 for d in "$PLUGIN"/skills/*/; do
   s=$(basename "$d"); [[ $s == using-matt-pocock-skills ]] && continue
   [[ $NAMED == *"\`$s\`"* || $NAMED == *"matt-pocock-workflow:$s"* ]] || fail "Seams skill named neither in the bootstrap nor in routing.md: $s"
+done
+for s in $(grep -ohE '`[a-z-]+`\*|matt-pocock-workflow:[a-z-]+' "$BOOT" "$ROUTING" | sed -E 's/^`//; s/`\*$//; s/^matt-pocock-workflow://' | sort -u); do
+  [[ -f "$PLUGIN/skills/$s/SKILL.md" || -f "$PLUGIN/agents/$s.md" ]] || fail "the routing sends work to $s, which the plugin does not ship"
 done
 BOOT_ROWS=(
   "| Trivial: copy, typo, comment, unobservable rename | \`trivial\`* |"
@@ -362,12 +393,26 @@ BOOT_ROWS=(
   "| Sensitive, any size: auth, permissions, secrets, billing, migrations, infra, CI or deploy config, public API, anything destructive | its size row's move, \`grill\`* on the security and failure axes first, \`code-review\` required |"
   "| Down or degraded for users now | \`incident\`* |"
   "| Ship, deploy, release, publish | \`release\`* |")
-routing_problem() {   # $1 = a bootstrap file: how its table's rows differ from BOOT_ROWS, or nothing
-  local have row
-  have=$(awk '/^\|[ :-]+\|[ :-]+\|$/ {t = 1; next} t && /^\|/ {print; next} t {exit}' "$1")
-  [[ $have == "$(printf '%s\n' "${BOOT_ROWS[@]}")" ]] && return
-  for row in "${BOOT_ROWS[@]}"; do grep -qxF -- "$row" <<< "$have" || { echo "the bootstrap lost a routing row: $row"; return; }; done
-  echo "the bootstrap's routing rows changed (between two rows the lower applies, so their order is the routing too): $have"
+routing_problem() {   # $1 = a bootstrap file: how its routing table's rows differ from BOOT_ROWS, or nothing
+  python3 - "$1" "${BOOT_ROWS[@]}" <<'PY'
+import re, sys
+want, tables, rows = sys.argv[2:], [], None
+for line in open(sys.argv[1]).read().splitlines():
+    if re.fullmatch(r"\|(\s*:?-+:?\s*\|)+", line):            # a table's separator: its rows follow
+        rows = []
+        tables.append(rows)
+    elif rows is not None and line.startswith("|"):
+        rows.append(line)
+    else:
+        rows = None
+have = max(tables, key=lambda t: len(set(t) & set(want)), default=[])   # the routing table shares the most rows
+lost = [row for row in want if row not in have]
+if lost:
+    print(f"the bootstrap lost a routing row: {lost[0]}")
+elif have != want:
+    print("the bootstrap's routing rows changed (between two rows the lower applies, so their order is the routing too):")
+    print("\n".join(have))
+PY
 }
 ROW_FIX=$(mktemp -d)
 table() { printf -- '---\nname: x\ndescription: x\n---\n\nIntro.\n\n| Request | First move |\n| --- | --- |\n'; printf '%s\n' "$@"; printf '\nAfter.\n'; }
@@ -376,7 +421,11 @@ table "${BOOT_ROWS[@]:1}" > "$ROW_FIX/dropped"
 table "${BOOT_ROWS[@]:0:2}" "| Bounded change to existing code | \`tdd\` |" "${BOOT_ROWS[@]:3}" > "$ROW_FIX/reworded"
 table "${BOOT_ROWS[1]}" "${BOOT_ROWS[0]}" "${BOOT_ROWS[@]:2}" > "$ROW_FIX/swapped"
 table "${BOOT_ROWS[@]}" "| Anything else | \`grill\`* |" > "$ROW_FIX/added"
-[[ -z $(routing_problem "$ROW_FIX/same") ]] || { rm -rf "$ROW_FIX"; fail "the routing check flagged the table as it is: $(routing_problem "$ROW_FIX/same")"; }
+{ printf '| Gate | When |\n| --- | --- |\n| Deploy | always asks |\n\n'; table "${BOOT_ROWS[@]}"; } > "$ROW_FIX/another-table-above"
+for kept in same another-table-above; do
+  problem=$(routing_problem "$ROW_FIX/$kept")
+  [[ -z $problem ]] || { rm -rf "$ROW_FIX"; fail "the routing check flagged the rows as they are ($kept): $problem"; }
+done
 for probe in dropped reworded swapped added; do
   [[ -n $(routing_problem "$ROW_FIX/$probe") ]] || { rm -rf "$ROW_FIX"; fail "the routing check passed a table with a row $probe"; }
 done
