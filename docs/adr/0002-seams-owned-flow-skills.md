@@ -5,4 +5,5 @@ Matt Pocock marks `to-spec`, `to-tickets` and `implement` user-only, and Claude 
 ## Consequences
 
 - His future edits to those three files do not flow in automatically; a test compares the recorded upstream hashes with the installed files and reports drift, and the port is a manual review.
+- ADR 0006 drops the question before they start once the user has confirmed a design (the continuous flow); the question before they publish stays.
 - Matt's model-invocable skills (`grilling`, `domain-modeling`, `tdd`, `diagnosing-bugs`, `code-review`, `codebase-design`, the `setup-*` skills) are still invoked by name; only the three orchestration flows were copied.
