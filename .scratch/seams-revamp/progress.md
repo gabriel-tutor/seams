@@ -2,7 +2,8 @@
 
 Status: active
 Stage: integrated
-Next: Tickets 08 (docs and proof) and 11 (a .. after a symlink) are unblocked: offer them as a parallel run with implement, worktrees under .worktrees/ off main; /clear first.
+Ticket: 08
+Next: Ticket 08's paid evidence, its acceptance criteria 1 to 3, owed on main (candidate after 1c6e35f): the eval scenarios on 3.4.0 and on the candidate, in three groups by grant, then the three scripted tasks, three runs each on both, as docs/plugin-behavior-tests.md "4.0.0: the proof" sets out; each paid run asked first with a ceiling the user sets, one at a time; the tasks need a token from `claude setup-token`, which the user runs. The results go in that section, then ticket 08 is done and ticket 09 (Release 4.0.0) is unblocked. Continue here or /clear first: this session is heavy.
 Updated: 2026-10-03
 
 ## Spec
@@ -18,10 +19,11 @@ Updated: 2026-10-03
 - 05 Lighter hooks (blocked by: 04) — done, integrated on main at afd776f (built at 6eb2b99); a Bash firing at 25.8 ms, the user's yes
 - 06 A continuous flow (blocked by: 03, 04) — done, integrated on main at 49884f8 (built at 56bfbbc); ADR 0006 at f27d05d
 - 07 One shared reference, process in proportion (blocked by: 03, 06) — done, integrated on main at 2adc23e (built at 05d756e)
-- 08 Docs and proof (blocked by: 02, 05, 07)
+- 08 Docs and proof (blocked by: 02, 05, 07) — integrated on main at 7b65121 (built at 0431657), with the CHANGELOG's `..` line corrected at 1c6e35f; the docs, the two `flow` eval scenarios and the proof's method are met, the paid evidence (acceptance criteria 1 to 3) owed
 - 09 Release 4.0.0 (blocked by: 08, 10, 11)
 - 10 The ledger out of an agent's reach (blocked by: 05) — added 2026-10-02 from ticket 04's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at cacee8f (built at 51edb08); the ledger moved to ~/.local/state/seams
-- 11 A `..` after a symlink is not placed (blocked by: 10) — added 2026-10-03 from ticket 10's security review, the user's choice: 4.0.0 waits for it
+- 11 A `..` after a symlink is not placed (blocked by: 10) — added 2026-10-03 from ticket 10's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at b62750a (built at ed0faab)
+- 12 A link made in the same command is not placed through (blocked by: 09) — added 2026-10-03 from ticket 11's security review, the user's choice: after 4.0.0, which makes none of its three bypasses worse; needs-triage until its start decides what a command that can make a link counts as
 
 ## Decisions
 
@@ -58,6 +60,10 @@ Updated: 2026-10-03
 26. After the run of 07 and 10 (the user's answers, 2026-10-03): the `..`-after-a-symlink limit becomes ticket 11, which 4.0.0 waits for; `/simplify` is skipped on ticket 07's diff; `scout` keeps the alias `model: sonnet`.
 27. Ticket 10's holding-directory rule stays (the user's choice, 2026-10-03): where HOME lies under a temp root (a CI job, an eval run), a shell command whose target is `$HOME`, `$HOME/.local` or `$HOME/.local/state` itself needs a declaration (`seams_gate.py:80`), which was allowed before; an accepted exception to ticket 10's "no refusal of a write allowed before", which holds for a home outside the temp directory.
 
+28. Ticket 11's security findings (the user's choice, 2026-10-03): the three bypasses without `..` (a link made in the same command, a hard link by `link`, a temp root kept scratch with HOME under it), each allowed in 3.4.0 too, become ticket 12, after 4.0.0. Ticket 11's builder took the ticket's first option: a path with a `..` segment is never placed, since physical resolution misses a link the same command makes; `echo x > /tmp/a/../b` now needs a declaration, as the ticket accepted.
+
+29. The parallel run of tickets 08 and 11 (the user's pick, 2026-10-03), worktrees under .worktrees/; ticket 08's scope in the run was its docs and the free preparation of the proof, its paid runs asked after both were integrated (the user's pick with that offer). Ticket 08's builder's choices (the user may overrule them): the plugin's and the marketplace's descriptions no longer call the spec, tickets and implement steps gated; `teammate-progress-file` grades that nothing is published before the user's yes, not an opening question, since ADR 0006 accepts going on from someone else's file; the proof method recommends `--ablation none`, three eval groups by grant, the model pinned to claude-opus-5-5 with a sonnet judge, three runs per task and version, and auth through `claude setup-token` in a throwaway config. Left for ticket 09: a rollback is not one command, since the repo has no v3.4.0 tag and a marketplace source pins a branch or a tag, never a SHA (pushing a tag is the user's call); once the runs are made, the README's "The 4.0.0 proof" paragraph ("none is recorded yet") and the CHANGELOG's Docs line.
+
 ## Outline of phases 2 and 3 (grilled in full when each starts)
 
 - Phase 2, the project's own stack and its official docs: the session start or `foundations` reads the stack from its manifests (package.json, pyproject, go.mod, Cargo.toml, app.json, Podfile, build.gradle, Dockerfile) and the drivers installed; an e2e check uses the stack's driver, CLI first where the vendor says it is cheaper (Playwright CLI or MCP and Chrome DevTools for the web, Claude in Chrome when the plan allows it, Maestro, MobileBuildMCP, the Android CLI and adb for mobile, plain runs for CLIs and APIs, computer use last); missing drivers are offered, never installed unasked; Context7 or the vendor's docs back decision 3.
@@ -82,6 +88,7 @@ Updated: 2026-10-03
 - The parallel run of 07 and 10 (2026-10-03): the builders' reviewer reports again came to the main conversation, which forwarded their output files; ticket 10's builder read them from the subagents' transcripts. Integrated suites: 17 suites in 17.7 s with 07, 14.8 s with 10.
 - Ticket 10's sandbox risk (a sandbox leaving the gate refusing everything), probed 2026-10-03 on macOS with `sandbox-exec` denying writes to the home: `access()` reports it unwritable, the hooks fall back to `$TMPDIR/seams-<uid>`, a declaration saves and opens the gate, stderr stays empty; Claude Code's Bash sandbox doesn't constrain hooks. Linux's bubblewrap (home mounted read-only, EROFS) was reasoned, not run. A builder's probe with HOME unset wrote `~/.local/state/seams/cli-unset.json` in the user's home; it removed it, and the rest of `~/.local/state` was untouched.
 - Left for later, from the run of 07 and 10: ticket 08's CHANGELOG says the ledger moved to `~/.local/state/seams` and why, and that a session across the upgrade declares once more; a `..` after a symlink is normalized before realpath (`seams_shell._placed_path`, `seams_gate._editor_path`), so one undeclared Bash call can still reach the ledger or the project that way, rated medium by ticket 10's security review and now ticket 11; in the temp fallback the temp root stays scratch, so recursive writes into it still reach the ledger there; lean-and-durable ticket 16's case variants now matter only in that fallback.
+- The parallel run of 08 and 11 (2026-10-03): the builders' reviewer reports again came to the main conversation, and forwarding them woke ticket 08's builder after its built report; it then committed a CHANGELOG line on its worktree's detached HEAD after the merge (a35db67, the same tree as main's 1c6e35f, dropped with the worktree). Forward a report only while its builder still builds. Integrated suites: 17 in 14.9 s with 11, and 14.9 s with 08. Ticket 11's PreToolUse medians, 41 runs alternating with the base: Edit 20.7 to 20.6 ms, a Bash read 25.4 to 25.8, a Bash scratch write 26.2 to 26.0.
 - Bundled skills (Claude Code docs mirror, 2026-09-24): /code-review is model-invocable; /verify runs only when the user invokes it (since 2.1.215) and cannot be preloaded into a subagent; /security-review and /init can be called through the Skill tool; /run and /verify find how to launch an app from the project type and README, package.json or Makefile, and /run-skill-generator records it as a project skill; a plugin skill loads beside a bundled one of the same name; a plugin can ship MCP servers in `.mcp.json` that start when it is enabled.
 - Hooks: PreToolUse and PostToolUse fire on every tool call and block until they finish; Stop fires at the end of every reply; SessionStart hooks should be fast (the docs); /doctor flags slow hooks.
 - The skill listing budget is 1% of the context window, at most 1,536 characters a description.
