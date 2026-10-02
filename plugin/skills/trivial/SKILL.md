@@ -5,7 +5,7 @@ description: Use before a change with no effect on behavior, data shape or secur
 
 # Trivial
 
-A trivial change is declared, not assumed. Invoking this skill opens the gate for the current request and commits you to the test below.
+A trivial change is declared, not assumed. Invoking this skill opens the gate, until another process skill replaces it or the session is cleared, and commits you to the test below.
 
 **Effort** `${CLAUDE_EFFORT}`: every step, gate and check runs at every level; nothing here is optional.
 

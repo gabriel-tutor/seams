@@ -18,7 +18,7 @@ Development work in this project starts with the skill its row below names, invo
 
 **Red flags** that a skill is due now: "it's a quick fix", "the requirements are clear", "let me read the code first".
 
-**Enforced.** A hook refuses project changes until one of these skills is invoked for the request, and refuses to end a turn that changed the project without `verification-before-completion`*, due before any claim of done, fixed or passing. A branch ends with `finishing-a-development-branch`*; on the base branch, work ends at the commit.
+**Enforced.** A hook refuses project changes until one of these skills routes the work, and refuses to end a turn that changed the project without `verification-before-completion`*, due before any claim of done, fixed or passing. A branch ends with `finishing-a-development-branch`*; on the base branch, work ends at the commit.
 
 **Quality bar.** What ships meets a definition of done covering how it fails, is attacked, performs, is observed, is documented and is rolled back, each item proven; nothing is added that nobody asked for.
 
@@ -26,5 +26,5 @@ Development work in this project starts with the skill its row below names, invo
 1. Questions use AskUserQuestion, recommended answer first.
 2. Seams are settled in the grill; `tdd` and `to-spec` do not ask again.
 3. `code-review` runs on features and builds, is offered on bounded changes and bugs.
-4. Flow: spec → `to-tickets`*, tickets → `implement`*; each step asks before it starts; a yes covering later steps is not asked again; deploy and publish always ask.
+4. Flow: once the user confirms a design, later steps start unasked, stopping only for the user's decisions, integrating a branch, push, deploy, publish, anything destructive or paid.
 5. Grill → spec → tickets share one context. Phase boundaries, durable state, on-ramps, Superpowers overlaps: `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/routing.md`
