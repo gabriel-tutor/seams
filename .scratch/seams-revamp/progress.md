@@ -2,8 +2,12 @@
 
 Status: active
 Stage: designed
-Next: Write the phase-1 spec with to-spec (decisions 1 to 19; ADR 0005), then to-tickets; build ticket by ticket in a worktree, never live in plugin/. Sensitive (hooks, CI): code-review and a security review before it ships.
+Next: Split the spec into tickets with to-tickets; build ticket by ticket in a worktree, never live in plugin/. Sensitive (hooks, CI): code-review and a security review before 4.0.0 ships.
 Updated: 2026-10-02
+
+## Spec
+
+`.scratch/seams-revamp/spec.md` (Seams 4.0: fast and continuous, at the same quality), ready-for-agent.
 
 ## Decisions
 
