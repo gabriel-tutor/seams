@@ -25,6 +25,7 @@ from typing import Optional
 
 FACT_SKILLS = {"matt-pocock-workflow:" + name for name in ("implement", "grill", "release")}
 GIT_TIMEOUT = 3                                # seconds for each git call
+DRAIN_TIMEOUT = 1                              # seconds for a killed git's output, which an escaped child may hold
 STATUS_LINES = 10
 PROGRESS_FILES = 10
 LINE_CAP = 200                                 # characters of any one line of the facts
@@ -55,7 +56,7 @@ def _git(cwd: str, *args: str) -> tuple:
         except OSError:
             pass
         try:
-            proc.communicate(timeout=1)
+            proc.communicate(timeout=DRAIN_TIMEOUT)
         except subprocess.TimeoutExpired:
             pass
         raise GitSilent(f"git did not answer within {GIT_TIMEOUT} s") from None

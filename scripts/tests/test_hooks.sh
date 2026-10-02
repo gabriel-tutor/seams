@@ -16,7 +16,6 @@ ev()   { printf '{"session_id":"s1","cwd":"%s","hook_event_name":"%s",%s}' "$PRO
 pre_edit()   { ev PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$1\",\"old_string\":\"a\",\"new_string\":\"b\"}" | hook pre-tool-use; }
 pre_bash()   { ev PreToolUse "\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$1\"}" | hook pre-tool-use; }
 post_skill() { ev PostToolUse "\"tool_name\":\"Skill\",\"tool_input\":{\"skill\":\"$1\"},\"tool_response\":{}" | hook post-tool-use; }
-prompt()     { ev UserPromptSubmit "\"prompt\":\"$1\"" | hook user-prompt-submit >/dev/null; }   # its hint: say(), in 6b
 start()      { ev SessionStart "\"source\":\"$1\"" | hook session-start >/dev/null; }
 stop()       { ev Stop "\"stop_hook_active\":$1,\"last_assistant_message\":\"done\"" | hook stop; }
 denied()  { grep -q '"permissionDecision": *"deny"' <<< "$1"; }
@@ -29,143 +28,47 @@ for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit ses
   [[ -x "$HOOKS/$h" ]] || fail "hook missing or not executable: $h"
 done
 
-# 1. A project edit with no declaration is refused, and the reason names the routes.
-OUT=$(pre_edit "$PROJ/src/a.ts")
-denied "$OUT" || fail "edit without a declaration should be denied: $OUT"
-grep -q 'Seams gate' <<< "$OUT" || fail "reason should say Seams gate"
-grep -q 'matt-pocock-workflow:trivial' <<< "$OUT" || fail "reason should name the trivial route"
-grep -q 'diagnosing-bugs' <<< "$OUT" || fail "reason should name diagnosing-bugs"
-
-# 2. A shell mutation is refused by its label; a read-only command is not.
-OUT=$(pre_bash "sed -i s/a/b/ src/a.ts"); denied "$OUT" || fail "sed -i should be denied"
-grep -q 'sed -i' <<< "$OUT" || fail "reason should name sed -i"
-OUT=$(pre_bash "cat src/a.ts"); [[ -z "$OUT" ]] || fail "cat should pass silently: $OUT"
-OUT=$(pre_bash "git status"); [[ -z "$OUT" ]] || fail "git status should pass silently: $OUT"
-
-# 3. A write under the temp dir or the config dir is not a project change.
-OUT=$(pre_edit "$TMPDIR/scratch.py"); [[ -z "$OUT" ]] || fail "temp-dir write should pass: $OUT"
-OUT=$(pre_edit "$CLAUDE_CONFIG_DIR/memory/note.md"); [[ -z "$OUT" ]] || fail "config-dir write should pass: $OUT"
-OUT=$(pre_bash "mkdir -p $TMPDIR/evid/checks && echo ok > $TMPDIR/evid/checks/x.log"); [[ -z "$OUT" ]] || fail "a shell write confined to the temp dir should pass: $OUT"
-OUT=$(pre_bash "cp $TMPDIR/evid/checks/x.log $PROJ/src/x.log"); denied "$OUT" || fail "a copy into the project should still be denied: $OUT"
-# The config dir is not scratch for a shell write, even inside the temp dir, where a CI job's or an eval run's lies.
-OUT=$(export CLAUDE_CONFIG_DIR="$TMPDIR/config"; pre_bash "rm -f $TMPDIR/config/settings.json")
-denied "$OUT" || fail "a shell write to a config dir inside the temp dir should be denied: $OUT"
-[[ ! -e "$LEDGER" ]] || ! grep -q '"label"' "$LEDGER" || fail "a temp-only shell write should not be recorded as a change"
-
-# 4. A declaration opens the gate, and the allowed change is recorded (path, no content).
-post_skill "matt-pocock-workflow:grill"
+# The gate's rules are tested once, in process (test_gate.py); here each hook event runs once through its command line,
+# in one session whose ledger carries the request from one hook's process to the next.
+# 1. A change with no declaration is refused with the gate's reason; the Skill hook records a declaration, which opens
+# the gate; the allowed change is recorded by its path or its label, never its content or a command's text; the
+# done-check asks as Stop hook feedback, never as a block, which Claude Code shows as a hook error, once per turn; and
+# a verification the Skill hook records satisfies it.
+OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "edit without a declaration should be denied: $OUT"
+grep -q 'Seams gate' <<< "$OUT" || fail "reason should say Seams gate: $OUT"
+[[ ! -e "$LEDGER" ]] || ! grep -q '"path"' "$LEDGER" || fail "a refused change must not reach the ledger"
+post_skill "tdd"
+grep -q '"skill": *"tdd"' "$LEDGER" || fail "the Skill hook should record the declaration"
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "edit after a declaration should pass: $OUT"
 grep -q '"path": *"'"$PROJ"'/src/a.ts"' "$LEDGER" || fail "ledger should record the change path"
 grep -q 'old_string\|new_string' "$LEDGER" && fail "ledger must not record edit content"
-grep -q '"skill": *"matt-pocock-workflow:grill"' "$LEDGER" || fail "ledger should record the declaration"
+OUT=$(pre_bash "echo s3cret-value > src/b.ts"); [[ -z "$OUT" ]] || fail "a shell write after a declaration should pass: $OUT"
+grep -q '"label"' "$LEDGER" || fail "ledger should record the shell change by its label"
+grep -q 's3cret-value' "$LEDGER" && fail "ledger must not record a command's text"
+OUT=$(stop false); asks "$OUT" || fail "stop after an unverified code change should ask as hook feedback, not block: $OUT"
+grep -q 'Seams done-check' <<< "$OUT" && grep -q "$PROJ/src/a.ts" <<< "$OUT" || fail "the request should name the done-check and the file: $OUT"
+OUT=$(stop true); [[ -z "$OUT" ]] || fail "the second stop of the turn should pass: $OUT"
+post_skill "matt-pocock-workflow:verification-before-completion"
+OUT=$(stop false); [[ -z "$OUT" ]] || fail "stop after verification should pass: $OUT"
 
-# 5. A Superpowers or domain skill is not a declaration.
-prompt "add a feature"
-post_skill "superpowers:brainstorming"
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "superpowers skill should not open the gate"
-post_skill "frontend-design"
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "domain skill should not open the gate"
-
-# 6. A new prompt starts a new request; a go-ahead keeps it; a typed slash command declares.
-post_skill "tdd"
-prompt "yes, go ahead"
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a go-ahead should keep the declaration: $OUT"
-prompt "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished"
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a machine-generated notice should keep the declaration: $OUT"
-prompt '<agent-message from=\"a1\">\n[Subagent hand-back] #12: request changes\n</agent-message>'
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a subagent's hand-back should keep the declaration: $OUT"
-prompt "now fix the bug in pricing"
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a new request should need a new declaration"
-grep -q 'fix the bug' "$LEDGER" && fail "ledger must not record prompt text"
-prompt "/to-spec"
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a typed /to-spec should declare: $OUT"
-prompt "/superpowers:brainstorming"
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a typed superpowers command should not declare"
-prompt "/using-matt-pocock-skills"
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "typing the routing policy itself should not declare"
-prompt "/using-git-worktrees"
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a bare Superpowers-copy name should not declare (the original shares it)"
-
-# 6b. A typed skill is recorded from the expansion that Claude Code runs, once per skill, before the
-# prompt hook; both carry the prompt's id. A typed message that starts a new request after a declared
-# one is told which declaration lapsed, and the hint restores nothing by itself.
-expand() { ev UserPromptExpansion "\"prompt_id\":\"$1\",\"expansion_type\":\"${4:-slash_command}\",\"command_name\":\"$2\",\"command_source\":\"$3\",\"command_args\":\"\",\"prompt\":\"/$2\"" | hook user-prompt-expansion; }
+# 2. A typed skill: the expansion hook records it under its prompt's id, adding the grill's repository facts (section 7)
+# and nothing else, and the prompt hook, which Claude Code runs next, starts the request it declares. Neither the
+# prompt's text nor a prompt field reaches the ledger.
+expand() { ev UserPromptExpansion "\"prompt_id\":\"$1\",\"expansion_type\":\"slash_command\",\"command_name\":\"$2\",\"command_source\":\"$3\",\"command_args\":\"\",\"prompt\":\"/$2\"" | hook user-prompt-expansion; }
 say()    { ev UserPromptSubmit "\"prompt_id\":\"$1\",\"prompt\":\"$2\"" | hook user-prompt-submit; }
+start clear
 OUT=$(expand x1 matt-pocock-workflow:grill plugin)
 "$PY" -c 'import json, sys; o = json.loads(sys.argv[1]); h = o["hookSpecificOutput"]
 assert set(o) == {"hookSpecificOutput"} and set(h) == {"hookEventName", "additionalContext"} and h["hookEventName"] == "UserPromptExpansion"' \
-  "$OUT" 2>/dev/null || fail "the expansion hook should add the grill's repository facts (section 15) and nothing else: $OUT"
-expand x1 tdd userSettings >/dev/null
-OUT=$(say x1 "/grill /tdd fix the coupon"); [[ -z "$OUT" ]] || fail "a message that types its own route gets no hint: $OUT"
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a stacked /grill /tdd should declare from its expansions: $OUT"
-grep -q '"skill": *"matt-pocock-workflow:grill"' "$LEDGER" && grep -q '"skill": *"tdd"' "$LEDGER" \
-  || fail "both stacked skills should be recorded under the names they expanded to"
+  "$OUT" 2>/dev/null || fail "the expansion hook should add the grill's repository facts and nothing else: $OUT"
+OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "an expansion should wait for its prompt to start the request: $OUT"
+OUT=$(say x1 "/grill fix the coupon"); [[ -z "$OUT" ]] || fail "a message that types its own route gets no context: $OUT"
+OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a typed /grill should declare from its expansion: $OUT"
+grep -q '"skill": *"matt-pocock-workflow:grill"' "$LEDGER" || fail "the typed skill should be recorded under the name it expanded to"
 grep -q 'fix the coupon' "$LEDGER" && fail "ledger must not record prompt text"
-OUT=$(say x2 "now make the field required")
-grep -q '"hookEventName": *"UserPromptSubmit"' <<< "$OUT" && grep -q '"additionalContext"' <<< "$OUT" \
-  || fail "a new request after a declared one should get the lapse hint as context: $OUT"
-grep -q '`matt-pocock-workflow:grill`' <<< "$OUT" && grep -q '`tdd`' <<< "$OUT" || fail "the hint should name what lapsed: $OUT"
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "the hint must not restore a declaration by itself: $OUT"
-post_skill "matt-pocock-workflow:grill"
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "invoking the skill again should restore it: $OUT"
-OUT=$(say x3 "yes"); [[ -z "$OUT" ]] || fail "a go-ahead gets no hint: $OUT"
-OUT=$(say x4 "[SYSTEM NOTIFICATION - NOT USER INPUT] a background task finished"); [[ -z "$OUT" ]] || fail "a machine notice gets no hint: $OUT"
-expand x5 tdd mcp mcp_prompt >/dev/null; expand x5 pdf userSettings >/dev/null; say x5 "/mcp__docs__tdd" >/dev/null
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "an MCP prompt or a non-process skill should not declare: $OUT"
-OUT=$(say x6 "and the title"); [[ -z "$OUT" ]] || fail "a request that had no declarations lapses nothing: $OUT"
-expand x7 tdd userSettings >/dev/null
-say x8 "delete the old tables" >/dev/null
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "an expansion must declare only its own prompt's request: $OUT"
-# A skill only the user can type (disable-model-invocation) is named so, and the hint does not send Claude
-# to a Skill call Claude Code would refuse. Once an expansion arrived, the prompt's parse does not decide:
-# a project's own pr-review is not Seams'. In either hook order, an expansion declares its own prompt's request.
-mkdir -p "$CLAUDE_CONFIG_DIR/skills/implement"
-printf -- '---\nname: implement\ndescription: x\ndisable-model-invocation: true\n---\n' > "$CLAUDE_CONFIG_DIR/skills/implement/SKILL.md"
-expand y1 implement userSettings >/dev/null; say y1 "/implement ticket 03" >/dev/null
-OUT=$(say y2 "now fix the failing test")
-grep -q '`implement` (only the user can type it)' <<< "$OUT" || fail "a skill only the user can type should be named so: $OUT"
-grep -q 'with the Skill tool restores' <<< "$OUT" && fail "the hint must not send Claude to the Skill tool for it: $OUT"
-expand y3 pr-review projectSettings >/dev/null; say y3 "/pr-review 42" >/dev/null
-OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "a project's own /pr-review should not declare Seams' skill: $OUT"
-# Seams' pr-review is model-invocable: typed bare, it declares through its expansion. A new request gets no hint for it:
-# a review needs no declaration, and invoking it again would re-arm its pre-approved scripts after the user's answer.
-expand y5 matt-pocock-workflow:pr-review plugin >/dev/null; say y5 "/pr-review 42" >/dev/null
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "a typed bare /pr-review should declare through its expansion: $OUT"
-grep -q '"skill": *"matt-pocock-workflow:pr-review"' "$LEDGER" || fail "the bare /pr-review should be recorded under its full name"
-OUT=$(say y6 "post it"); [[ -z "$OUT" ]] || fail "the hint should leave pr-review out: $OUT"
-say y4 "/grill add coupons" >/dev/null; expand y4 matt-pocock-workflow:grill plugin >/dev/null
-OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "an expansion after its prompt hook should declare that prompt's request: $OUT"
 grep -q '"prompt"' "$LEDGER" && fail "the ledger keys a prompt by its id, never by a prompt field"
 
-# 7. A subagent's call is judged by the same session ledger.
-post_skill "matt-pocock-workflow:implement"
-OUT=$(printf '{"session_id":"s1","cwd":"%s","hook_event_name":"PreToolUse","agent_id":"a1","agent_type":"general-purpose","tool_name":"Write","tool_input":{"file_path":"%s/src/b.ts","content":"x"}}' "$PROJ" "$PROJ" | hook pre-tool-use)
-[[ -z "$OUT" ]] || fail "subagent edit after the parent's declaration should pass: $OUT"
-
-# 7b. Seams' read-only agents never change the project (lean-and-durable ticket 09): with the request declared, a
-# reviewer's commit and a scout's write are refused, each refusal names the agent, and neither reaches the ledger;
-# a reviewer's read and its scratch write pass. The hook input names a plugin's agent by its plugin-scoped name.
-agent() { printf '{"session_id":"s1","cwd":"%s","hook_event_name":"PreToolUse","agent_id":"a2","agent_type":"matt-pocock-workflow:%s","tool_name":"%s","tool_input":%s}' "$PROJ" "$1" "$2" "$3" | hook pre-tool-use; }
-OUT=$(agent reviewer Bash '{"command":"git commit -m fix"}'); denied "$OUT" || fail "a reviewer's commit should be denied, declared or not: $OUT"
-grep -q '`matt-pocock-workflow:reviewer` is a read-only agent' <<< "$OUT" || fail "the refusal should name the read-only agent: $OUT"
-OUT=$(agent scout Write "{\"file_path\":\"$PROJ/src/c.ts\",\"content\":\"x\"}"); denied "$OUT" || fail "a scout's write should be denied, declared or not: $OUT"
-grep -q '`matt-pocock-workflow:scout` is a read-only agent' <<< "$OUT" || fail "the refusal should name the scout: $OUT"
-grep -q 'src/c.ts\|"git commit"' "$LEDGER" && fail "a read-only agent's refused change must not reach the ledger"
-OUT=$(agent reviewer Bash '{"command":"git diff HEAD~1"}'); [[ -z "$OUT" ]] || fail "a reviewer's read should pass: $OUT"
-OUT=$(agent reviewer Bash "{\"command\":\"git diff HEAD~1 > $TMPDIR/d.patch\"}"); [[ -z "$OUT" ]] || fail "a read redirected into the temp dir should pass: $OUT"
-# Its shell is held to reads, not to the classifier's mesh of writes: what the review of af9b011 got past the mesh.
-for C in "npm version patch" "git diff HEAD~1 --output=src/a.ts" "npm test -- -u" "gh pr merge 12" "python3 $TMPDIR/p.py"; do
-  OUT=$(agent reviewer Bash "{\"command\":\"$C\"}"); denied "$OUT" || fail "a reviewer's '$C' should be denied: $OUT"
-done
-grep -q "git's read subcommands" <<< "$OUT" || fail "the refusal should name the reads a read-only agent may run: $OUT"
-OUT=$(agent scout Write "{\"file_path\":\"$CLAUDE_CONFIG_DIR/settings.json\",\"content\":\"{}\"}")
-denied "$OUT" || fail "a read-only agent's write to the config dir should be denied: $OUT"
-# Where the config dir lies inside the temp dir the temp rule must not reach into it: under /tmp, as Ubuntu's mktemp
-# puts this suite, a scout's write to its settings had passed.
-OUT=$(export CLAUDE_CONFIG_DIR="$TMPDIR/config"; agent scout Write "{\"file_path\":\"$TMPDIR/config/settings.json\",\"content\":\"{}\"}")
-denied "$OUT" || fail "a read-only agent's write to a config dir inside the temp dir should be denied: $OUT"
-
-# 8. Session start: clear and startup reset the ledger; compact and resume keep it; a fork is a new
+# 3. Session start: clear and startup reset the ledger; compact and resume keep it; a fork is a new
 # session, which starts with an empty ledger and leaves its parent's alone.
 start compact
 OUT=$(pre_edit "$PROJ/src/a.ts"); [[ -z "$OUT" ]] || fail "compact should keep the ledger: $OUT"
@@ -180,81 +83,20 @@ OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "clear should reset the 
 post_skill "tdd"; start startup
 OUT=$(pre_edit "$PROJ/src/a.ts"); denied "$OUT" || fail "startup should reset the ledger"
 
-# 9. Old ledgers are swept at session start; the session's own is kept.
+# 4. Old ledgers are swept at session start; the session's own is kept.
 post_skill "tdd"
 OLD="$TMPDIR/seams-$(id -u)/old-session.json"; cp "$LEDGER" "$OLD"; touch -t 202001010000 "$OLD"
 start compact
 [[ ! -e "$OLD" ]] || fail "an eight-day-old ledger should be removed"
 [[ -e "$LEDGER" ]] || fail "the live ledger should be kept"
 
-# 10. The done-check: a turn that changed code cannot end until verification ran; once per turn. It asks as
-# Stop hook feedback, which keeps the turn going as a block does, without Claude Code's hook-error label.
-prompt "change the label"; post_skill "tdd"
-OUT=$(stop false); [[ -z "$OUT" ]] || fail "stop with no changes should pass: $OUT"
-pre_edit "$PROJ/src/a.ts" >/dev/null
-OUT=$(stop false); asks "$OUT" || fail "stop after an unverified code change should ask as hook feedback, not block: $OUT"
-grep -q 'Seams done-check' <<< "$OUT" || fail "the request should say Seams done-check"
-grep -q "$PROJ/src/a.ts" <<< "$OUT" || fail "the request should name the file"
-grep -q 'verification-before-completion' <<< "$OUT" || fail "the request should name the verification skill"
-OUT=$(stop true); [[ -z "$OUT" ]] || fail "the second stop of the turn should pass: $OUT"
-post_skill "matt-pocock-workflow:verification-before-completion"
-OUT=$(stop false); [[ -z "$OUT" ]] || fail "stop after verification should pass: $OUT"
-pre_edit "$PROJ/README.md" >/dev/null
-OUT=$(stop false); [[ -z "$OUT" ]] || fail "a documentation-only change should not ask: $OUT"
-pre_bash "sed -i s/a/b/ src/a.ts" >/dev/null
-OUT=$(stop false); asks "$OUT" || fail "an unverified shell mutation should ask for verification: $OUT"
-grep -q 'sed -i' <<< "$OUT" || fail "the request should name the shell label"
-post_skill "superpowers:verification-before-completion"
-OUT=$(stop false); [[ -z "$OUT" ]] || fail "Superpowers' verification copy should count: $OUT"
-pre_bash "git commit -m x" >/dev/null
-OUT=$(stop false); [[ -z "$OUT" ]] || fail "a commit after verification should not ask again: $OUT"
-
-# 11. Every shell tool is gated. A Monitor watch's command is judged as a Bash command is, and a
-# WebSocket watch runs nothing; a PowerShell command is a change unless it is on the read-only list.
-# A write under the hook input's scratchpad_dir is scratch; without the field the temp rules stand.
-pre_tool() { ev PreToolUse "\"tool_name\":\"$1\",\"tool_input\":$2${3:+,$3}" | hook pre-tool-use; }
-WATCH='{"command":"tail -f server.log | tee src/copy.txt","description":"copy","timeout_ms":300000}'
-REMOVE='{"command":"Remove-Item src -Recurse","description":"clean"}'
-prompt "watch the server"
-OUT=$(pre_tool Monitor "$WATCH"); denied "$OUT" || fail "a Monitor watch writing to the project should be denied: $OUT"
-grep -q 'a shell command (`tee`)' <<< "$OUT" || fail "the refusal should name the watch's label: $OUT"
-OUT=$(pre_tool Monitor '{"command":"tail -f server.log | grep --line-buffered ERROR","description":"errors","timeout_ms":300000}')
-[[ -z "$OUT" ]] || fail "a read-only Monitor watch should pass: $OUT"
-OUT=$(pre_tool Monitor '{"ws":{"url":"wss://events.example.com/stream"},"description":"events","timeout_ms":300000}')
-[[ -z "$OUT" ]] || fail "a WebSocket watch should pass: $OUT"
-OUT=$(pre_tool PowerShell "$REMOVE"); denied "$OUT" || fail "PowerShell outside the read-only list should be denied: $OUT"
-grep -q 'Get-ChildItem' <<< "$OUT" || fail "the PowerShell refusal should name the read-only list: $OUT"
-for C in "Get-Content README.md" "Get-ChildItem -Recurse" "Select-String -Path src -Pattern TODO" "git status" "git diff" "git log --oneline"; do
-  OUT=$(pre_tool PowerShell "{\"command\":\"$C\",\"description\":\"read\"}"); [[ -z "$OUT" ]] || fail "PowerShell '$C' should pass: $OUT"
-done
-SP="/seams-hook-test-scratchpad/s1/scratchpad"      # outside every temp root: only the field makes it scratch
-OUT=$(pre_tool Bash "{\"command\":\"echo ok > $SP/log.txt\"}" "\"scratchpad_dir\":\"$SP\"")
-[[ -z "$OUT" ]] || fail "a shell write under scratchpad_dir should pass: $OUT"
-OUT=$(pre_tool Edit "{\"file_path\":\"$SP/notes.py\",\"old_string\":\"a\",\"new_string\":\"b\"}" "\"scratchpad_dir\":\"$SP\"")
-[[ -z "$OUT" ]] || fail "an edit under scratchpad_dir should pass: $OUT"
-OUT=$(pre_tool Bash "{\"command\":\"echo ok > $SP/log.txt\"}"); denied "$OUT" || fail "without scratchpad_dir that write should be denied: $OUT"
-OUT=$(pre_tool Bash "{\"command\":\"echo x > $PROJ/src/a.ts\"}" "\"scratchpad_dir\":\"$PROJ\"")
-denied "$OUT" || fail "the working directory is never scratch, whatever scratchpad_dir says: $OUT"
-post_skill "matt-pocock-workflow:implement"
-OUT=$(pre_tool Monitor "$WATCH"); [[ -z "$OUT" ]] || fail "after a declaration the watch should pass: $OUT"
-OUT=$(pre_tool PowerShell "$REMOVE"); [[ -z "$OUT" ]] || fail "after a declaration PowerShell should pass: $OUT"
-grep -q '"tool": *"Monitor"' "$LEDGER" || fail "the ledger should record the Monitor change"
-grep -q '"tool": *"PowerShell"' "$LEDGER" || fail "the ledger should record the PowerShell change"
-grep -q 'Remove-Item\|server.log' "$LEDGER" && fail "the ledger must not record a command's text"
-
-# 12. Garbage in: every hook exits 0 with no stdout.
+# 5. Garbage in: every hook exits 0 with no stdout.
 for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit session-start stop; do
   OUT=$(echo '{not json' | hook "$h" 2>/dev/null) || fail "$h should exit 0 on garbage"
   [[ -z "$OUT" ]] || fail "$h should print nothing on garbage: $OUT"
 done
 
-# 13. The ledger is private to the user. The mode is read through the interpreter rather than
-# stat: BSD stat takes -f as a format, GNU stat as "file-system status", which prints a block for
-# the file operand and exits 1 for the format operand, so the BSD-first fallback caught both.
-MODE=$("$PY" -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[-3:])' "$LEDGER")
-[[ "$MODE" == "600" ]] || fail "ledger should be mode 600, is $MODE"
-
-# 14. The hook config. PreToolUse sees every tool that edits or runs a shell, and every entry is in
+# 6. The hook config. PreToolUse sees every tool that edits or runs a shell, and every entry is in
 # exec form (args), run as Claude Code spawns it: command and args with ${CLAUDE_PLUGIN_ROOT} put in
 # as plain strings, no shell. Run that way from a plugin root whose path holds a space, under the
 # interpreter being tested, each hook gives its usual answer.
@@ -289,7 +131,7 @@ for event, (fields, expected) in steps.items():      # the session's order, what
             assert (expected in run.stdout) if expected else not run.stdout, f"{event} answered: {run.stdout!r} {run.stderr}"
 PY
 
-# 15. Repository facts (lean-and-durable ticket 10, decision 33). As implement, the grill or release starts, the Skill
+# 7. Repository facts (lean-and-durable ticket 10, decision 33). As implement, the grill or release starts, the Skill
 # hook (Claude's invocations) and the prompt-expansion hook (typed ones) add, as context: the branch, the short HEAD,
 # the first ten lines of `git status --porcelain` and the repository's progress files, last modified first, ten at
 # most. Not through the skills' own !`cmd` lines: those need the Bash tool, and a session without it aborts the skill.
@@ -395,18 +237,47 @@ OUT=$(SID=nogit ev_in "$FR" PostToolUse '"tool_name":"Skill","tool_input":{"skil
       | PATH=/nonexistent "$PYABS" "$HOOKS/post-tool-use" | facts_of)
 [[ $OUT == *"git could not run here"* ]] || fail "without git the facts should say it could not run: $OUT"
 [[ $(ledger_of nogit) == *'"skill": "matt-pocock-workflow:grill"'* ]] || fail "without git the declaration should still be recorded"
-for kind in hanging escaping; do
-  case $kind in
-    hanging)  BIN=$(fake_git hanging 'sleep 30') ;;
-    escaping) BIN=$(fake_git escaping "'$PYABS' -c 'import os, time; os.setsid(); time.sleep(20)' & sleep 30") ;;
-  esac
-  T0=$SECONDS
-  OUT=$(SID=$kind ev_in "$FR" PostToolUse '"tool_name":"Skill","tool_input":{"skill":"matt-pocock-workflow:grill"},"tool_response":{}' \
-        | PATH="$BIN:$PATH" "$PYABS" "$HOOKS/post-tool-use" | facts_of)
-  [[ $OUT == *"git did not answer within 3 s"* ]] || fail "a $kind git should give a fact that says so: $OUT"
-  (( SECONDS - T0 < 10 )) || fail "a $kind git should cost the hook about one timeout, not $(( SECONDS - T0 )) s"
-  [[ $(ledger_of "$kind") == *'"skill": "matt-pocock-workflow:grill"'* ]] || fail "a $kind git should not cost the declaration"
-done
+# A hanging git, even one whose child left its process group and holds the output open, costs the facts one timeout
+# and the bounded wait for that output, never the git's own 20 or 30 s. Run in process with both cut to a tenth of a
+# second, so this git never answers in time whatever the machine's speed; the kill waits (bounded) until the escaping
+# child has left the group, which it marks with its pid. A silent git still records the declaration: the case without
+# git, above.
+HANGING=$(fake_git hanging 'sleep 30')
+ESCAPING=$(fake_git escaping "'$PYABS' -c 'import os, time; os.setsid(); open(\"$TMP/escaped\", \"w\").write(str(os.getpid())); time.sleep(20)' & sleep 30")
+"$PY" - "$HOOKS" "$FR" "$HANGING" "" "$ESCAPING" "$TMP/escaped" <<'PY' || fail "a hanging git should cost the facts one timeout and say so"
+import os, signal, sys, time
+sys.dont_write_bytecode = True
+hooks, repo, *cases = sys.argv[1:]
+sys.path.insert(0, hooks)
+import seams_facts
+seams_facts.GIT_TIMEOUT = seams_facts.DRAIN_TIMEOUT = 0.1
+path, killpg, killed = os.environ["PATH"], os.killpg, []
+
+def escaped(mark):
+    try:
+        return os.path.getsize(mark) > 0
+    except OSError:
+        return False
+
+def kill_once_escaped(pid, sig):
+    deadline = time.monotonic() + 10
+    while mark and not escaped(mark) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    killed.append(time.monotonic())
+    killpg(pid, sig)
+
+os.killpg = kill_once_escaped
+for bin, mark in zip(cases[::2], cases[1::2]):
+    os.environ["PATH"] = bin + os.pathsep + path
+    killed.clear()
+    text = seams_facts.facts("matt-pocock-workflow:grill", repo)
+    after = time.monotonic() - killed[0]
+    assert text.endswith("\n- git did not answer within 0.1 s: look the rest up yourself."), f"{bin}: {text}"
+    assert not mark or escaped(mark), f"{bin}: its child never left the group"
+    assert after < 5, f"{bin}: the facts took {after:.1f} s after the kill"
+    if mark:
+        os.kill(int(open(mark).read()), signal.SIGKILL)
+PY
 # A broken facts module costs the facts, never the declaration: the gate stays open for the declared request.
 BROKEN="$TMP/broken hooks"; cp -R "$HOOKS" "$BROKEN"; echo 'raise ImportError("broken on purpose")' > "$BROKEN/seams_facts.py"
 OUT=$(SID=broken ev_in "$FR" PostToolUse '"tool_name":"Skill","tool_input":{"skill":"matt-pocock-workflow:grill"},"tool_response":{}' \
