@@ -3,7 +3,7 @@
 Status: active
 Stage: integrated
 Ticket: 08
-Next: On seams-4/08-scouts, a worktree at .worktrees/08-scouts from 136dbc8: the fix for the scout drop ticket 08's proof found (decision 30) is committed; next its review against 136dbc8, then on the fixed candidate, each paid run asked first, one at a time: grill-fact-finding rerun, resume-grill alone, the Bash groups' refusal recorded, then the three scripted tasks (three runs each on both, a token from `claude setup-token`, which the user runs), as docs/plugin-behavior-tests.md "4.0.0: the proof" sets out; the results go in that section, then ticket 08 is done and ticket 09 (Release 4.0.0) is unblocked. The results so far are in the Facts (ticket 08's proof).
+Next: On seams-4/08-scouts (.worktrees/08-scouts, from 136dbc8), each paid run asked first: rerun grill-fact-finding on the fix, integrate the branch (asked), then resume-grill and the three scripted tasks on the candidate as docs/plugin-behavior-tests.md "4.0.0: the proof" sets out, recording the results there, then ticket 09.
 Updated: 2026-10-03
 
 ## Spec

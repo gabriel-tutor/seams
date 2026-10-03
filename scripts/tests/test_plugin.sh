@@ -517,7 +517,9 @@ STOPS += [(f"a feature gets {what}", RULES, FEATURE_ROW, pattern) for what, patt
     ("code-review", r"`code-review`"), ("a correctness review", r"correctness review"), ("both reviews run, not offered", r"\bboth run\b"),
     ("its scouts however small the codebase", r"however small the codebase"))]
 STOPS += [("the grill starts a feature's scouts however small the codebase", "skills/grill/SKILL.md", None,
-           r"feature[^\n]*however small the codebase")]
+           r"feature[^\n]*however small the codebase"),
+          ("the shared rules' Scouts line starts a feature's grill's scouts however small the codebase", RULES,
+           r"(?m)^- \*\*Scouts\*\*.*$", r"in a feature's grill,? however small the codebase")]
 STOPS += [(f"the docs rule is in {where}", path, None, r"official docs[^\n]*version in use")
           for where, path in (("the bootstrap", BOOT), ("the shared rules", RULES))]
 
