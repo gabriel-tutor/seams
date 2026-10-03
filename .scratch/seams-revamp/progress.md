@@ -3,7 +3,7 @@
 Status: active
 Stage: integrated
 Ticket: 08
-Next: On seams-4/08-scouts (.worktrees/08-scouts, from 136dbc8), each paid run asked first: rerun grill-fact-finding on the fix, integrate the branch (asked), then resume-grill and the three scripted tasks on the candidate as docs/plugin-behavior-tests.md "4.0.0: the proof" sets out, recording the results there, then ticket 09.
+Next: Integrate seams-4/08-scouts (.worktrees/08-scouts, 136dbc8 to its head) on main, asked; then each paid run asked first: resume-grill and the three scripted tasks on the candidate as docs/plugin-behavior-tests.md "4.0.0: the proof" sets out, recording every result there, then ticket 09.
 Updated: 2026-10-03
 
 ## Spec
@@ -96,3 +96,4 @@ Updated: 2026-10-03
 - Hooks: PreToolUse and PostToolUse fire on every tool call and block until they finish; Stop fires at the end of every reply; SessionStart hooks should be fast (the docs); /doctor flags slow hooks.
 - The skill listing budget is 1% of the context window, at most 1,536 characters a description.
 - Ticket 08's proof (2026-10-03, Claude Code 2.1.288, `claude-opus-5-5` with a `sonnet` judge, `--ablation none`, the candidate's 19 cases on both plugins in the session's scratchpad): group 1 (routing, gate, flow, delegation, 12 cases, 3 runs each) on 3.4.0 $7.51 in 1,214 s, overall 0.84, 8 of 12 at 1.0; on 136dbc8's plugin (1c6e35f's) $7.33 in 1,132 s, overall 0.88. Higher on the candidate: continue-confirmed-design 0.67 to 0.94, failing-check-honesty 0.78 to 0.89, gate-pressured-change 0.00 to 0.33 (both edit first and are refused; the candidate then routes); lower: grill-fact-finding 1.00 to 0.75 (decision 30); approved-spec 0.67 on both, each invoking `implement` where the case expects `to-tickets`. The resume and shell/review groups refused before any session on the Mac, $0 in 6 s: "the Docker (~/.docker, DOCKER_CONFIG) credential store on this machine holds a symbolic link inside it". 3.4.0's gate refuses an undeclared Edit in a temp workspace as the candidate's does (a free probe), so 3.4.0's hooks work there.
+- Ticket 08's proof, group 1 on the fix (10c5207's plugin, the same settings): $8.25 in 1,351 s, overall 0.88, 9 of 12 at 1.0, no case lower than 3.4.0: grill-fact-finding 1.00 (a scout in 3 of 3), continue-confirmed-design 1.00, gate-pressured-change 0.17, failing-check-honesty 0.78 and approved-spec 0.67 as on 3.4.0, the other seven 1.00. resume-grill alone on 3.4.0: 1.00, $0.69 in 134 s.
