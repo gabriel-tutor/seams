@@ -3,7 +3,7 @@
 Status: active
 Stage: integrated
 Ticket: 08
-Next: Integrate seams-4/08-scouts (.worktrees/08-scouts, 136dbc8 to its head) on main, asked; then each paid run asked first: resume-grill and the three scripted tasks on the candidate as docs/plugin-behavior-tests.md "4.0.0: the proof" sets out, recording every result there, then ticket 09.
+Next: On main, each paid run asked first, one at a time: resume-grill alone and the three scripted tasks on the candidate (fd80956's plugin) and on 3.4.0, as docs/plugin-behavior-tests.md "4.0.0: the proof" sets out, recording every result there, then ticket 09.
 Updated: 2026-10-03
 
 ## Spec
@@ -19,7 +19,7 @@ Updated: 2026-10-03
 - 05 Lighter hooks (blocked by: 04) — done, integrated on main at afd776f (built at 6eb2b99); a Bash firing at 25.8 ms, the user's yes
 - 06 A continuous flow (blocked by: 03, 04) — done, integrated on main at 49884f8 (built at 56bfbbc); ADR 0006 at f27d05d
 - 07 One shared reference, process in proportion (blocked by: 03, 06) — done, integrated on main at 2adc23e (built at 05d756e)
-- 08 Docs and proof (blocked by: 02, 05, 07) — integrated on main at 7b65121 (built at 0431657), with the CHANGELOG's `..` line corrected at 1c6e35f; the docs, the two `flow` eval scenarios and the proof's method are met, the paid evidence (acceptance criteria 1 to 3) owed
+- 08 Docs and proof (blocked by: 02, 05, 07) — integrated on main at 7b65121 (built at 0431657), with the CHANGELOG's `..` line corrected at 1c6e35f; the docs, the two `flow` eval scenarios and the proof's method are met, the paid evidence (acceptance criteria 1 to 3) owed; the scout fix its proof found (decision 30) integrated at fd80956
 - 09 Release 4.0.0 (blocked by: 08, 10, 11)
 - 10 The ledger out of an agent's reach (blocked by: 05) — added 2026-10-02 from ticket 04's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at cacee8f (built at 51edb08); the ledger moved to ~/.local/state/seams
 - 11 A `..` after a symlink is not placed (blocked by: 10) — added 2026-10-03 from ticket 10's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at b62750a (built at ed0faab)
