@@ -15,7 +15,7 @@ This is Matt Pocock's grilling, presented as clickable questions, every independ
 
 1. Invoke Matt Pocock's `grilling` skill with the Skill tool, and follow its method exactly:
    - Keep the design tree and its frontier.
-   - Find facts yourself, through `matt-pocock-workflow:scout` agents when a frontier question needs facts from the code or the docs that the conversation lacks (shared rules: Process by size and risk, Official docs). The reads under Resuming need none.
+   - Find facts yourself, through `matt-pocock-workflow:scout` agents when a frontier question needs facts from the code or the docs that the conversation lacks (shared rules: Process by size and risk, Official docs); for a feature or larger, one scout per independent question, all in one message, however small the codebase. The reads under Resuming need none.
    - Put every decision to the user.
    - Keep going until the frontier is empty and the user confirms you share an understanding. Nothing gets built before that confirmation.
 

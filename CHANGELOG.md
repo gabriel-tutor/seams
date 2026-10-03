@@ -17,11 +17,11 @@ Fast and continuous, at the same quality: phase 1 of the revamp grilled on 2026-
   - the done-check asks for verification once in a turn that changed the project.
 
   An unrelated request typed mid-task now rides on the current route; the routing still tells Claude to route new work.
-- **Process in proportion.** Scouts, question rounds and reviews scale with the change's size and risk. Before, scouts ran "however small the codebase", every build got two reviewers and a twelve-row done table, whatever the change. One table in the new shared reference, `using-matt-pocock-skills/references/rules.md`, now sets it:
+- **Process in proportion.** Scouts, question rounds and reviews scale with the change's size and risk. Before, every grill started scouts "however small the codebase", every build got two reviewers and a twelve-row done table, whatever the change. One table in the new shared reference, `using-matt-pocock-skills/references/rules.md`, now sets it:
   - a trivial change gets `trivial`'s test and the narrowest check;
   - a one-line fix gets one test at its seam, red then green;
   - a bug or a bounded change gets scouts only for facts the conversation lacks, a few question rounds, and the two reviews offered;
-  - a feature, or any build through `implement`, gets the full grill, both reviews and the definition of done;
+  - a feature, or any build through `implement`, gets the full grill, whose scouts still run however small the codebase, both reviews and the definition of done;
   - anything sensitive gets `code-review`, a correctness review and the security review, all required, and verification always.
 
   That reference also holds every rule several skills repeated (effort, the repository facts, the progress file, the sensitive list, the stages, evidence, worktrees, the continuous flow), so each is written once. Two contradictions are settled there: evidence from the same commit is reused, not re-run, and a worktree starts from local HEAD.
