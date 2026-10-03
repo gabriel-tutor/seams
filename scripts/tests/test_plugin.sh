@@ -475,7 +475,8 @@ grep -qE "<[A-Z_-]+>" <<< "$BOOT_BODY" && fail "a pseudo-tag in the bootstrap: $
 # keeps the progress file still points at its format where it writes it, since the flow skips questions, never the
 # record. The shared rules' process table (ticket 07) lets a small change skip extras, so its floor is held the same
 # way: the sensitive list is checked before the size, a sensitive change of any size gets code-review, a correctness
-# review and the security review, required, and verification, and a feature gets its two reviewers; and the docs rule
+# review and the security review, required, and verification, and a feature gets its two reviewers, and its scouts
+# however small the codebase, in the shared rules and in the grill (ticket 08's proof); and the docs rule
 # is in the bootstrap and in the shared rules. A copy with each stop dropped in turn shows the check catching that stop
 # alone.
 flow_stop_problems() {   # $1 = a plugin directory, $2 = "probe" to drop each stop from a copy: a line for each stop missed
@@ -513,7 +514,12 @@ STOPS += [(f"a sensitive change gets {what}", RULES, SENSITIVE_ROW, pattern) for
     ("code-review", r"`code-review`"), ("a correctness review", r"correctness review"), ("the security review", r"security review"),
     ("its reviews as required", r"\brequired\b"), ("verification", r"verification-before-completion"))]
 STOPS += [(f"a feature gets {what}", RULES, FEATURE_ROW, pattern) for what, pattern in (
-    ("code-review", r"`code-review`"), ("a correctness review", r"correctness review"), ("both reviews run, not offered", r"\bboth run\b"))]
+    ("code-review", r"`code-review`"), ("a correctness review", r"correctness review"), ("both reviews run, not offered", r"\bboth run\b"),
+    ("its scouts however small the codebase", r"however small the codebase"))]
+STOPS += [("the grill starts a feature's scouts however small the codebase", "skills/grill/SKILL.md", None,
+           r"feature[^\n]*however small the codebase"),
+          ("the shared rules' Scouts line starts a feature's grill's scouts however small the codebase", RULES,
+           r"(?m)^- \*\*Scouts\*\*.*$", r"in a feature's grill,? however small the codebase")]
 STOPS += [(f"the docs rule is in {where}", path, None, r"official docs[^\n]*version in use")
           for where, path in (("the bootstrap", BOOT), ("the shared rules", RULES))]
 

@@ -1540,8 +1540,8 @@ What 4.0.0 waits for before its release (seams-revamp decision 12, ticket 08): t
 | `scripts/test.sh` on the developer's Mac | about ten minutes: 8 suites one after another, the Python tests and two hook suites again under the system 3.9 | 17 suites in 15.4 s, within the 60 s budget | the spec's problem statement; ticket 08's run on `38b43cd`, 2026-10-03. The integrated suites the progress file records took 21.5 s with tickets 03 and 04, before ticket 02 took out the sleeps, then 14.8 to 17.7 s |
 | A hook firing, median | Stop 37.6 ms, UserPromptSubmit 37.9, PreToolUse on an Edit 37.7, on a Bash call 37.5 | 19.5, 19.8, 21.1, 25.8 | ticket 05's figures for its integration `afd776f` against `79e1741`, as the progress file records them, measured as `37acf8e`'s message describes: `python3 <hook>` with the event on stdin, firings alternating between the versions. Ticket 10 found the firings unchanged after it moved the ledger: at its last commit, `51edb08`, against `955cd76`, medians of 30, an Edit 20.7 to 20.8 ms, a Bash scratch write 26.0 to 26.3, Stop 19.8 to 19.6 |
 | The listing, as `scripts/tests/test_plugin.sh` counts it | 2,649 characters | 2,649 | both trees, 2026-10-03 |
-| Every `SKILL.md` together | 94,727 bytes | 93,385 | both trees, 2026-10-03 |
-| Every reference together | 73,883 bytes | 80,641, the shared rules' 8,957 among them | both trees, 2026-10-03 |
+| Every `SKILL.md` together | 94,727 bytes | 93,494 | both trees, 2026-10-03 |
+| Every reference together | 73,883 bytes | 80,761, the shared rules' 9,077 among them | both trees, 2026-10-03 |
 | `implement`'s `SKILL.md` | 10,954 bytes | 10,494 | both trees, 2026-10-03 |
 
 What a session reads depends on its route: a skill reads the shared rules at the steps that name them. So whether 4.0 costs fewer tokens is for the tasks below to measure, not these sizes.

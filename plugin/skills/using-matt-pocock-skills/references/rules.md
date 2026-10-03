@@ -27,12 +27,12 @@ How much process a change gets: its row, picked as the bootstrap picks a route, 
 | Trivial: no effect on behavior, data shape or security | none | none: `trivial`'s test | none | the narrowest check that proves it |
 | One-line fix: a bug or a bounded change confined to one line or expression | none | only the seam, when no test covers it | none | one: the test at the seam, red then green |
 | Bug or bounded change to existing code | only for a fact the conversation lacks | a few rounds: interfaces and seams, failure modes, testing | offered: `code-review` and a correctness review | the tests at the seam and the typecheck as you go, the full suite once at the end |
-| Feature: new behavior, a ticket, any build through `implement` | one per independent question that needs facts the conversation lacks | the full grill: every lens axis that applies | both run: `code-review` and a correctness review | `implement`'s definition of done |
+| Feature: new behavior, a ticket, any build through `implement` | one per independent question that needs facts the conversation lacks, in the grill however small the codebase | the full grill: every lens axis that applies | both run: `code-review` and a correctness review | `implement`'s definition of done |
 | Several sessions, or a new app | as a feature, per area | every lens axis, into the spec | as a feature, per ticket | as a feature, per ticket, then `release` |
 | Sensitive, any size | its size row's | the security and failure axes first, then its size row's | `code-review`, a correctness review and the security review, all required, never only offered | its size row's, then `verification-before-completion`, always |
 | Large: over 400 changed lines (insertions plus deletions) or 15 files, by `git diff --shortstat <fixed-point>...HEAD` | | | `/simplify` too, offered and never run unasked | |
 
-- **Scouts** are `matt-pocock-workflow:scout` agents, started only when a question needs facts the conversation lacks: a fact already in view needs none, and neither does a file or two you read yourself. Beyond a few files, start one per independent question, all in one message, and keep their conclusions rather than the files.
+- **Scouts** are `matt-pocock-workflow:scout` agents, started only when a question needs facts the conversation lacks: a fact already in view needs none, and outside a feature's grill neither does a file or two you read yourself. Beyond a few files, and in a feature's grill however small the codebase, start one per independent question, all in one message, and keep their conclusions rather than the files.
 - **Reviews** run as `matt-pocock-workflow:reviewer` agents, `code-review`'s two subagents included; how each runs is in `implement`'s `references/reviews.md`. Offered reviews are one question at the end, recommended answer first.
 - **Every row** ends with `verification-before-completion`, which the done-check asks for, on the evidence its row names.
 
