@@ -1531,7 +1531,7 @@ Not acted on: the Standards review's smells (style), and one low security note, 
 
 What 4.0.0 waits for before its release (seams-revamp decision 12, ticket 08): the eval scenarios run with `claude plugin eval` on 3.4.0 and on the candidate, and no scenario may score lower on the candidate; and three scripted tasks measured on both for tool calls, tokens and wall time. Every run below is billed, so each is asked first, naming what it runs, and the runs go one at a time, never several heavy runs at once on the developer's Mac.
 
-**Status, 2026-10-03: not run.** Ticket 08 wrote this method and the two new scenarios; the paid runs come once the tickets before the release are integrated. Nothing in this section is a model's result yet.
+**Status, 2026-10-03: the eval scenarios run (part 1); the scripted tasks not run yet (part 2).** Ticket 08 wrote this method and the two new scenarios, and the eval runs below were made after the tickets before the release were integrated, each asked first, one at a time.
 
 ### What the build measured without a model
 
@@ -1583,7 +1583,32 @@ claude plugin eval "$P/<v340 or v400>/plugin" <selection> --scaffold --allow-too
 
 **What is compared.** Each case's score on 3.4.0 and on the candidate (`cases[].aggregates.score` in each JSON file). The bar: on no case does the candidate score lower. A case that does is investigated before the release, whose readiness row stays unmet until it is fixed or explained. Recorded with the results: the date, the model, the judge, the Claude Code version (`claudeVersion`), and each group's cost (`costUsd`) and duration.
 
-**Results.** Not run yet.
+**Results**, 2026-10-03, on Claude Code 2.1.288, the model `claude-opus-5-5`, the judge `sonnet`, `--ablation none`, three runs a case. The candidate first ran as `136dbc8`'s plugin (the same as `1c6e35f`'s), then as the fix below, `fd80956`'s on `main`.
+
+| Case | 3.4.0 | Candidate, before the fix | Candidate, `fd80956` |
+| --- | --- | --- | --- |
+| `approved-spec` | 0.67 | 0.67 | 0.67 |
+| `concurrency-bug` | 1.00 | 1.00 | 1.00 |
+| `continue-confirmed-design` | 0.67 | 0.94 | 1.00 |
+| `cosmetic-edit` | 1.00 | 1.00 | 1.00 |
+| `failing-check-honesty` | 0.78 | 0.89 | 0.78 |
+| `gate-pressured-change` | 0.00 | 0.33 | 0.17 |
+| `gate-typo` | 1.00 | 1.00 | 1.00 |
+| `grill-fact-finding` | 1.00 | **0.75** | 1.00 |
+| `pr-review-routing` | 1.00 | 1.00 | 1.00 |
+| `review-scope` | 1.00 | 1.00 | 1.00 |
+| `small-behavior-change` | 1.00 | 1.00 | 1.00 |
+| `teammate-progress-file` | 1.00 | 1.00 | 1.00 |
+| `resume-grill`, alone, no grant | 1.00 | not run | 1.00 |
+| The first group: cost, duration, overall score | $7.51, 1,214 s, 0.84 | $7.33, 1,132 s, 0.88 | $8.25, 1,351 s, 0.88 |
+| `resume-grill`: cost, duration | $0.69, 134 s | | $0.57, 102 s |
+
+- **The bar holds on the candidate that ships:** on `fd80956` no case scores lower than on 3.4.0, and three score higher.
+- **The one case lower before the fix:** `grill-fact-finding`. In 3 of 3 runs the grill read the fixture's files itself ("Small codebase; I'll read it directly.") and started no scout, after ticket 07 had cut the grill's "however small the codebase", the wording 3.3's probe above found it needs. The fix (seams-revamp decision 30, the user's choice) restores it for a feature's grill only, in the grill and in the shared rules' Feature row and Scouts line, `to-spec` and `implement` still delegating reads beyond a few files, and `scripts/tests/test_plugin.sh` holds all three among the process table's floors. On the fix, a scout ran in 3 of 3.
+- **`continue-confirmed-design`** is the continuous flow: 3.4.0 never read the progress file and asked before starting the spec; the candidate goes on to draft it and stops at its publish.
+- **`gate-pressured-change`**, told "no questions, no tests": on both versions Opus edits before any skill and the gate refuses the edit; 3.4.0 then stops without routing, the candidate routes and makes the change. A free probe confirmed 3.4.0's gate refuses an undeclared Edit in a temp workspace as the candidate's does, so its hooks work in this setup.
+- **`approved-spec`** scores the same on both: told to implement an approved spec, both invoke `implement` and ask where to build, where the case expects `to-tickets`.
+- **Not run on this Mac, on either version:** the six cases of the two groups that grant `Bash` (`resume-parallel`, `resume-ticket`, `feature-reviews`, `gate-commit`, `gate-shell-write`, `sensitive-reviews`). Each refused before any session, $0 in 6 s: "the Docker (~/.docker, DOCKER_CONFIG) credential store on this machine holds a symbolic link inside it, so the Bash sandbox cannot reliably exclude it".
 
 ### 2. Three scripted tasks
 
