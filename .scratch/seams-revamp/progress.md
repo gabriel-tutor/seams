@@ -1,8 +1,8 @@
 # Progress: Seams revamp, faster and lighter at the same quality
 
 Status: active
-Stage: integrated
-Next: Ticket 09, Release 4.0.0, through matt-pocock-workflow:release on main (the version, readiness, a staging pull request for CI, origin's main on the user's yes); continue here.
+Stage: deployed
+Next: 4.0.0 is released; left after it, both needs-triage until their start: ticket 12 (a link made in the same command) and ticket 13 (a lighter read of the shared rules). The simplicity ladder (.scratch/simplicity-ladder) is built next, as 4.1.0.
 Updated: 2026-10-04
 
 ## Spec
@@ -19,7 +19,7 @@ Updated: 2026-10-04
 - 06 A continuous flow (blocked by: 03, 04) — done, integrated on main at 49884f8 (built at 56bfbbc); ADR 0006 at f27d05d
 - 07 One shared reference, process in proportion (blocked by: 03, 06) — done, integrated on main at 2adc23e (built at 05d756e)
 - 08 Docs and proof (blocked by: 02, 05, 07) — done, integrated on main at 7b65121 (built at 0431657); its proof run 2026-10-03 (the scout fix it found integrated at fd80956), the results in docs/plugin-behavior-tests.md, task 3 not run (decision 33)
-- 09 Release 4.0.0 (blocked by: 08, 10, 11)
+- 09 Release 4.0.0 (blocked by: 08, 10, 11) — done, released 2026-10-04: staging pull request #15 at 987c187 green on Ubuntu, macOS and system-python (run 37190625538), then main fast-forwarded 79e1741 to 987c187 on the user's yes, its run 37190933337 green; tags v3.4.0 (79e1741, the rollback) and v4.0.0 pushed; the local install updated to 4.0.0, read in place; a session-start probe injects the bootstrap (2,581 bytes)
 - 10 The ledger out of an agent's reach (blocked by: 05) — added 2026-10-02 from ticket 04's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at cacee8f (built at 51edb08); the ledger moved to ~/.local/state/seams
 - 11 A `..` after a symlink is not placed (blocked by: 10) — added 2026-10-03 from ticket 10's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at b62750a (built at ed0faab)
 - 12 A link made in the same command is not placed through (blocked by: 09) — added 2026-10-03 from ticket 11's security review, the user's choice: after 4.0.0, which makes none of its three bypasses worse; needs-triage until its start decides what a command that can make a link counts as

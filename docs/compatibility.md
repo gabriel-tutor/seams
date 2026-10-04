@@ -66,6 +66,8 @@ The README's one-liner, run from GitHub (`origin/main` at `5bd97cf`, version 3.0
 
 The 3.0.0 runs: 35019368288 on `362f670`, through a throwaway pull request (#2, closed, branch deleted), 2026-09-15 20:23 UTC, and 35020907043 on `5bd97cf`, the push of 3.0.0 to `main`, 20:38 UTC; green on both platforms both times, the same counts. The 3.0.1 run: 35334150768 on `263edfb` through the throwaway PR #3 (closed, branch deleted), 2026-09-18 10:19 UTC, green on both platforms with the same counts, the hook suite covering the per-user ledger directory on both. The 3.1.0 runs: 35534453159 on `b8f5342`, the push of 3.1.0 to `main`, 2026-09-20 20:05 UTC, **red on both platforms** in `test_prepare_run` only (the eval-run case assumed the runner had Matt Pocock's skills; the unit, hook and installer suites passed), and 35535391146 on `aea109b`, the fix (an explicit `CLAUDE_CONFIG_DIR` is the runner's config, and the case runs against fixture configs), 20:23 UTC, green on both with the usual counts.
 
+The 4.0.0 runs: 37190625538 on `987c187` through the staging pull request #15, 2026-10-04, green on Ubuntu, macOS and the `system-python` job (Python 3.9); then 37190933337 on `987c187`, the push of 4.0.0 to `main`, green on all three.
+
 | Field | ubuntu-latest | macos-latest |
 | --- | --- | --- |
 | Operating system | Ubuntu 24.04.5 LTS, x64 (image `ubuntu-24.04` 20260907.300.1) | macOS 26.6.2 (25G83), arm64 (image `macos-26-arm64` 20260907.0351.1) |
