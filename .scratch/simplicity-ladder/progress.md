@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designing
-Next: The grill's next round: which of ponytail's parts come over (the ladder and rules, the shortcut comment, the review lens, the debt ledger), where each lives in Seams, the name, and the test seams.
+Next: The grill's third round: where the ladder's text lives, which review carries the lens and whether its findings are acted on, the shortcut comment's marker; then the coverage lens and the confirmation.
 Updated: 2026-10-04
 
 ## Decisions
@@ -11,9 +11,13 @@ Updated: 2026-10-04
 2. The discipline applies at the build and review steps, not every session: the ladder lives in the shared rules, `implement` and `tdd` work follow it while writing code, and the reviews check against it; no session-start injection, no new hook (the user's choice).
 3. One level, ponytail's default `full` (the ladder enforced); no lite/full/ultra dial, since Seams already scales process by size and risk (the user's choice).
 
+4. What comes over (the user's choice): the ladder and its rules (root-cause fixes that grep every caller; never lazy on trust-boundary validation, data-loss handling, security, accessibility or understanding the problem; the handover says what was skipped and when to add it), the shortcut comment naming a deliberate corner's ceiling and upgrade path, and a review lens for over-building. Not the debt ledger, nor ponytail's other skills (the listing has 1 character left).
+5. The term is *Simplicity ladder* (the user's choice), in CONTEXT.md; ponytail credited in THIRD_PARTY_NOTICES.md and where the ladder is written.
+6. The test seams (the user's choice): a new eval scenario, an over-build trap on the OrderKit fixture judged on the diff, run on 4.0.0 and the 4.1.0 candidate; and test_plugin.sh contract pins that the build and review steps name the ladder.
+
 ## Open questions
 
-- Which parts come over, where each lives, the term, the test seams; the coverage lens.
+- Where the ladder's text lives; the review lens's reviewer and whether its findings are acted on; the shortcut comment's marker; the coverage lens.
 
 ## Facts
 

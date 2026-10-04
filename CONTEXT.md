@@ -77,6 +77,10 @@ _Avoid_: worker, helper
 What every candidate that ships must meet: a definition of done covering how the change fails, is attacked, performs, is observed, is documented and is rolled back, each item proven by evidence, with scope and architecture sized to the stated needs plus the next order of growth.
 _Avoid_: perfection, gold-plating, bare minimum, best effort
 
+**Simplicity ladder**:
+The questions code climbs before it is written, stopping at the first that holds: does it need to exist at all, does the codebase already have it, does the standard library, a native platform feature or an installed dependency cover it, can it be one line, and only then the least code that works. It shortens the solution, never the reading of the problem, and never cuts validation at a trust boundary, data-loss handling, security or accessibility. Adapted from ponytail.
+_Avoid_: lazy mode, ponytail mode, minimalism
+
 **Stage**:
 The furthest point a piece of work has evidence for: designed, built, integrated, release-ready, deployed, operated. A handover names it; until the design is agreed, a progress file says `designing`.
 _Avoid_: gate (that is the hook), phase, status
