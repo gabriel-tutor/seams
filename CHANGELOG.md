@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (4.0.0)
+## 4.0.0 — 2026-10-04
 
 Fast and continuous, at the same quality: phase 1 of the revamp grilled on 2026-10-02. The spec is `.scratch/seams-revamp/spec.md`, and every decision with its reason is in `.scratch/seams-revamp/progress.md`. Two changes alter how every session works, hence a major version: the flow no longer asks before each step, and a typed reply no longer ends a declaration. The plugin id and the marketplace name are unchanged, so `claude plugin update matt-pocock-workflow@my-workflow-agent-skills` is the whole upgrade, and going back is reinstalling 3.4.0 (`79e1741`).
 
