@@ -123,6 +123,15 @@ for s in to-spec to-tickets implement; do
   last_line_says "$s" "$PLUGIN/skills/$s/SKILL.md" "Matt Pocock" "MIT" "$MP_COMMIT"
 done
 
+# The simplicity ladder is adapted from ponytail (simplicity-ladder decision 5), MIT: its notice names one upstream
+# commit, and the ladder's last line attributes ponytail, the license and that commit.
+PT_SECTION=$(section "ponytail" "$NOTICES")
+[[ -n "$PT_SECTION" ]] || fail "no 'ponytail' section in THIRD_PARTY_NOTICES.md"
+PT_COMMIT=$(grep -oE '\b[0-9a-f]{40}\b' <<< "$PT_SECTION" | sort -u) || fail "the ponytail notice names no upstream commit"
+[[ $(wc -l <<< "$PT_COMMIT") -eq 1 ]] || fail "the ponytail notice should name one upstream commit, got: $PT_COMMIT"
+grep -q "Copyright (c) 2026 DietrichGebert" <<< "$PT_SECTION" || fail "the ponytail notice lacks its copyright line"
+last_line_says simplicity-ladder "$PLUGIN/skills/using-matt-pocock-skills/references/simplicity-ladder.md" "ponytail" "MIT" "$PT_COMMIT"
+
 # The upstream files those three were adapted from: SHA-256 recorded at the upstream commit and
 # compared with the installed copies. Drift is a warning, never a failure: the port is a manual
 # review (ADR-0002), and a machine without his skills has nothing to compare.
@@ -476,7 +485,9 @@ grep -qE "<[A-Z_-]+>" <<< "$BOOT_BODY" && fail "a pseudo-tag in the bootstrap: $
 # record. The shared rules' process table (ticket 07) lets a small change skip extras, so its floor is held the same
 # way: the sensitive list is checked before the size, a sensitive change of any size gets code-review, a correctness
 # review and the security review, required, and verification, and a feature gets its two reviewers, and its scouts
-# however small the codebase, in the shared rules and in the grill (ticket 08's proof); and the docs rule
+# however small the codebase, in the shared rules and in the grill (ticket 08's proof); code is written up the
+# simplicity ladder from implement's build, the grill's tdd hand-off and the process rules, its review checks it, and
+# the ladder keeps its never-cut list (simplicity-ladder decisions 2, 8, 10); and the docs rule
 # is in the bootstrap and in the shared rules. A copy with each stop dropped in turn shows the check catching that stop
 # alone.
 flow_stop_problems() {   # $1 = a plugin directory, $2 = "probe" to drop each stop from a copy: a line for each stop missed
@@ -520,6 +531,15 @@ STOPS += [("the grill starts a feature's scouts however small the codebase", "sk
            r"feature[^\n]*however small the codebase"),
           ("the shared rules' Scouts line starts a feature's grill's scouts however small the codebase", RULES,
            r"(?m)^- \*\*Scouts\*\*.*$", r"in a feature's grill,? however small the codebase")]
+LADDER, PROCESS = "skills/using-matt-pocock-skills/references/simplicity-ladder.md", r"(?ms)^## Process by size and risk\n.*?(?=^## |\Z)"
+STOPS += [(what, path, scope, r"simplicity-ladder\.md") for what, path, scope in (
+    ("implement's build climbs the simplicity ladder", "skills/implement/SKILL.md", None),
+    ("the correctness review checks the simplicity ladder", "skills/implement/references/reviews.md", None),
+    ("the shared rules' process sends code to the simplicity ladder", RULES, PROCESS),
+    ("the grill sends a tdd build to the simplicity ladder", "skills/grill/SKILL.md", None))]
+STOPS += [(f"the simplicity ladder never cuts {what}", LADDER, None, pattern) for what, pattern in (
+    ("validation at a trust boundary", r"trust boundar"), ("data-loss handling", r"data loss"),
+    ("security", r"\bsecurity\b"), ("accessibility", r"\baccessibility\b"))]
 STOPS += [(f"the docs rule is in {where}", path, None, r"official docs[^\n]*version in use")
           for where, path in (("the bootstrap", BOOT), ("the shared rules", RULES))]
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (4.1.0)
+
+- **The simplicity ladder**, adapted from ponytail (github.com/dietrichgebert/ponytail, MIT; the notice is in `plugin/THIRD_PARTY_NOTICES.md`). Code is written up a ladder that stops at the first rung that holds: does it need to exist, does the codebase already have it, the standard library, a native feature, an installed dependency, one line, then the least code that works. It is read only when code is written (`implement`'s build, a `tdd` slice after the grill) and when the correctness review reads the diff, which now fixes over-building as a gap against the ticket. Bugs are fixed at their root, a deliberate shortcut is marked with a `ceiling:` comment, and the handover says what was skipped. It never cuts validation at a trust boundary, data-loss handling, security or accessibility. Not taken from ponytail: its hooks, its lite/full/ultra levels and its other skills. `CONTEXT.md` gains *Simplicity ladder*; a new eval scenario, `receipt-over-build` (tag `ladder`), sets an over-build trap.
+
 ## 4.0.0 — 2026-10-04
 
 Fast and continuous, at the same quality: phase 1 of the revamp grilled on 2026-10-02. The spec is `.scratch/seams-revamp/spec.md`, and every decision with its reason is in `.scratch/seams-revamp/progress.md`. Two changes alter how every session works, hence a major version: the flow no longer asks before each step, and a typed reply no longer ends a declaration. The plugin id and the marketplace name are unchanged, so `claude plugin update matt-pocock-workflow@my-workflow-agent-skills` is the whole upgrade, and going back is reinstalling 3.4.0 (`79e1741`).

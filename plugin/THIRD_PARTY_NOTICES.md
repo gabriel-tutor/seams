@@ -91,3 +91,43 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## ponytail
+
+One reference in this plugin is an adaptation, not a copy, of a file from ponytail (https://github.com/dietrichgebert/ponytail), taken at commit `c982cd411abb53323c4baa1baa3c2f020b8d0b08` (2026-10-03). It keeps ponytail's ladder, its rules and its never-cut list in Seams' words, read at the build and review steps; ponytail's hooks, levels and other skills are not taken. Its last line attributes the original.
+
+| This plugin | Adapted from (path in the upstream repo at that commit) |
+| --- | --- |
+| `skills/using-matt-pocock-skills/references/simplicity-ladder.md` | `skills/ponytail/SKILL.md` |
+
+The upstream file's SHA-256 at that commit:
+
+```text
+1316a2f3f95741d2300b116fe0c2d81ce4a9568656ed0a62643f54aaf09957f2  skills/ponytail/SKILL.md
+```
+
+ponytail is released under the MIT License:
+
+```text
+MIT License
+
+Copyright (c) 2026 DietrichGebert
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: receipt-over-build
+context:
+  scaffold_script: scaffold.sh

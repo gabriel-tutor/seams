@@ -42,7 +42,7 @@ When the resume note or the user points at a ticket its progress file records in
 ## Build
 
 1. **Read the work.** Fetch the ticket and its spec through the issue tracker (`docs/agents/issue-tracker.md`), then `CONTEXT.md` and any ADR in the area you're touching. Work in the glossary's vocabulary, and check third-party code against its docs (shared rules: Official docs).
-2. **Test first.** Invoke `tdd` (Matt Pocock's, bare name) with the Skill tool and follow it one slice at a time at the agreed seams: the spec's Testing Decisions, the ticket, or what the grill settled. Seams settled there are not asked again; only when none was ever agreed, ask once with AskUserQuestion before the first test. If `tdd` isn't available, tell the user Matt Pocock's skills aren't installed, and stop.
+2. **Test first.** Invoke `tdd` (Matt Pocock's, bare name) with the Skill tool and follow it one slice at a time at the agreed seams: the spec's Testing Decisions, the ticket, or what the grill settled. Seams settled there are not asked again; only when none was ever agreed, ask once with AskUserQuestion before the first test. Write the code up the simplicity ladder, `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/simplicity-ladder.md`. If `tdd` isn't available, tell the user Matt Pocock's skills aren't installed, and stop.
 3. **Check as you go.** Run the typecheck and the single test file you're working in regularly, and the full suite once at the end. Use the repo's real scripts.
 
 ## Commit
@@ -92,7 +92,7 @@ The ticket ends with the handover: exactly these four sections, in this order, a
 
 1. **Run it.** The exact commands to start and check the work, from the repo's real scripts or README; if it has none, the one-line command that works, and an offer to add it to the README.
 2. **Try it.** One short walkthrough per acceptance criterion, in the user's words: what to do, and what they should see. Refer to things by their glossary names. For a user-facing change to a runnable app, offer `/verify`, which only the user can start.
-3. **What changed.** The candidate SHA, the files and public interfaces touched, in a few lines, and any decision you made that the ticket didn't settle.
+3. **What changed.** The candidate SHA, the files and public interfaces touched, in a few lines, any decision you made that the ticket didn't settle, and what the ladder skipped and when to add it.
 4. **Next.** First the stage reached (shared rules: Stages): a ticket that ends here is *built* or *integrated*. Then name the next unblocked ticket, or say there is none. Then say whether to `/clear` before it (it is unrelated to this one, or this session is heavy) or to continue here (it builds on this one). Continuing here with every row met, go on unoffered to the record's `Next`: that ticket, or with none left `matt-pocock-workflow:finishing-a-development-branch` for a branch's candidate, else any release.
 
 Adapted from Matt Pocock's `implement` skill (github.com/mattpocock/skills, `skills/engineering/implement` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`), MIT License, Copyright (c) 2026 Matt Pocock; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.

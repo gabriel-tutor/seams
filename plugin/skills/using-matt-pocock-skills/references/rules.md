@@ -34,6 +34,7 @@ How much process a change gets: its row, picked as the bootstrap picks a route, 
 
 - **Scouts** are `matt-pocock-workflow:scout` agents, started only when a question needs facts the conversation lacks: a fact already in view needs none, and outside a feature's grill neither does a file or two you read yourself. Beyond a few files, and in a feature's grill however small the codebase, start one per independent question, all in one message, and keep their conclusions rather than the files.
 - **Reviews** run as `matt-pocock-workflow:reviewer` agents, `code-review`'s two subagents included; how each runs is in `implement`'s `references/reviews.md`. Offered reviews are one question at the end, recommended answer first.
+- **Code** any row writes climbs the simplicity ladder first, `simplicity-ladder.md` beside this file, read when code is about to be written.
 - **Every row** ends with `verification-before-completion`, which the done-check asks for, on the evidence its row names.
 
 ## Stages

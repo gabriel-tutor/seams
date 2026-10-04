@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: After seams-revamp ticket 09 (Release 4.0.0), build this through matt-pocock-workflow:implement in a new worktree under .worktrees/, as 4.1.0.
+Next: On seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder, from 584de2b): the build is committed (the ladder, its pointers, the notice, the eval case, the docs); next its review against 584de2b, then the eval on 4.0.0 and the candidate (paid, asked), the record and the release of 4.1.0.
 Updated: 2026-10-04
 
 ## Decisions
