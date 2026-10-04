@@ -1,8 +1,8 @@
 # Progress: the simplicity ladder (ponytail's discipline in Seams)
 
 Status: active
-Stage: designed
-Next: Built with the rename (.scratch/seams-rename) on seams-4.1/simplicity-ladder; ships as 5.0.0, not 4.1.0 (seams-rename decision 2); the review, the eval and the release are recorded there.
+Stage: built
+Next: 5.0.0 is built on seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder): integrate it on main and release it, asked first and together with switching the user's Mac (remove matt-pocock-workflow@my-workflow-agent-skills, add the marketplace again, install seams@seams), since the install reads main in place; then the user splits clarewood's CLAUDE.md with /seams:foundations.
 Updated: 2026-10-04
 
 ## Decisions

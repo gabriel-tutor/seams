@@ -1,8 +1,8 @@
 # Progress: CLAUDE.md kept small, an oversized one split into lazy modules
 
 Status: active
-Stage: designed
-Next: Build it test first on seams-4.1/simplicity-ladder: the pins, the shared rules' Where docs go, implement's Docs row, foundations' CLAUDE.md row and split, the docs; then the review with 5.0.0's eval finding fixed.
+Stage: built
+Next: 5.0.0 is built on seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder): integrate it on main and release it, asked first and together with switching the user's Mac (remove matt-pocock-workflow@my-workflow-agent-skills, add the marketplace again, install seams@seams), since the install reads main in place; then the user splits clarewood's CLAUDE.md with /seams:foundations.
 Updated: 2026-10-04
 
 ## Decisions

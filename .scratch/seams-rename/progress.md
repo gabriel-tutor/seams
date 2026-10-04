@@ -1,8 +1,8 @@
 # Progress: the plugin and marketplace renamed to seams
 
 Status: active
-Stage: designed
-Next: The record and the definition of done for 5.0.0 on seams-4.1/simplicity-ladder; then integration and the release, the user's Mac switched only when the user says so.
+Stage: built
+Next: 5.0.0 is built on seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder): integrate it on main and release it, asked first and together with switching the user's Mac (remove matt-pocock-workflow@my-workflow-agent-skills, add the marketplace again, install seams@seams), since the install reads main in place; then the user splits clarewood's CLAUDE.md with /seams:foundations.
 Updated: 2026-10-04
 
 ## Decisions
