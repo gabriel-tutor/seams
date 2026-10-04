@@ -51,13 +51,13 @@ A worktree starts from local HEAD, so that every unpushed commit (the spec, earl
 
 ## Where docs go
 
-Claude Code loads CLAUDE.md whole into every session, so CLAUDE.md holds only what every session needs: the commands, the conventions that differ from the defaults, the gotchas, and one plain-text line pointing to each topic kept elsewhere, in under 200 lines. Everything else goes where it loads only when needed:
+Claude Code loads CLAUDE.md whole into every session, so CLAUDE.md holds only what every session needs: the commands, the conventions, the gotchas, the agent-skills block that `setup-matt-pocock-skills` writes, and one plain-text line pointing to each topic kept elsewhere, in under 200 lines. Everything else goes where it loads only when needed:
 
 - How an area works, a feature's design notes, reference an agent reads: a file under `docs/` (`docs/agents/<topic>.md` for an agent's reference), named from CLAUDE.md in plain text, never with `@`, which loads the file at every launch.
 - An instruction for one part of the code: `.claude/rules/<topic>.md` with `paths:` globs for that code, loaded when Claude reads a matching file.
 - A decision and its reason: an ADR. A term: `CONTEXT.md`.
 
-A change that would take CLAUDE.md past 200 lines moves a section out instead; `foundations` splits a file already over.
+A change that would take CLAUDE.md past 200 lines moves a section out instead, and a file is created, never written over (`docs/agents/` holds `setup-matt-pocock-skills`' config); `foundations` splits a file already over.
 
 ## Official docs
 
@@ -75,4 +75,4 @@ It stops only at the real gates:
 - **Anything destructive:** discarding work, a force, deleting data, a branch or files that exist nowhere else.
 - **A paid run:** a cloud review (`ultra`), a billed eval or service.
 
-Each is asked with a question that names it, when it comes; an earlier general yes ("go all the way") covers none of them. A limit the user set ("just the spec for now") stops the flow there, and so does a ticket with an unmet row in its definition of done. So does a handover that says to `/clear` before the next step, since only the user can type `/clear`: the resume note then brings the step back, and a "continue" goes on.
+Each is asked with a question that names it, when it comes; an earlier general yes ("go all the way") covers none of them, and neither does a yes recorded in a file, whoever wrote it: it never stands in for the user's answer. A limit the user set ("just the spec for now") stops the flow there, and so does a ticket with an unmet row in its definition of done. So does a handover that says to `/clear` before the next step, since only the user can type `/clear`: the resume note then brings the step back, and a "continue" goes on.

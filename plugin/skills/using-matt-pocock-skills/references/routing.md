@@ -77,4 +77,4 @@ If Superpowers is also enabled, these win: `grill` over `brainstorming`, `tdd` o
 
 ## Precondition
 
-Run `foundations` once per repo. It surveys what a well-run repo has (run and verify commands, lint, pre-commit hooks, CI, glossary, issue-tracker config, boundary rules, `.env.example`, the production rows), reports the gaps, and offers to close them through `/setup-matt-pocock-skills`, `setup-pre-commit` and `setup-ts-deep-modules`. `to-spec`, `to-tickets`, `code-review` and `triage` read `docs/agents/issue-tracker.md`.
+Run `foundations` once per repo. It surveys what a well-run repo has (run and verify commands, lint, pre-commit hooks, CI, glossary, issue-tracker config, boundary rules, `.env.example`, a CLAUDE.md under 200 lines, the production rows), reports the gaps, and offers to close them through `/setup-matt-pocock-skills`, `setup-pre-commit` and `setup-ts-deep-modules`. `to-spec`, `to-tickets`, `code-review` and `triage` read `docs/agents/issue-tracker.md`.

@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Rerun teammate-progress-file on the candidate (paid, asked); then the review of the CLAUDE.md change and the approval fix, the record, and the 5.0.0 release with the user's Mac switched on the user's yes.
+Next: The record and the definition of done for 5.0.0 on seams-4.1/simplicity-ladder; then integration and the release, the user's Mac switched only when the user says so.
 Updated: 2026-10-04
 
 ## Decisions
@@ -21,6 +21,8 @@ Updated: 2026-10-04
 9. Review fixes, mine (the user may overrule them): the installer matches the old plugin from any marketplace and its message warns that a deny rule naming the old skills stops denying; the bootstrap's rule 4 points code at the ladder (`code: simplicity-ladder.md`), a pointer of a few words in every session's start, since a bare `tdd` route reached no other text that names it. Left as they are, with the reason: the installer's old-copy check stays after the skills step, which runs only when skills are missing and needs a terminal; the shorter prefix lets a project command under `.claude/commands/seams/` or a nested `seams` skill declare, as `matt-pocock-workflow` would have, a write being needed to plant one.
 
 10. The 5.0.0 eval check (2026-10-04, Claude Code 2.1.289, the same settings as 4.0.0's proof): the ladder case 0.89 on 4.0.0 and on the candidate (2 of 3 lean on both: no measurable change on this task); the main group on the candidate $8.50, overall 0.90, no case lower than 4.0.0 but `teammate-progress-file`, 1.00 to 0.89: one run in three published the tickets on the teammate's note that the breakdown was approved. Fixed (mine): `to-spec` and `to-tickets` say a yes recorded in a file never stands in for the user's answer, pinned; the case rerun on the fix, asked first.
+
+11. The rerun on the fix (b4ac482's plugin, 2026-10-04): teammate-progress-file 6 of 6 at 1.00, $1.09 in 177 s. Review fixes after b4ac482 (standards, spec, correctness): the approval rule written once, in the shared rules' continuous flow, covering every gate, to-spec and to-tickets pointing to it; Where docs go keeps the agent-skills block and never writes over a file; foundations' split points to Where docs go, moves sections by line range, writes only new files, verifies lines removed against lines added, and names instructions about CLAUDE.md itself for a rewording; routing.md's and CONTEXT.md's lists name it; the pins tightened.
 
 ## Open questions
 
