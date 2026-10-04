@@ -5,7 +5,8 @@
 # skill gives Claude, the shared rules' sections among them; no skill injects a shell command; the routing table's rows;
 # the continuous flow's stops (ticket 06); the process table's floor and the docs rule (ticket 07); the third-party
 # notices and the copies' checksums; the plugin's name, with no live file naming the old one (seams-rename); the
-# simplicity ladder's pointers and its never-cut list (simplicity-ladder). No other check pins a skill's or the README's wording: rewording a sentence that
+# simplicity ladder's pointers and its never-cut list (simplicity-ladder); where docs go, CLAUDE.md held small and
+# foundations' split (claude-md-budget); a publish's yes never taken from a file (5.0.0's eval). No other check pins a skill's or the README's wording: rewording a sentence that
 # changes none of these leaves it green.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -573,6 +574,16 @@ STOPS += [(what, path, scope, r"simplicity-ladder\.md") for what, path, scope in
 STOPS += [(f"the simplicity ladder never cuts {what}", LADDER, None, pattern) for what, pattern in (
     ("validation at a trust boundary", r"trust boundar"), ("data-loss handling", r"data loss"),
     ("security", r"\bsecurity\b"), ("accessibility", r"\baccessibility\b"))]
+WHERE_DOCS = r"(?ms)^## Where docs go\n.*?(?=^## |\Z)"
+STOPS += [(f"the shared rules' Where docs go {what}", RULES, WHERE_DOCS, pattern) for what, pattern in (
+    ("keeps CLAUDE.md to what every session needs", r"CLAUDE\.md[^\n]*every session"), ("caps CLAUDE.md at 200 lines", r"200 lines"),
+    ("sends area rules to path-scoped rules", r"\.claude/rules/[^\n]*paths:"), ("never imports with @", r"never with `@`"))]
+STOPS += [(what, path, scope, pattern) for what, path, scope, pattern in (
+    ("implement's Docs row places docs as the shared rules say", "skills/implement/SKILL.md", r"(?m)^\| Docs \|.*$", r"Where docs go"),
+    ("foundations reports a CLAUDE.md over 200 lines", "skills/foundations/SKILL.md", r"(?m)^\| CLAUDE\.md.*$", r"200 lines"),
+    ("foundations splits an oversized CLAUDE.md only on the user's yes to a plan", "skills/foundations/SKILL.md", None, r"plan[^\n]*each section[^\n]*destination"),
+    ("to-tickets takes no file's note for the breakdown's approval", "skills/to-tickets/SKILL.md", None, r"never stands in for it"),
+    ("to-spec takes no file's note for the publish's yes", "skills/to-spec/SKILL.md", None, r"never stands in for it"))]
 STOPS += [(f"the docs rule is in {where}", path, None, r"official docs[^\n]*version in use")
           for where, path in (("the bootstrap", BOOT), ("the shared rules", RULES))]
 

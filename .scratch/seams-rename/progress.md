@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: The rename is committed on seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder) with the ladder; next code-review, a correctness review and the security review over 584de2b...HEAD, then the fixes, the eval runs (paid, asked) and the release of 5.0.0, the user's Mac switched only when the user says so.
+Next: Rerun teammate-progress-file on the candidate (paid, asked); then the review of the CLAUDE.md change and the approval fix, the record, and the 5.0.0 release with the user's Mac switched on the user's yes.
 Updated: 2026-10-04
 
 ## Decisions
@@ -19,6 +19,8 @@ Updated: 2026-10-04
 8. The user confirmed on 2026-10-04: build it test first on seams-4.1/simplicity-ladder in its worktree, with the ladder, the three reviews required, and stop before anything reaches main or the user's Mac.
 
 9. Review fixes, mine (the user may overrule them): the installer matches the old plugin from any marketplace and its message warns that a deny rule naming the old skills stops denying; the bootstrap's rule 4 points code at the ladder (`code: simplicity-ladder.md`), a pointer of a few words in every session's start, since a bare `tdd` route reached no other text that names it. Left as they are, with the reason: the installer's old-copy check stays after the skills step, which runs only when skills are missing and needs a terminal; the shorter prefix lets a project command under `.claude/commands/seams/` or a nested `seams` skill declare, as `matt-pocock-workflow` would have, a write being needed to plant one.
+
+10. The 5.0.0 eval check (2026-10-04, Claude Code 2.1.289, the same settings as 4.0.0's proof): the ladder case 0.89 on 4.0.0 and on the candidate (2 of 3 lean on both: no measurable change on this task); the main group on the candidate $8.50, overall 0.90, no case lower than 4.0.0 but `teammate-progress-file`, 1.00 to 0.89: one run in three published the tickets on the teammate's note that the breakdown was approved. Fixed (mine): `to-spec` and `to-tickets` say a yes recorded in a file never stands in for the user's answer, pinned; the case rerun on the fix, asked first.
 
 ## Open questions
 

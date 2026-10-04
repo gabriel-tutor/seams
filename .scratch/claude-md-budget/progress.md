@@ -1,8 +1,8 @@
 # Progress: CLAUDE.md kept small, an oversized one split into lazy modules
 
 Status: active
-Stage: designing
-Next: The user's confirmation; then the build on seams-4.1/simplicity-ladder with the ladder and the rename, as part of 5.0.0.
+Stage: designed
+Next: Build it test first on seams-4.1/simplicity-ladder: the pins, the shared rules' Where docs go, implement's Docs row, foundations' CLAUDE.md row and split, the docs; then the review with 5.0.0's eval finding fixed.
 Updated: 2026-10-04
 
 ## Decisions
@@ -12,9 +12,11 @@ Updated: 2026-10-04
 3. The user splits clarewood's CLAUDE.md in clarewood after 5.0.0, through `/seams:foundations` (the user's choice).
 4. Mine, the user may overrule them (the user left the approach to me): the budget is the docs' guidance, under 200 lines, which `foundations` reports as a gap; the split moves sections verbatim, never rewritten, after the user approves a plan of each section and its destination; a section about one part of the code goes to `.claude/rules/<topic>.md` with `paths:` globs for that code, anything else to `docs/agents/<topic>.md`; CLAUDE.md keeps the commands, the conventions, the gotchas and the agent-skills block, and a one-line plain-text pointer to each moved file; the shared rules gain a Docs section saying where docs go (a feature's design notes to `docs/`, decisions to ADRs, area rules to path-scoped rules, CLAUDE.md never), and implement's Docs row points to it; test_plugin.sh pins the rule and the foundations row; no paid eval.
 
+5. The user confirmed on 2026-10-04: build it on seams-4.1/simplicity-ladder, test first, reviewed with the rest of 5.0.0, stopping before main and the user's Mac.
+
 ## Open questions
 
-- None; the user's confirmation.
+- None.
 
 ## Facts
 

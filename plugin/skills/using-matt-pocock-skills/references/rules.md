@@ -49,6 +49,16 @@ Evidence belongs to a candidate: the commit it ran on, with a clean tree. Eviden
 
 A worktree starts from local HEAD, so that every unpushed commit (the spec, earlier tickets) is in it: `git worktree add -b <branch> <path> HEAD`. A native tool (`EnterWorktree`, `claude --worktree`, the Agent tool's `isolation`) is used only when the settings set `worktree.baseRef` to `head`: by default, `fresh`, it branches from the remote's default branch and leaves those commits out (code.claude.com/docs/en/worktrees, "Choose the base branch"). This rule holds over `using-git-worktrees`' step 1a; its consent, directory, ignore check, setup and baseline stand. A parallel run makes each of its worktrees with git at its setup and starts its builders without `isolation` (`implement`'s `references/parallel.md`).
 
+## Where docs go
+
+Claude Code loads CLAUDE.md whole into every session, so CLAUDE.md holds only what every session needs: the commands, the conventions that differ from the defaults, the gotchas, and one plain-text line pointing to each topic kept elsewhere, in under 200 lines. Everything else goes where it loads only when needed:
+
+- How an area works, a feature's design notes, reference an agent reads: a file under `docs/` (`docs/agents/<topic>.md` for an agent's reference), named from CLAUDE.md in plain text, never with `@`, which loads the file at every launch.
+- An instruction for one part of the code: `.claude/rules/<topic>.md` with `paths:` globs for that code, loaded when Claude reads a matching file.
+- A decision and its reason: an ADR. A term: `CONTEXT.md`.
+
+A change that would take CLAUDE.md past 200 lines moves a section out instead; `foundations` splits a file already over.
+
 ## Official docs
 
 Before writing or reviewing code that uses a third-party library, framework, platform, CLI or API, check its official docs for the version in use (the lockfile, the manifest or its `--version` says which): the vendor's documentation, or a docs server such as Context7 when one is installed, through a scout when it takes more than a lookup or two. Cite what decided something, with the URL and the version, where the decision is written: the spec, a finding, the handover. Repo-internal logic needs no lookup. What the docs don't settle is reported as unconfirmed, never guessed.

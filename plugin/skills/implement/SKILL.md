@@ -79,7 +79,7 @@ Before claiming the work is done, commit the ticket's record (Progress file, abo
 | Security | no secret in the diff; on a sensitive change, each security finding fixed or left with a reason |
 | Performance | a hot path or a growing collection, measured before and after |
 | Observability | a new failure is logged at its boundary or shown to the user |
-| Docs | updated where behavior changed: the README's run or usage lines, the glossary if a term moved |
+| Docs | updated where behavior changed: the README's run or usage lines, the glossary if a term moved, each in its place (shared rules: Where docs go) |
 | Rollback | how this candidate is undone: a revert, a flag or a down-migration |
 | No debug leftovers | no tagged logs, commented-out code, throwaway scripts, or `.only` on a test |
 | Commit message | says what changed and why, and names the ticket |
