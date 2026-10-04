@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designing
-Next: The grill's third round: where the ladder's text lives, which review carries the lens and whether its findings are acted on, the shortcut comment's marker; then the coverage lens and the confirmation.
+Next: The user's confirmation of the shared understanding and where implement builds; then seams-revamp ticket 09 (Release 4.0.0) first, then this built through implement as 4.1.0.
 Updated: 2026-10-04
 
 ## Decisions
@@ -15,9 +15,14 @@ Updated: 2026-10-04
 5. The term is *Simplicity ladder* (the user's choice), in CONTEXT.md; ponytail credited in THIRD_PARTY_NOTICES.md and where the ladder is written.
 6. The test seams (the user's choice): a new eval scenario, an over-build trap on the OrderKit fixture judged on the diff, run on 4.0.0 and the 4.1.0 candidate; and test_plugin.sh contract pins that the build and review steps name the ladder.
 
+7. The ladder's text lives in its own reference, `plugin/skills/using-matt-pocock-skills/references/simplicity-ladder.md`, read only when code is written (implement, tdd) and when the reviews run, so spec, tickets and the grill never load it (ticket 13's cost) (the user's choice).
+8. The correctness reviewer also checks the diff against the ladder, and an over-building finding (code the ticket didn't need, or a re-implementation of what the codebase, the standard library, a native feature or an installed dependency already does) counts as a gap and is fixed; no third reviewer (the user's choice).
+9. A deliberate shortcut's comment uses the marker `ceiling:`, naming the ceiling and the upgrade path (the user's choice).
+10. Design-lens points, mine (the user may overrule them): a bounded change routed to `tdd` reaches the ladder through one pointer line in the shared rules' process section; Seams' own checks (tdd at agreed seams, the process table) stand over ponytail's "one runnable check, no frameworks"; the handover keeps its four sections, "skipped: X, add when Y" going under What changed; the ladder never overrides a sensitive change's reviews, and the reviewer's over-building findings never delete trust-boundary validation, data-loss handling, security or accessibility code; no new dependency, no hook; rollback is reinstalling 4.0.0 or a revert; no ADR, nothing here being hard to reverse.
+
 ## Open questions
 
-- Where the ladder's text lives; the review lens's reviewer and whether its findings are acted on; the shortcut comment's marker; the coverage lens.
+- None; the lens checked. The user's confirmation of the shared understanding.
 
 ## Facts
 
