@@ -2,9 +2,8 @@
 
 Status: active
 Stage: integrated
-Ticket: 08
-Next: On main, task 3 of the scripted tasks running (the user's yes), then the three tasks into docs/plugin-behavior-tests.md part 2 and the user's call on task 2's cost (decision 32), then ticket 09.
-Updated: 2026-10-03
+Next: Ticket 09, Release 4.0.0, through matt-pocock-workflow:release on main (the version, readiness, a staging pull request for CI, origin's main on the user's yes); continue here.
+Updated: 2026-10-04
 
 ## Spec
 
@@ -19,11 +18,12 @@ Updated: 2026-10-03
 - 05 Lighter hooks (blocked by: 04) — done, integrated on main at afd776f (built at 6eb2b99); a Bash firing at 25.8 ms, the user's yes
 - 06 A continuous flow (blocked by: 03, 04) — done, integrated on main at 49884f8 (built at 56bfbbc); ADR 0006 at f27d05d
 - 07 One shared reference, process in proportion (blocked by: 03, 06) — done, integrated on main at 2adc23e (built at 05d756e)
-- 08 Docs and proof (blocked by: 02, 05, 07) — integrated on main at 7b65121 (built at 0431657), with the CHANGELOG's `..` line corrected at 1c6e35f; the docs, the two `flow` eval scenarios and the proof's method are met, the paid evidence (acceptance criteria 1 to 3) owed; the scout fix its proof found (decision 30) integrated at fd80956
+- 08 Docs and proof (blocked by: 02, 05, 07) — done, integrated on main at 7b65121 (built at 0431657); its proof run 2026-10-03 (the scout fix it found integrated at fd80956), the results in docs/plugin-behavior-tests.md, task 3 not run (decision 33)
 - 09 Release 4.0.0 (blocked by: 08, 10, 11)
 - 10 The ledger out of an agent's reach (blocked by: 05) — added 2026-10-02 from ticket 04's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at cacee8f (built at 51edb08); the ledger moved to ~/.local/state/seams
 - 11 A `..` after a symlink is not placed (blocked by: 10) — added 2026-10-03 from ticket 10's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at b62750a (built at ed0faab)
 - 12 A link made in the same command is not placed through (blocked by: 09) — added 2026-10-03 from ticket 11's security review, the user's choice: after 4.0.0, which makes none of its three bypasses worse; needs-triage until its start decides what a command that can make a link counts as
+- 13 A lighter read of the shared rules (blocked by: 09) — added 2026-10-04 from ticket 08's proof, task 2 dearer on the candidate, the user's choice: after 4.0.0; needs-triage until its start decides how the skills reach the shared rules
 
 ## Decisions
 
@@ -68,7 +68,8 @@ Updated: 2026-10-03
 
 31. The scripted tasks on the account's own login (the user's choice, 2026-10-03), not a `claude setup-token` token in a throwaway config: each run switches off every installed plugin (27, the installed Seams among them) through `--settings`, loads no MCP server (`--strict-mcp-config`, an empty `--mcp-config`) and no claude.ai connector (`ENABLE_CLAUDEAI_MCP_SERVERS=false`), and drops every `CLAUDE*` variable of the launching session; the account's user skills, CLAUDE.md and settings (effort xhigh) load alike on both versions; one yes per task, $10 a prompt.
 
-32. Task 2's cost (the user's choice, 2026-10-03): recorded as measured and explained; whether a lighter read of the shared rules is needed before 4.0.0 is decided once task 3 is in.
+32. Task 2's cost (the user's choices, 2026-10-03 and 04): recorded as measured and explained; 4.0.0 ships with it, and ticket 13, after 4.0.0, trims how the skills reach the shared rules.
+33. Task 3 not run (the user's choice, 2026-10-04): its first run lost the network (ENOTFOUND) and hit the background limit; the release goes on the eval scenarios and tasks 1 and 2, the user wanting 4.0.0 finished fast.
 
 ## Outline of phases 2 and 3 (grilled in full when each starts)
 

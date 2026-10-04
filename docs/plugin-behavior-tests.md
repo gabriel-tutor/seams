@@ -1531,7 +1531,7 @@ Not acted on: the Standards review's smells (style), and one low security note, 
 
 What 4.0.0 waits for before its release (seams-revamp decision 12, ticket 08): the eval scenarios run with `claude plugin eval` on 3.4.0 and on the candidate, and no scenario may score lower on the candidate; and three scripted tasks measured on both for tool calls, tokens and wall time. Every run below is billed, so each is asked first, naming what it runs, and the runs go one at a time, never several heavy runs at once on the developer's Mac.
 
-**Status, 2026-10-03: the eval scenarios run (part 1); the scripted tasks not run yet (part 2).** Ticket 08 wrote this method and the two new scenarios, and the eval runs below were made after the tickets before the release were integrated, each asked first, one at a time.
+**Status, 2026-10-04: run, except task 3.** Ticket 08 wrote this method and the two new scenarios; the runs below were made on 2026-10-03 after the tickets before the release were integrated, each asked first, one at a time. Part 1 holds the eval scenarios; part 2 holds tasks 1 and 2, task 3 not run (seams-revamp decision 33).
 
 ### What the build measured without a model
 
@@ -1712,4 +1712,38 @@ print(json.dumps({
 
 **What is compared.** Per task, the median of each figure over its runs, on 3.4.0 and on the candidate. The bar (ticket 08): the candidate takes fewer tool calls and no more tokens or wall time, or the difference is explained. 4.0's scouts run on Sonnet, so the tokens are shown by model, with the cost beside them.
 
-**Results.** Not run yet.
+**How the runs were made.** Not with a token in a throwaway config, as above, but on the account's own login (seams-revamp decision 31, the user's choice), by a driver that keeps the method's prompts, end states, settings rules and `measure.py`:
+
+- Every installed plugin is switched off through `--settings` (27 on the developer's account, the installed Seams among them), and no MCP server or claude.ai connector loads (`--strict-mcp-config` with an empty `--mcp-config`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`). Each run's init event lists only the plugin under test and Claude Code's three builtin plugins.
+- The account's user skills, `CLAUDE.md` and settings (effort `xhigh`) load alike on both versions, so the figures include that overhead.
+- Every `CLAUDE*` variable of the launching session is dropped. A first run that inherited them (the session's id, `CLAUDE_CODE_CHILD_SESSION`, its messaging socket) was set aside and redone.
+- The scaffold ran under the real home, so the nine Matt Pocock skills came from the account's config.
+- The script's prompts were sent in order, then "Yes, go on." until the end state, checked after every prompt. Claude Code 2.1.288, `claude-opus-5-5`, `acceptEdits`, $10 a prompt; no run reached the ceiling.
+
+**Results**, 2026-10-03, three runs a version, alternating; medians, then each run.
+
+| Task 1, a bug fix with a typed reply | 3.4.0 | Candidate (`fd80956`'s plugin) |
+| --- | --- | --- |
+| Prompts to the end state | 2 | 2 |
+| Tool calls (Skill calls) | 28 (4) | 31 (3) |
+| Tokens | 1,064k | 1,047k |
+| Cost | $0.91 | $0.94 |
+| Wall time | 189 s | 224 s |
+| Each run: calls, cost, seconds | 19, $0.74, 177; 31, $1.14, 271; 28, $0.91, 189 | 29, $0.80, 176; 34, $0.94, 232; 31, $0.97, 224 |
+
+| Task 2, a confirmed design to its tickets | 3.4.0 | Candidate |
+| --- | --- | --- |
+| Prompts to the end state | 3 | 3 |
+| Tool calls (Skill calls) | 40 (4) | 39 (5) |
+| Tokens | 1,348k | 1,862k |
+| Cost | $1.50 | $1.93 |
+| Wall time | 315 s | 409 s |
+| Each run: calls, cost, seconds | 40, $1.48, 339; 34, $1.50, 315; 42, $1.50, 303 | 38, $1.61, 372; 62, $1.93, 411 (two Sonnet scouts); 39, $1.95, 409 |
+
+No run on either version met a gate refusal or the done-check. Denials, 1 to 7 a run on both, are piped shell commands and scratch writes the settings' rules don't allow.
+
+- **Task 1:** no measurable difference. The candidate saves the second `diagnosing-bugs` call 3.4.0 makes at the typed reply (the lasting route), but 3.4.0's own runs span 19 to 31 calls and 177 to 271 s, wider than any gap between the versions.
+- **Task 2:** the candidate costs more: 38% more tokens, 29% more cost, 30% more wall time, at the same prompts and calls. Both versions draft the spec and stop at its publish, publish it and propose the tickets, then publish them. Told to stop once the tickets were published, 3.4.0 went on through each step too, so the continuous flow saved no prompt here. The candidate also reads the shared rules (`rules.md`, 9,077 bytes) at the first prompt, besides `routing.md` and `progress-file.md`. That text then rides every later turn, and cache reads are about 93% of the tokens. Seams-revamp decision 32, the user's choice: 4.0.0 ships with this explained, and ticket 13 trims it after the release.
+- **Task 3 was not run.** Its first run lost the network at its first prompt ("API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)"), retried until the background limit stopped it, and counts as void. The user chose to release on the eval scenarios and tasks 1 and 2 (seams-revamp decision 33).
+- **The bar** (ticket 08: fewer tool calls and no more tokens or wall time, or the difference explained): explained, not met. Task 1 is even within its noise. Task 2 is dearer, for the reason above.
+- **Spend:** about $25 on the eval scenarios and $16 on the tasks, the set-aside and void runs included.
