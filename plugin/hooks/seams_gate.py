@@ -162,9 +162,9 @@ def change_for_event(event: dict, config_dir: str | None = None) -> dict | None:
 
 
 ROUTES = ("Route it first, with the Skill tool: `diagnosing-bugs` for something broken, "
-          "`matt-pocock-workflow:grill` for a change to behavior, `tdd` or "
-          "`matt-pocock-workflow:implement` to keep building an agreed design, "
-          "`matt-pocock-workflow:trivial` for a change with no effect on behavior, data shape "
+          "`seams:grill` for a change to behavior, `tdd` or "
+          "`seams:implement` to keep building an agreed design, "
+          "`seams:trivial` for a change with no effect on behavior, data shape "
           "or security. Then retry this call.")
 
 

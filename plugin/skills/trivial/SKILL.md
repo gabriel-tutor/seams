@@ -18,10 +18,10 @@ It stays trivial only while all four hold:
 3. **Nothing sensitive.** It touches nothing the bootstrap's Sensitive row lists (shared rules: Sensitive changes). A one-line change there is not trivial.
 4. **Reversible in one commit**, with nothing to migrate back.
 
-If any of the four fails, stop and route up: `matt-pocock-workflow:grill` for a change to behavior or shape, `diagnosing-bugs` for something broken.
+If any of the four fails, stop and route up: `seams:grill` for a change to behavior or shape, `diagnosing-bugs` for something broken.
 
 ## Then
 
 1. Make the edit.
 2. Run the narrowest check that proves it: the typecheck, the test that covers the file, a link check, a render, a build of the one page.
-3. Before saying it's done, run `matt-pocock-workflow:verification-before-completion` and show the check's real output. A trivial change still ends with evidence.
+3. Before saying it's done, run `seams:verification-before-completion` and show the check's real output. A trivial change still ends with evidence.

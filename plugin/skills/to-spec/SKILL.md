@@ -13,20 +13,20 @@ Turn the current conversation into a spec and publish it to the project's issue 
 
 Start at once, with no opening question, when the flow reached this skill from a confirmed design (shared rules: The continuous flow), or when the user's last message asks for a spec or says yes to an offer to write one. Otherwise, before reading anything, ask "Write the spec now?" with AskUserQuestion, recommended answer first, and wait for a yes; a general go-ahead such as "let's get going" or "next" is not a request for a spec.
 
-The issue tracker and the triage labels should already be in context (`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`). If the repo has neither, offer `matt-pocock-workflow:foundations` before going on; its `/setup-matt-pocock-skills` step, which only the user can run, writes them.
+The issue tracker and the triage labels should already be in context (`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`). If the repo has neither, offer `seams:foundations` before going on; its `/setup-matt-pocock-skills` step, which only the user can run, writes them.
 
 ## Process
 
-1. **Explore the repo** to understand the current state of the codebase, if you haven't already, through `matt-pocock-workflow:scout` agents for what the conversation lacks (shared rules: Process by size and risk, Official docs). Use the project's domain glossary (`CONTEXT.md`) throughout the spec, and respect any ADRs in the area you're touching.
+1. **Explore the repo** to understand the current state of the codebase, if you haven't already, through `seams:scout` agents for what the conversation lacks (shared rules: Process by size and risk, Official docs). Use the project's domain glossary (`CONTEXT.md`) throughout the spec, and respect any ADRs in the area you're touching.
 2. **Seams.** Sketch the seams at which the feature will be tested. Prefer existing seams to new ones, and use the highest seam possible; if new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better: the ideal number is one. When the grill already agreed the seams, write those into the spec instead of asking again. Only when no seams were agreed, check with the user that yours match their expectations, with AskUserQuestion.
 3. **Write the spec** from the template below. Under **Further Notes**, add four short subsections, each from what the grill settled (write "none" where nothing applies, and never invent), and a fifth when the work has a deployment target:
    - **Alternatives considered:** the designs rejected and the one-line reason for each. A decision that is hard to reverse also gets an ADR through `domain-modeling`; the spec links it rather than repeating it.
    - **Risks and failure modes:** what can go wrong in use, and what the design does about each.
    - **Rollout and migration:** what changes shape (data, config, a public interface), how it's rolled out (expand–contract, a flag, a cutover), and how it's reversed.
    - **Observability:** how a person will know it's broken in use, and what gets logged at the boundaries.
-   - **Release** (only when the work has a deployment target: a host, a store, a registry, a marketplace): the target, the environments it passes through, and what the first deploy is; for a new app, the walking skeleton's. The last ticket from `matt-pocock-workflow:to-tickets` takes the integrated candidate through `matt-pocock-workflow:release` on this basis.
+   - **Release** (only when the work has a deployment target: a host, a store, a registry, a marketplace): the target, the environments it passes through, and what the first deploy is; for a new app, the walking skeleton's. The last ticket from `seams:to-tickets` takes the integrated candidate through `seams:release` on this basis.
 4. **Publish.** Show the user the spec's title and where it will go (the path or tracker location the issue-tracker config names), and name the commit that follows: the spec when it is a file, the progress file, and the grill's `CONTEXT.md` and ADR changes. Wait for a yes. Then publish it there and apply the `ready-for-agent` triage label; no further triage is needed.
-5. **Progress file.** Update the feature's progress file, `.scratch/<feature>/progress.md`, in the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` describes, creating it if the grill didn't: `Stage: designed`, the spec's path or URL under `## Spec`, `Next` the split into tickets through `matt-pocock-workflow:to-tickets`, `Updated` today. Then commit the files the question named, by name, with a message that names the spec.
+5. **Progress file.** Update the feature's progress file, `.scratch/<feature>/progress.md`, in the format `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/progress-file.md` describes, creating it if the grill didn't: `Stage: designed`, the spec's path or URL under `## Spec`, `Next` the split into tickets through `seams:to-tickets`, `Updated` today. Then commit the files the question named, by name, with a message that names the spec.
 
 ## Spec template
 
@@ -88,6 +88,6 @@ Any further notes about the feature, then the subsections from step 3: Alternati
 
 ## Next
 
-When the flow brought you here (Gate, above), go on to `matt-pocock-workflow:to-tickets` without offering it; otherwise offer it and wait for a yes.
+When the flow brought you here (Gate, above), go on to `seams:to-tickets` without offering it; otherwise offer it and wait for a yes.
 
 Adapted from Matt Pocock's `to-spec` skill (github.com/mattpocock/skills, `skills/engineering/to-spec` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`), MIT License, Copyright (c) 2026 Matt Pocock; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.

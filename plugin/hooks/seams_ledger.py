@@ -21,7 +21,7 @@ from functools import lru_cache
 
 # --- Declarations and requests ------------------------------------------------------------
 
-PLUGIN_PREFIX = "matt-pocock-workflow:"
+PLUGIN_PREFIX = "seams:"
 # Matt Pocock's process skills, by bare name. Domain skills (frontend-design, pdf, ...) and
 # other plugins' process skills (superpowers:brainstorming) do not open the gate. The three
 # setup skills are the ones upstream ships; a wildcard would admit any third-party setup-*.

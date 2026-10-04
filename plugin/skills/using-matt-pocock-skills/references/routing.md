@@ -29,7 +29,7 @@ A new app starts with `foundations` (the run and verify commands, CI, the produc
 - **Down or degraded for users now** → `incident`. Impact, then the safest reversible containing action behind a yes, restore, and only then `diagnosing-bugs`.
 - **A huge, foggy effort** → `/wayfinder` (user-only). It charts a map of decision tickets and resolves one per session. When the way is clear, it hands off to `to-spec`.
 - **Unsure where to start** → suggest `/ask-matt` (user-only), Matt's own routing.
-- **A GitHub pull request to review, or several** → `matt-pocock-workflow:pr-review` with their numbers, URLs or `owner/repo#n`, when the user or a skill they run asks for it (the user can type `/matt-pocock-workflow:pr-review` or bare `/pr-review` too, and `open` or `requested` take a batch); a local branch, commits or uncommitted work go to `code-review`. It runs the repo's checks on each pull request's head and baseline, reviews with `code-review` and a risk reviewer, proves its findings, posts by itself only a review that is fully verified at its head (otherwise it asks), and ends by saying which pull requests are ready to merge.
+- **A GitHub pull request to review, or several** → `seams:pr-review` with their numbers, URLs or `owner/repo#n`, when the user or a skill they run asks for it (the user can type `/seams:pr-review` or bare `/pr-review` too, and `open` or `requested` take a batch); a local branch, commits or uncommitted work go to `code-review`. It runs the repo's checks on each pull request's head and baseline, reviews with `code-review` and a risk reviewer, proves its findings, posts by itself only a review that is fully verified at its head (otherwise it asks), and ends by saying which pull requests are ready to merge.
 
 ## Upkeep
 
@@ -39,9 +39,9 @@ Run `/improve-codebase-architecture` (user-only) every few days. It reports deep
 
 The four skills from Superpowers (three copies, and `finishing-a-development-branch` adapted to record integration in the progress file), named with their prefix because the Superpowers originals share their names and are not declarations:
 
-- **Worktrees:** `matt-pocock-workflow:using-git-worktrees` when feature work needs isolation from the current workspace; `implement` offers it at its gate, and a parallel run makes its own, one per ticket under `.claude/worktrees/` (shared rules: Worktrees).
-- **Review feedback:** `matt-pocock-workflow:receiving-code-review` before acting on any review finding: verify it against the code, then fix or push back with reasons.
-- **Verify** and **finish** are in the bootstrap: `matt-pocock-workflow:verification-before-completion` before any claim, `matt-pocock-workflow:finishing-a-development-branch` on a branch.
+- **Worktrees:** `seams:using-git-worktrees` when feature work needs isolation from the current workspace; `implement` offers it at its gate, and a parallel run makes its own, one per ticket under `.claude/worktrees/` (shared rules: Worktrees).
+- **Review feedback:** `seams:receiving-code-review` before acting on any review finding: verify it against the code, then fix or push back with reasons.
+- **Verify** and **finish** are in the bootstrap: `seams:verification-before-completion` before any claim, `seams:finishing-a-development-branch` on a branch.
 
 ## Durable state
 
@@ -63,8 +63,8 @@ Mid-phase there is no decision to make: continue, or split the remaining work in
 
 - **Scouts, questions, reviews and checks** for each row (shared rules: Process by size and risk).
 - **BUG:** show the ranked hypotheses before testing them. Write the regression test before the fix, at a seam that reproduces the real bug pattern.
-- **FEATURE:** `implement` starts in a worktree via `matt-pocock-workflow:using-git-worktrees`. `code-review` uses the branch's merge-base as its fixed point.
-- **BIG:** each ticket is sized for one fresh context window. When all tickets are done, `matt-pocock-workflow:finishing-a-development-branch` integrates the work.
+- **FEATURE:** `implement` starts in a worktree via `seams:using-git-worktrees`. `code-review` uses the branch's merge-base as its fixed point.
+- **BIG:** each ticket is sized for one fresh context window. When all tickets are done, `seams:finishing-a-development-branch` integrates the work.
 - **Standalone skills:**
   - `research`: a background agent that reads primary sources and writes a cited Markdown file.
   - `resolving-merge-conflicts`: use when already mid-conflict. Resolve by intent, and never `--abort`.

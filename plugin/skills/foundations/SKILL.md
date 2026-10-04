@@ -11,7 +11,7 @@ A senior engineer's first hour in a repo: find out what's there, name what's mis
 
 ## 1. Survey
 
-Look, don't ask. Hand the rows below to `matt-pocock-workflow:scout` agents, split between two or three of them and all started in one message. Each item comes back *present*, *missing* or *partial*, with the evidence (the file or script found):
+Look, don't ask. Hand the rows below to `seams:scout` agents, split between two or three of them and all started in one message. Each item comes back *present*, *missing* or *partial*, with the evidence (the file or script found):
 
 | Item | What counts as present |
 | --- | --- |

@@ -19,7 +19,7 @@ Build what a spec, a ticket or an agreed design describes: tests first at the ag
 
 ## Gate
 
-Before reading the work, settle which spec, ticket or design you build, and where, asking only what nothing settled. The flow (shared rules: The continuous flow) brings the next unblocked ticket, or the parallel offer when two or more are; where is what the user said, else the branch the last record names, else what the confirmation recorded. Otherwise offer a worktree through `matt-pocock-workflow:using-git-worktrees` (shared rules: Worktrees), which asks for consent, or the current branch, and wait for the answer. A ticket resumed as its progress file records skips this (Resuming, below).
+Before reading the work, settle which spec, ticket or design you build, and where, asking only what nothing settled. The flow (shared rules: The continuous flow) brings the next unblocked ticket, or the parallel offer when two or more are; where is what the user said, else the branch the last record names, else what the confirmation recorded. Otherwise offer a worktree through `seams:using-git-worktrees` (shared rules: Worktrees), which asks for consent, or the current branch, and wait for the answer. A ticket resumed as its progress file records skips this (Resuming, below).
 
 Then note the starting point for the review's fixed point: the branch and HEAD from the repository facts (in a new worktree, its own), and the base branch.
 
@@ -29,7 +29,7 @@ The feature's progress file, `.scratch/<feature>/progress.md` beside its spec, i
 
 - **After the gate:** `Ticket` is this ticket's number, and `Next` names the branch and the starting commit.
 - **With each commit:** `Next` says what the commit does and the step that follows, naming the branch and the SHAs it needs: the review against the fixed point, the fixes, or the definition of done. A commit can't name itself, so `Candidate` is the commit under review, set when the review starts. After the review, list the findings you act on under `## Review`, one line each with its file and line, until they are fixed.
-- **The record:** just before the definition of done, commit the file with `Stage` set to the stage reached (built on a branch, integrated on the base branch), this ticket marked done in its ticket list, `Ticket`, `Candidate` and `## Review` removed, and `Next` naming the next unblocked ticket, its branch, and whether to `/clear` before it. When nothing is left to build (the last ticket, or a design built in one go), set `Status: done` instead, unless the spec has a Release section; then `Next` is the release, through `matt-pocock-workflow:release`. An unmet row puts the ticket back (Definition of done, below).
+- **The record:** just before the definition of done, commit the file with `Stage` set to the stage reached (built on a branch, integrated on the base branch), this ticket marked done in its ticket list, `Ticket`, `Candidate` and `## Review` removed, and `Next` naming the next unblocked ticket, its branch, and whether to `/clear` before it. When nothing is left to build (the last ticket, or a design built in one go), set `Status: done` instead, unless the spec has a Release section; then `Next` is the release, through `seams:release`. An unmet row puts the ticket back (Definition of done, below).
 
 ## Resuming
 
@@ -61,13 +61,13 @@ When the resume note or the user points at a ticket its progress file records in
 
 ## Review fixes
 
-1. Judge each finding through `matt-pocock-workflow:receiving-code-review`: verify it against the code before acting, and say which findings you are not acting on and why. Act only on correctness bugs and gaps against the ticket or spec; nothing else changes because a reviewer suggested it.
+1. Judge each finding through `seams:receiving-code-review`: verify it against the code before acting, and say which findings you are not acting on and why. Act only on correctness bugs and gaps against the ticket or spec; nothing else changes because a reviewer suggested it.
 2. For the findings you act on: fix, commit by the same rules (by name, exclusions listed), and re-run the checks the fix affects: the test file at that seam for a change in one place, the full suite and the typecheck when more files changed.
 3. The new HEAD is the candidate; note its SHA.
 
 ## Definition of done
 
-Before claiming the work is done, commit the ticket's record (Progress file, above), so that HEAD is the candidate everything below refers to. Then run `matt-pocock-workflow:verification-before-completion` and confirm each item below. Present the evidence as a table: the first row names the candidate SHA the evidence was gathered on, then one row per item with the command run or the check made, and the line that proves it. A Quality bar row (Failure paths to Rollback) that doesn't apply says `n/a` and why, in one line.
+Before claiming the work is done, commit the ticket's record (Progress file, above), so that HEAD is the candidate everything below refers to. Then run `seams:verification-before-completion` and confirm each item below. Present the evidence as a table: the first row names the candidate SHA the evidence was gathered on, then one row per item with the command run or the check made, and the line that proves it. A Quality bar row (Failure paths to Rollback) that doesn't apply says `n/a` and why, in one line.
 
 | Item | What counts |
 | --- | --- |
@@ -93,6 +93,6 @@ The ticket ends with the handover: exactly these four sections, in this order, a
 1. **Run it.** The exact commands to start and check the work, from the repo's real scripts or README; if it has none, the one-line command that works, and an offer to add it to the README.
 2. **Try it.** One short walkthrough per acceptance criterion, in the user's words: what to do, and what they should see. Refer to things by their glossary names. For a user-facing change to a runnable app, offer `/verify`, which only the user can start.
 3. **What changed.** The candidate SHA, the files and public interfaces touched, in a few lines, any decision you made that the ticket didn't settle, and what the ladder skipped and when to add it.
-4. **Next.** First the stage reached (shared rules: Stages): a ticket that ends here is *built* or *integrated*. Then name the next unblocked ticket, or say there is none. Then say whether to `/clear` before it (it is unrelated to this one, or this session is heavy) or to continue here (it builds on this one). Continuing here with every row met, go on unoffered to the record's `Next`: that ticket, or with none left `matt-pocock-workflow:finishing-a-development-branch` for a branch's candidate, else any release.
+4. **Next.** First the stage reached (shared rules: Stages): a ticket that ends here is *built* or *integrated*. Then name the next unblocked ticket, or say there is none. Then say whether to `/clear` before it (it is unrelated to this one, or this session is heavy) or to continue here (it builds on this one). Continuing here with every row met, go on unoffered to the record's `Next`: that ticket, or with none left `seams:finishing-a-development-branch` for a branch's candidate, else any release.
 
 Adapted from Matt Pocock's `implement` skill (github.com/mattpocock/skills, `skills/engineering/implement` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`), MIT License, Copyright (c) 2026 Matt Pocock; the full notice is in this plugin's `THIRD_PARTY_NOTICES.md`.

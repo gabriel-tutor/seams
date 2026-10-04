@@ -1,4 +1,4 @@
-{"skill": "matt-pocock-workflow:implement", "refusal": false, "past_skill": true, "runs": 3,
+{"skill": "seams:implement", "refusal": false, "past_skill": true, "runs": 3,
  "reads": ["\\.scratch/shop-basics/progress\\.md", "implement/references/parallel\\.md",
            "git (worktree|log|status|branch|rev-parse|merge-base)"],
  "tasks": "Build ticket 03[\\s\\S]*worktrees/shop-basics-03",

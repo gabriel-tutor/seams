@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the matt-pocock-workflow plugin on this machine, end to end.
+# Install the Seams plugin (`seams@seams`) on this machine, end to end.
 #
 #   curl -fsSL https://raw.githubusercontent.com/gabriel-tutor/seams/main/scripts/install.sh | bash
 #   # or, from a clone:  scripts/install.sh
@@ -9,8 +9,10 @@
 #   2. Installs Matt Pocock's skills into the Claude config directory's skills/ via skills.sh
 #      (npx skills add mattpocock/skills -g -a claude-code) when any required one is missing.
 #      Needs a terminal.
-#   3. Adds this repo as a plugin marketplace and installs, updates and enables matt-pocock-workflow
-#      from it. The first `claude plugin` command that fails stops the installer, with its output.
+#   3. Adds this repo as a plugin marketplace and installs, updates and enables seams from it. The
+#      plugin before 5.0.0, matt-pocock-workflow@my-workflow-agent-skills, stops the installer while it
+#      or its marketplace is still there, with the two commands that remove it: two copies' gates would
+#      both run. The first `claude plugin` command that fails stops the installer, with its output.
 #   4. Optionally disables the Superpowers plugin (MPW_DISABLE_SUPERPOWERS=1); by default it is left alone.
 #
 # It changes nothing but the plugin list and, in step 2, the skills directory: it writes nothing
@@ -21,8 +23,11 @@
 set -euo pipefail
 
 REPO="${MPW_REPO:-gabriel-tutor/seams}"
-MARKETPLACE="${MPW_MARKETPLACE:-my-workflow-agent-skills}"
-PLUGIN="matt-pocock-workflow"
+MARKETPLACE="${MPW_MARKETPLACE:-seams}"
+PLUGIN="seams"
+# The plugin and marketplace before 5.0.0 (seams-rename decision 5).
+OLD_MARKETPLACE="my-workflow-agent-skills"
+OLD_PLUGIN="matt-pocock-workflow@$OLD_MARKETPLACE"
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 # The Matt Pocock skills the plugin invokes with the Skill tool: the same list as REQUIRED_SKILLS in
 # plugin/hooks/session-start, which reports the missing ones at every session start.
@@ -94,7 +99,15 @@ fi
 
 # 3. The plugin
 say "3. The $PLUGIN plugin"
+claude_plugin list
+OLD_STATUS="$(status_of "$OLD_PLUGIN")"
 claude_plugin marketplace list
+if [[ -n "$OLD_STATUS" ]] || marketplace_known "$OLD_MARKETPLACE"; then
+  REMOVE=""
+  [[ -n "$OLD_STATUS" ]] && REMOVE+=$'\n'"    claude plugin uninstall $OLD_PLUGIN"
+  marketplace_known "$OLD_MARKETPLACE" && REMOVE+=$'\n'"    claude plugin marketplace remove $OLD_MARKETPLACE"
+  die "Seams was renamed in 5.0.0, and the old copy is still here; its gate would refuse every seams: skill. Remove it, then run this installer again:$REMOVE"
+fi
 if marketplace_known "$MARKETPLACE"; then
   claude_plugin marketplace update "$MARKETPLACE"; skip "marketplace $MARKETPLACE already known; refreshed"
 else

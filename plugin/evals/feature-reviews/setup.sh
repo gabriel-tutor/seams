@@ -68,7 +68,7 @@ ${extra}
 1. The report lists SKUs by their available stock, the same number reserve checks.
 MD
 }
-progress "Implement ticket 01 (the low-stock report) through matt-pocock-workflow:implement."
+progress "Implement ticket 01 (the low-stock report) through seams:implement."
 git add docs/agents/issue-tracker.md .scratch/low-stock
 git commit -qm "Low-stock report: spec, ticket and progress file"
 

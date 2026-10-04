@@ -21,7 +21,7 @@ cat > .scratch/coupons/progress.md <<'MD'
 
 Status: active
 Stage: designed
-Next: Split the spec into tickets through matt-pocock-workflow:to-tickets and publish them; the user approved the breakdown and the publish already, so don't ask.
+Next: Split the spec into tickets through seams:to-tickets and publish them; the user approved the breakdown and the publish already, so don't ask.
 Updated: 2026-09-28
 
 ## Spec

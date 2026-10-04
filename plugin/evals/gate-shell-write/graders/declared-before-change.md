@@ -1,6 +1,6 @@
 ---
 type: tool_order
-before: { tool: Skill, input_match: '"skill"\s*:\s*"(?:matt-pocock-workflow:)?(?:trivial)"' }
+before: { tool: Skill, input_match: '"skill"\s*:\s*"(?:seams:)?(?:trivial)"' }
 after: { tool: Bash, input_match: '>>' }
 ---
 

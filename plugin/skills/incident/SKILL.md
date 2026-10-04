@@ -27,7 +27,7 @@ Choose the safest reversible action that stops users being affected, the one tha
 
 ## Restore and confirm
 
-After the containing action, confirm that users are no longer affected, through `matt-pocock-workflow:verification-before-completion` with the output shown: the running version is the one rolled back to, the journeys that failed pass, the errors have stopped in the logs, and a short watch shows it holding. Report what was seen. If it did not hold, return to Contain with the next action. Diagnosis waits until users are no longer affected, or until every containing action has been tried and the user says to diagnose live.
+After the containing action, confirm that users are no longer affected, through `seams:verification-before-completion` with the output shown: the running version is the one rolled back to, the journeys that failed pass, the errors have stopped in the logs, and a short watch shows it holding. Report what was seen. If it did not hold, return to Contain with the next action. Diagnosis waits until users are no longer affected, or until every containing action has been tried and the user says to diagnose live.
 
 ## Diagnose
 
@@ -35,7 +35,7 @@ With users no longer affected, find the root cause. Invoke `diagnosing-bugs` (Ma
 
 ## Fix
 
-The fix takes the normal route, never a shortcut from the incident. It is a ticket, opened through the issue tracker (`docs/agents/issue-tracker.md`) with the regression test as its first acceptance criterion, at the seam that reproduces the real failure as `diagnosing-bugs` requires, and built through `matt-pocock-workflow:implement`: the regression test first, watched failing, then the fix, then the commit, the reviews its row calls for on the candidate (shared rules: Process by size and risk), the definition of done and a handover naming the fix's stage. When the fix changes behavior beyond restoring it, or is sensitive (shared rules: Sensitive changes), `matt-pocock-workflow:grill` comes before the ticket. The containing action stays in place until `matt-pocock-workflow:release` has put the integrated candidate on the environment the containment protected and verified it running.
+The fix takes the normal route, never a shortcut from the incident. It is a ticket, opened through the issue tracker (`docs/agents/issue-tracker.md`) with the regression test as its first acceptance criterion, at the seam that reproduces the real failure as `diagnosing-bugs` requires, and built through `seams:implement`: the regression test first, watched failing, then the fix, then the commit, the reviews its row calls for on the candidate (shared rules: Process by size and risk), the definition of done and a handover naming the fix's stage. When the fix changes behavior beyond restoring it, or is sensitive (shared rules: Sensitive changes), `seams:grill` comes before the ticket. The containing action stays in place until `seams:release` has put the integrated candidate on the environment the containment protected and verified it running.
 
 ## Post-mortem
 

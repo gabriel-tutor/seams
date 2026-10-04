@@ -1,6 +1,6 @@
 ---
 type: tool_order
-before: { tool: Skill, input_match: '"skill"\s*:\s*"(?:matt-pocock-workflow:)?(?:verification-before-completion|trivial)"' }
+before: { tool: Skill, input_match: '"skill"\s*:\s*"(?:seams:)?(?:verification-before-completion|trivial)"' }
 after: { tool: Bash, input_match: 'git commit' }
 ---
 

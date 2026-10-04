@@ -130,17 +130,17 @@ C=$(context "$FIX" "$BARE_HOME" "$PLAIN")
 
 # The repo-setup line appears only inside a git repo that lacks docs/agents/issue-tracker.md.
 C=$(context "$FIX" "$MP_HOME" "$REPO_UNSET/sub/dir")
-[[ "$C" == *"matt-pocock-workflow:foundations"* ]] || fail "setup line missing in a repo that is not set up: $C"
+[[ "$C" == *"seams:foundations"* ]] || fail "setup line missing in a repo that is not set up: $C"
 C=$(context "$FIX" "$MP_HOME" "$REPO_SET")
-[[ "$C" != *"matt-pocock-workflow:foundations"* ]] || fail "setup line shown in a set-up repo: $C"
+[[ "$C" != *"seams:foundations"* ]] || fail "setup line shown in a set-up repo: $C"
 C=$(context "$FIX" "$MP_HOME" "$PLAIN")
-[[ "$C" != *"matt-pocock-workflow:foundations"* ]] || fail "setup line shown outside a git repo: $C"
+[[ "$C" != *"seams:foundations"* ]] || fail "setup line shown outside a git repo: $C"
 
 # Without a cwd in the event, the hook falls back to its own working directory.
 C=$(cd "$REPO_UNSET" && HOME="$MP_HOME" "$FIX/hooks/session-start" <<< '{}' \
   | python3 -c 'import json, sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])') \
   || fail "hook failed on an event without cwd"
-[[ "$C" == *"matt-pocock-workflow:foundations"* ]] || fail "no fallback to the process working directory: $C"
+[[ "$C" == *"seams:foundations"* ]] || fail "no fallback to the process working directory: $C"
 
 # Fail open: bad input or a broken plugin prints nothing on stdout and exits 0; the traceback
 # goes to stderr, which Claude Code keeps for the debug log and never shows the user.
@@ -228,7 +228,7 @@ ONE="$TMP/note-one"; mkdir -p "$ONE"; git -C "$ONE" init -q
 progress "$ONE" gift-cards active designing 2026-09-20 "Ask the open questions on the tier discount and the out-of-stock hold."
 OUT=$(start_out startup "$ONE"); C=$(out_field additionalContext <<< "$OUT"); M=$(out_field systemMessage <<< "$OUT")
 [[ "$C" == *"Fixture routing policy line."*"## Work in progress"* ]] || fail "the resume note should follow the bootstrap: $C"
-[[ $(note_of "$C") == *"stage designing is a grill in progress, which continues through \`matt-pocock-workflow:grill\`"* ]] \
+[[ $(note_of "$C") == *"stage designing is a grill in progress, which continues through \`seams:grill\`"* ]] \
   || fail "the note should say which skill continues a grill in progress: $C"
 E=$(entries_of "$C")
 [[ $(wc -l <<< "$E") -eq 1 ]] || fail "one active file should give one entry: $E"
@@ -244,7 +244,7 @@ TICKETED="$TMP/note-ticket"; mkdir -p "$TICKETED"; git -C "$TICKETED" init -q
 progress "$TICKETED" coupons active integrated 2026-09-24 "Fix the review finding under Review, test first." \
   "$(printf 'Ticket: 02\nCandidate: 1a2b3c4')"
 OUT=$(start_out startup "$TICKETED"); C=$(out_field additionalContext <<< "$OUT"); M=$(out_field systemMessage <<< "$OUT")
-[[ $(note_of "$C") == *"a ticket in progress continues through \`matt-pocock-workflow:implement\`"* ]] \
+[[ $(note_of "$C") == *"a ticket in progress continues through \`seams:implement\`"* ]] \
   || fail "the note should say which skill continues a ticket in progress: $C"
 E=$(entries_of "$C")
 [[ "$E" == "- coupons: stage integrated, ticket 02 in progress, updated 2026-09-24; next: Fix the review finding under Review, test first. File: .scratch/coupons/progress.md" ]] \
@@ -466,7 +466,7 @@ for S in "${SOURCES[@]}"; do
   OUT=$(batch_out "$S" "$BREPO/src" "$BT"); C=$(out_field additionalContext <<< "$OUT")
   [[ $(entries_of "$C") == "- pr-review batch: stage $BATCH_STAGE, updated 2026-09-26; next: $BATCH_NEXT File: $BFILE" ]] \
     || fail "an unfinished batch of this repository should be listed with its count and next step ($S): $(entries_of "$C")"
-  [[ $(note_of "$C") == *"A \`pr-review\` batch continues through \`matt-pocock-workflow:pr-review\` with its pull requests, once the user asks"* ]] \
+  [[ $(note_of "$C") == *"A \`pr-review\` batch continues through \`seams:pr-review\` with its pull requests, once the user asks"* ]] \
     || fail "the note should say how a pr-review batch continues ($S): $C"
   [[ $(out_field systemMessage <<< "$OUT") == "Seams: resuming pr-review batch ($BATCH_STAGE): $BATCH_NEXT" ]] \
     || fail "the notice should name the batch ($S): $OUT"

@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Build the rename test first on seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder), then code-review, a correctness review and the security review over 584de2b...HEAD with the ladder; stop before main and the user's Mac.
+Next: The rename is committed on seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder) with the ladder; next code-review, a correctness review and the security review over 584de2b...HEAD, then the fixes, the eval runs (paid, asked) and the release of 5.0.0, the user's Mac switched only when the user says so.
 Updated: 2026-10-04
 
 ## Decisions

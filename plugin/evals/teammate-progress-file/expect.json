@@ -1,2 +1,2 @@
-{"skill": "matt-pocock-workflow:to-tickets", "refusal": false, "past_skill": true, "runs": 3,
+{"skill": "seams:to-tickets", "refusal": false, "past_skill": true, "runs": 3,
  "reads": "\\.scratch/coupons/progress\\.md"}

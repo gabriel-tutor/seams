@@ -32,8 +32,8 @@ How much process a change gets: its row, picked as the bootstrap picks a route, 
 | Sensitive, any size | its size row's | the security and failure axes first, then its size row's | `code-review`, a correctness review and the security review, all required, never only offered | its size row's, then `verification-before-completion`, always |
 | Large: over 400 changed lines (insertions plus deletions) or 15 files, by `git diff --shortstat <fixed-point>...HEAD` | | | `/simplify` too, offered and never run unasked | |
 
-- **Scouts** are `matt-pocock-workflow:scout` agents, started only when a question needs facts the conversation lacks: a fact already in view needs none, and outside a feature's grill neither does a file or two you read yourself. Beyond a few files, and in a feature's grill however small the codebase, start one per independent question, all in one message, and keep their conclusions rather than the files.
-- **Reviews** run as `matt-pocock-workflow:reviewer` agents, `code-review`'s two subagents included; how each runs is in `implement`'s `references/reviews.md`. Offered reviews are one question at the end, recommended answer first.
+- **Scouts** are `seams:scout` agents, started only when a question needs facts the conversation lacks: a fact already in view needs none, and outside a feature's grill neither does a file or two you read yourself. Beyond a few files, and in a feature's grill however small the codebase, start one per independent question, all in one message, and keep their conclusions rather than the files.
+- **Reviews** run as `seams:reviewer` agents, `code-review`'s two subagents included; how each runs is in `implement`'s `references/reviews.md`. Offered reviews are one question at the end, recommended answer first.
 - **Code** any row writes climbs the simplicity ladder first, `simplicity-ladder.md` beside this file, read when code is about to be written.
 - **Every row** ends with `verification-before-completion`, which the done-check asks for, on the evidence its row names.
 

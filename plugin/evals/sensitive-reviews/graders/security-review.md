@@ -1,7 +1,7 @@
 ---
 type: tool_used
 tool: Agent
-input_match: '^(?=[\s\S]*"subagent_type"\s*:\s*"matt-pocock-workflow:reviewer")[\s\S]*"description"\s*:\s*"[^"]*[Ss]ecurity'
+input_match: '^(?=[\s\S]*"subagent_type"\s*:\s*"seams:reviewer")[\s\S]*"description"\s*:\s*"[^"]*[Ss]ecurity'
 arm: with-only
 ---
 

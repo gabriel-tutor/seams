@@ -1,5 +1,5 @@
 {
-  "name": "my-workflow-agent-skills",
+  "name": "seams",
   "owner": {
     "name": "gabriel-tutor",
     "url": "https://github.com/gabriel-tutor"
@@ -7,7 +7,7 @@
   "description": "Workflow plugins built on Matt Pocock's engineering skills.",
   "plugins": [
     {
-      "name": "matt-pocock-workflow",
+      "name": "seams",
       "source": "./plugin",
       "description": "Unofficial workflow that makes Matt Pocock's engineering skills lead every Claude Code session: a session bootstrap, an interactive grill, and spec, tickets and implement steps that run on from a confirmed design to the gates you decide.",
       "category": "engineering",

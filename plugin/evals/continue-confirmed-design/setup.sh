@@ -15,7 +15,7 @@ cat > .scratch/gift-cards/progress.md <<'MD'
 
 Status: active
 Stage: designed
-Next: Write the spec through matt-pocock-workflow:to-spec, then the tickets; the build goes in a new worktree.
+Next: Write the spec through seams:to-spec, then the tickets; the build goes in a new worktree.
 Updated: 2026-09-28
 
 ## Decisions
@@ -28,7 +28,7 @@ Updated: 2026-09-28
 7. One gift card per order; a coupon, when coupons exist, applies before it.
 8. The seams: checkout() for redemption, holds and releases, and the gift-card store's balance query; no test reaches into the store's internals.
 9. Several sessions: a spec, then tickets, then implement per ticket.
-10. The user confirmed the shared understanding on 2026-09-28 (the grill's last question): the flow goes on to the spec, and implement builds in a new worktree through matt-pocock-workflow:using-git-worktrees.
+10. The user confirmed the shared understanding on 2026-09-28 (the grill's last question): the flow goes on to the spec, and implement builds in a new worktree through seams:using-git-worktrees.
 
 ## Open questions
 - None.

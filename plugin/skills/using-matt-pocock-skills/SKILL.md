@@ -3,7 +3,7 @@ name: using-matt-pocock-skills
 description: Use when starting any conversation - how development work here is routed to Matt Pocock's skills
 ---
 
-Development work in this project starts with the skill its row below names, invoked with the Skill tool before any read, command or edit; a 1% chance is enough. Between two rows the lower applies; mid-task complexity moves down, never up. * marks this plugin's skills (`matt-pocock-workflow:<name>`); bare names are Matt Pocock's. Subagents skip this routing.
+Development work in this project starts with the skill its row below names, invoked with the Skill tool before any read, command or edit; a 1% chance is enough. Between two rows the lower applies; mid-task complexity moves down, never up. * marks this plugin's skills (`seams:<name>`); bare names are Matt Pocock's. Subagents skip this routing.
 
 | Request | First move |
 | --- | --- |

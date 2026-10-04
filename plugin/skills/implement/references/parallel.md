@@ -31,7 +31,7 @@ Start each builder in the background: the Agent tool, `general-purpose` (it edit
 - the worktree's absolute path, its branch, and the base, which is its review's fixed point;
 - the agreed seams, named: the spec's Testing Decisions and the ticket's;
 - that the user picked this ticket for a parallel run, with the absolute path of this reference;
-- "Invoke `matt-pocock-workflow:implement` with the Skill tool, then read that reference's section For a builder: it replaces the skill's gate, progress file, resuming and record, and every question."
+- "Invoke `seams:implement` with the Skill tool, then read that reference's section For a builder: it replaces the skill's gate, progress file, resuming and record, and every question."
 
 Mark a ticket `building` once its builder has started, never before: after a `/clear`, `building` means a builder exists. A ticket waiting for a slot stays `pending` and starts when a builder ends.
 
@@ -44,7 +44,7 @@ You build one ticket of a parallel run. These rules replace `implement`'s Gate, 
 - Never edit the progress file: the main conversation keeps it. No record commit: your definition of done runs on your last commit, and your stage is built.
 - Never merge, rebase, push, switch or delete a branch, or touch or remove another worktree; never `--no-verify`, never `--force`.
 - `/simplify` is not offered here: on a large diff, say so in the handover.
-- Invoking `implement` made a declaration of your own: it covers your changes alone, and a message the user types meanwhile doesn't lapse it. If the gate still refuses a change for want of a declaration, invoke `matt-pocock-workflow:implement` again and retry.
+- Invoking `implement` made a declaration of your own: it covers your changes alone, and a message the user types meanwhile doesn't lapse it. If the gate still refuses a change for want of a declaration, invoke `seams:implement` again and retry.
 - Your scouts and reviewers start in the main checkout, not in your worktree: give them its absolute path, and the range as `<base>...<branch>`, never `HEAD`.
 - If one of your subagents can't start ("Concurrent subagent limit reached"), start it once one of yours has finished: never skip a review.
 - Before you end, commit everything to your branch by name, unfinished work too (its message says it is unfinished), so that nothing lives only in the worktree.
@@ -69,7 +69,7 @@ One ticket at a time, onto the base branch, each command written out as a builde
 
 A ticket that fails, at any step, goes back on its branch (`git -C <worktree> checkout <branch>`), keeps its worktree and its handover, is marked `failed: <reason>` and is reported, and the run goes on with the others. Nothing of it reaches the base branch.
 
-While the run goes on, the builders' changes count in the session's done-check: when it asks at a turn's end, verify what that turn claims (the worktrees at the base, a ticket integrated with its suite green) through `matt-pocock-workflow:verification-before-completion`, and claim nothing else done.
+While the run goes on, the builders' changes count in the session's done-check: when it asks at a turn's end, verify what that turn claims (the worktrees at the base, a ticket integrated with its suite green) through `seams:verification-before-completion`, and claim nothing else done.
 
 ## Progress file
 

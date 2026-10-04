@@ -15,7 +15,7 @@ Take an integrated candidate to its target and prove that exact candidate is wha
 
 Establish three facts, from the repo where the repo can answer (facts are not questions):
 
-1. **Candidate.** The exact commit: the SHA the user names, or `git rev-parse HEAD` on the base branch with a clean tree. A dirty tree has no candidate. A candidate still on its own branch is *built*, not integrated: integrate it first (`matt-pocock-workflow:finishing-a-development-branch`) and release from the base branch.
+1. **Candidate.** The exact commit: the SHA the user names, or `git rev-parse HEAD` on the base branch with a clean tree. A dirty tree has no candidate. A candidate still on its own branch is *built*, not integrated: integrate it first (`seams:finishing-a-development-branch`) and release from the base branch.
 2. **Target.** Where the work runs: the user's words, the spec's Release section, or the repo's deploy configuration (a platform config file, a deploy workflow or script, a publish script, a store or marketplace manifest). See the target table below.
 3. **Environment.** The environments the target has (staging, preview, a test track, production) and which one this release is for.
 
@@ -37,7 +37,7 @@ Check every row and report one table: row, ready / unmet / not applicable, and t
 | Applicable checks | a dependency audit; a secret scan; accessibility for a UI; a load check when the design lens flagged scale; each ready, or not applicable with the reason |
 | Smoke plan | the two or three journeys to run against the deployed candidate, and the version endpoint or marker that identifies what runs |
 
-Then ask with AskUserQuestion, recommended answer first: which unmet rows to close now (each through the skill or command that owns it: `matt-pocock-workflow:foundations` for a missing pipeline, environment config or monitoring; the platform's skill for its setup), or the missing facts (the target, the environment). A yes to closing a row is not a yes to deploying.
+Then ask with AskUserQuestion, recommended answer first: which unmet rows to close now (each through the skill or command that owns it: `seams:foundations` for a missing pipeline, environment config or monitoring; the platform's skill for its setup), or the missing facts (the target, the environment). A yes to closing a row is not a yes to deploying.
 
 ## Deploy
 
@@ -62,7 +62,7 @@ First record the release in the feature's progress file, when the work has one (
 The closing message, in this order:
 
 1. **Monitoring and alert owner.** Where errors and health are watched, and the person an alert reaches.
-2. **Runbook.** Where the runbook is. When there is none, say so and offer `matt-pocock-workflow:foundations`, whose offer writes the skeleton.
+2. **Runbook.** Where the runbook is. When there is none, say so and offer `seams:foundations`, whose offer writes the skeleton.
 3. **Follow-ups.** Tickets for anything deferred: an unmet row closed provisionally, a check marked not applicable that should exist, the production deploy still to come.
 4. **Stage reached** (shared rules: Stages). A release that stopped at readiness leaves the candidate at the stage it arrived with, and says why it stopped.
 

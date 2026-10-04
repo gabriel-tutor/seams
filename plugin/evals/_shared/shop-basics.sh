@@ -56,7 +56,7 @@ cat > .scratch/shop-basics/progress.md <<'MD'
 
 Status: active
 Stage: designed
-Next: Implement the unblocked tickets 01, 02 and 03 through matt-pocock-workflow:implement.
+Next: Implement the unblocked tickets 01, 02 and 03 through seams:implement.
 Updated: 2026-09-24
 
 ## Spec

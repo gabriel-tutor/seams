@@ -71,7 +71,7 @@ ${extra}
 1. Only a manager may override a price; the check is on the actor passed in (a permission check, so sensitive).
 MD
 }
-progress "Implement ticket 01 (manager-only price overrides) through matt-pocock-workflow:implement."
+progress "Implement ticket 01 (manager-only price overrides) through seams:implement."
 git add docs/agents/issue-tracker.md .scratch/price-overrides
 git commit -qm "Price overrides: spec, ticket and progress file"
 

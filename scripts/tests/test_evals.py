@@ -99,7 +99,7 @@ class ScenarioFilesTest(unittest.TestCase):
     def test_a_scenario_that_expects_an_agent_has_an_agent_grader_that_agrees(self):
         # A plugin's agent cannot run without the plugin, so its grader is an indicator (arm: with-only), as the
         # Skill grader is, and never pushes the no-plugin arm's score down.
-        shipped = {f"matt-pocock-workflow:{p.stem}" for p in (PLUGIN / "agents").glob("*.md")}
+        shipped = {f"seams:{p.stem}" for p in (PLUGIN / "agents").glob("*.md")}
         expecting = []
         for name in all_scenarios():
             with self.subTest(scenario=name):
@@ -138,7 +138,7 @@ class ScenarioFilesTest(unittest.TestCase):
         # A build's review starts reviewer agents that differ only by what each is asked; a resumed parallel run starts
         # a builder named for its ticket and told its worktree. On sample calls, the expectation's `tasks` and the
         # eval's task graders agree on which calls count.
-        reviewer = "matt-pocock-workflow:reviewer"
+        reviewer = "seams:reviewer"
         calls = [{"subagent_type": reviewer, "description": f"{axis.capitalize()} review",
                   "prompt": f"Review 1a2b3c4...HEAD on the {axis} axis."} for axis in ("correctness", "security", "standards", "spec")]
         calls += [{"subagent_type": reviewer, "description": "Standards review",

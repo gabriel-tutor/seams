@@ -92,6 +92,15 @@ V_CHANGELOG=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+' "$REPO/CHANGELOG.md" | c
 [[ -n $V_PLUGIN && $V_PLUGIN == "$V_README" && $V_PLUGIN == "$V_CHANGELOG" ]] \
   || fail "versions disagree: plugin.json $V_PLUGIN, README badge $V_README, CHANGELOG $V_CHANGELOG"
 
+# The plugin is `seams` from the marketplace `seams` (seams-rename decisions 1 and 6): nothing the plugin loads, and not
+# the marketplace manifest, names the old plugin or marketplace, since a missed name in the gate fails open for the
+# read-only agents and closed for every declaration. History (the CHANGELOG, the ADRs, the evidence) keeps the old names.
+[[ $(json_field "$PLUGIN/.claude-plugin/plugin.json" name) == seams ]] || fail "plugin.json's name is not seams"
+[[ $(json_field "$REPO/.claude-plugin/marketplace.json" name) == seams && $(json_field "$REPO/.claude-plugin/marketplace.json" plugins.0.name) == seams ]] \
+  || fail "the marketplace or its entry is not named seams"
+OLD_NAMES=$(grep -rlE 'matt-pocock-workflow|my-workflow-agent-skills' "$PLUGIN" "$REPO/.claude-plugin" --exclude-dir=__pycache__ --exclude-dir=results || true)
+[[ -z $OLD_NAMES ]] || fail "still naming the old plugin or marketplace: $OLD_NAMES"
+
 # Every skill: frontmatter naming its own directory and a description. Model invocation stays on for
 # every skill but the ones typed by hand only, listed here. None is: pr-review was until 3.3.1, when workflow
 # skills needed to start it.
@@ -291,14 +300,14 @@ INJ_OUT=$(injected_commands "$PLUGIN")
 # and agent's name and description, at most 875 tokens by `claude plugin details` (3.2.1 paid about 1,165). That tool
 # counts through the count_tokens API for the active model, or estimates offline, so its figure moves with the machine;
 # the guard is the listing's length instead: at most 2,650 characters, 875 tokens at the ratio the tool measured on
-# 65988ac (2,426 characters, ~801 tokens). `claude --plugin-dir plugin plugin details matt-pocock-workflow` measures it.
+# 65988ac (2,426 characters, ~801 tokens). `claude --plugin-dir plugin plugin details seams` measures it.
 LISTING=$(python3 - "$PLUGIN" <<'PY'
 import pathlib, re, sys
 root, total = pathlib.Path(sys.argv[1]), 0
 for path in sorted(root.glob("skills/*/SKILL.md")) + sorted(root.glob("agents/**/*.md")):
     front = re.match(r"---\n(.*?)\n---\n", path.read_text(), re.S)
     fields = dict(line.split(":", 1) for line in front.group(1).splitlines() if ":" in line and line[:1].isalpha())
-    total += len(f"matt-pocock-workflow:{fields['name'].strip()}: {fields.get('description', '').strip()}")
+    total += len(f"seams:{fields['name'].strip()}: {fields.get('description', '').strip()}")
 print(total)
 PY
 )
@@ -355,7 +364,7 @@ AGENT_OUT=$(agent_problems "$PLUGIN")
 [[ -z $AGENT_OUT ]] || fail "$AGENT_OUT"
 GATE_AGENTS=$(PYTHONDONTWRITEBYTECODE=1 python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import seams_gate; print(" ".join(sorted(seams_gate.READ_ONLY_AGENTS)))' \
   "$PLUGIN/hooks")
-[[ $GATE_AGENTS == "matt-pocock-workflow:reviewer matt-pocock-workflow:scout" ]] \
+[[ $GATE_AGENTS == "seams:reviewer seams:scout" ]] \
   || fail "the gate's read-only agents ($GATE_AGENTS) are not the agents the plugin ships"
 
 # pr-review's permissions are the two lists in its frontmatter, which Claude Code enforces whatever the text says
@@ -410,7 +419,7 @@ for s in $PRR_SCRIPTS takeover; do
 done
 
 # The routing (seams-3 ticket 07): every Seams skill directory is named in the bootstrap or in routing.md, so none is
-# unreachable, and every name they give as this plugin's (`<name>`* or matt-pocock-workflow:<name>) is a skill or an
+# unreachable, and every name they give as this plugin's (`<name>`* or seams:<name>) is a skill or an
 # agent it ships, so no route leads nowhere. The bootstrap's table keeps its rows, in their order, since between two
 # rows the lower applies; a table with a row dropped, reworded, swapped or added shows the check catching each, and one
 # with another table above it shows the check finding the routing table by its rows. The session-start hook injects
@@ -421,9 +430,9 @@ BOOT="$PLUGIN/skills/using-matt-pocock-skills/SKILL.md"
 NAMED="$(cat "$BOOT" "$ROUTING")"
 for d in "$PLUGIN"/skills/*/; do
   s=$(basename "$d"); [[ $s == using-matt-pocock-skills ]] && continue
-  [[ $NAMED == *"\`$s\`"* || $NAMED == *"matt-pocock-workflow:$s"* ]] || fail "Seams skill named neither in the bootstrap nor in routing.md: $s"
+  [[ $NAMED == *"\`$s\`"* || $NAMED == *"seams:$s"* ]] || fail "Seams skill named neither in the bootstrap nor in routing.md: $s"
 done
-for s in $(grep -ohE '`[a-z-]+`\*|matt-pocock-workflow:[a-z-]+' "$BOOT" "$ROUTING" | sed -E 's/^`//; s/`\*$//; s/^matt-pocock-workflow://' | sort -u); do
+for s in $(grep -ohE '`[a-z-]+`\*|seams:[a-z-]+' "$BOOT" "$ROUTING" | sed -E 's/^`//; s/`\*$//; s/^seams://' | sort -u); do
   [[ -f "$PLUGIN/skills/$s/SKILL.md" || -f "$PLUGIN/agents/$s.md" ]] || fail "the routing sends work to $s, which the plugin does not ship"
 done
 BOOT_ROWS=(

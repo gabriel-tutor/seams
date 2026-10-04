@@ -82,7 +82,7 @@ $4
 MD
 }
 TICKETS=$'- 01 SAVE10 and unknown codes (blocked by: none)\n- 02 FLAT5 and case-insensitive codes (blocked by: 01)'
-progress designed "Implement ticket 01 (SAVE10 and unknown codes) through matt-pocock-workflow:implement." 2026-09-23 "$TICKETS"
+progress designed "Implement ticket 01 (SAVE10 and unknown codes) through seams:implement." 2026-09-23 "$TICKETS"
 git add .scratch/coupons/spec.md .scratch/coupons/issues .scratch/coupons/progress.md
 git commit -qm "Coupon codes: spec, tickets and progress file"
 

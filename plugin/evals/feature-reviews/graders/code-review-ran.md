@@ -1,6 +1,6 @@
 ---
 type: tool_order
-before: { tool: Skill, input_match: '"skill"\s*:\s*"(?:matt-pocock-workflow:)?(?:implement)"' }
+before: { tool: Skill, input_match: '"skill"\s*:\s*"(?:seams:)?(?:implement)"' }
 after: { tool: Skill, input_match: '"skill"\s*:\s*"code-review"' }
 ---
 

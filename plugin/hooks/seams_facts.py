@@ -23,7 +23,7 @@ import unicodedata
 from pathlib import Path
 from typing import Optional
 
-FACT_SKILLS = {"matt-pocock-workflow:" + name for name in ("implement", "grill", "release")}
+FACT_SKILLS = {"seams:" + name for name in ("implement", "grill", "release")}
 GIT_TIMEOUT = 3                                # seconds for each git call
 DRAIN_TIMEOUT = 1                              # seconds for a killed git's output, which an escaped child may hold
 STATUS_LINES = 10

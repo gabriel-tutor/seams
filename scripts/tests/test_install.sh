@@ -7,7 +7,8 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 REQUIRED=(grilling domain-modeling tdd diagnosing-bugs code-review codebase-design setup-matt-pocock-skills setup-pre-commit setup-ts-deep-modules)
-PLUGIN_ID="matt-pocock-workflow@my-workflow-agent-skills"
+PLUGIN_ID="seams@seams"
+OLD_ID="matt-pocock-workflow@my-workflow-agent-skills"   # the plugin before 5.0.0 (seams-rename decision 5)
 # The one skills.sh command the hook, the installer and the README name, taken from the hook's line.
 SKILLS_CMD=$(grep -o 'npx skills add mattpocock/skills[^`]*' "$REPO/plugin/hooks/session-start" | head -1)
 [[ $SKILLS_CMD == "npx skills add mattpocock/skills -g -a claude-code" ]] || fail "the hook's install command changed: $SKILLS_CMD"
@@ -27,8 +28,8 @@ case "$*" in
     echo "Configured marketplaces:"; echo
     awk '$1=="marketplace" {print "  ❯ " $2; print "    Source: Directory (/stub)"; print ""}' "$STATE";;
   "plugin marketplace add "*)
-    grep -q "^marketplace my-workflow-agent-skills$" "$STATE" || echo "marketplace my-workflow-agent-skills" >> "$STATE"
-    echo "✔ Successfully added marketplace: my-workflow-agent-skills";;
+    grep -q "^marketplace seams$" "$STATE" || echo "marketplace seams" >> "$STATE"
+    echo "✔ Successfully added marketplace: seams";;
   "plugin marketplace update "*) echo "✔ Successfully updated marketplace: $4";;
   "plugin list")
     grep -q "^plugin " "$STATE" || { echo "No plugins installed. Use \`claude plugin install\` to install a plugin."; exit 0; }
@@ -118,7 +119,7 @@ run "$H"
 [[ "$(cat "$H/.claude/settings.json")" == "$BEFORE" && "$(ls -laR "$H/.claude")" == "$TREE" ]] || fail "second run changed the config dir"
 [[ $(calls "plugin marketplace add ") -eq 0 && $(calls "plugin install ") -eq 0 && $(calls "plugin enable ") -eq 0 ]] \
   || fail "second run re-added or re-installed, log: $(cat "$LOG")"
-[[ $(calls "plugin marketplace update my-workflow-agent-skills") -eq 1 && $(calls "plugin update $PLUGIN_ID") -eq 1 ]] \
+[[ $(calls "plugin marketplace update seams") -eq 1 && $(calls "plugin update $PLUGIN_ID") -eq 1 ]] \
   || fail "second run should refresh the marketplace and update the plugin, log: $(cat "$LOG")"
 [[ $OUT == *"already installed; updated"* && $OUT == *"already enabled"* ]] || fail "second run's report: $OUT"
 
@@ -148,7 +149,7 @@ run "$H" PATH="$TMP/oldpy:$TMP/bin:/usr/bin:/bin"
 # 6. A plugin someone disabled is enabled again; Superpowers is disabled only on request, and only
 # when it is there to disable.
 H="$TMP/disabled"; home "$H"
-printf 'marketplace my-workflow-agent-skills\nplugin %s disabled\nplugin superpowers@claude-plugins-official enabled\n' "$PLUGIN_ID" > "$H/claude.state"
+printf 'marketplace seams\nplugin %s disabled\nplugin superpowers@claude-plugins-official enabled\n' "$PLUGIN_ID" > "$H/claude.state"
 run "$H" MPW_DISABLE_SUPERPOWERS=1
 [[ $CODE -eq 0 ]] || fail "re-enable run exited $CODE: $OUT $ERR"
 [[ $(calls "plugin install ") -eq 0 && $(calls "plugin update $PLUGIN_ID") -eq 1 && $(calls "plugin enable $PLUGIN_ID") -eq 1 ]] \
@@ -160,6 +161,20 @@ run "$H" MPW_DISABLE_SUPERPOWERS=1
 [[ $CODE -eq 0 && $(calls "plugin disable ") -eq 0 && $OUT == *"already disabled"* ]] || fail "an already disabled Superpowers should be skipped: $OUT $ERR"
 run "$H"
 [[ $CODE -eq 0 && $(calls "plugin disable ") -eq 0 && $OUT == *"left as is"* ]] || fail "Superpowers should be left alone by default: $OUT $ERR"
+
+# 6b. The plugin before 5.0.0 still installed, or its marketplace still known: two copies' gates would both run and the
+# old one refuses every `seams:` declaration, so the installer stops, removes nothing, and prints the two commands that
+# remove the old copy (seams-rename decision 5).
+for state in "marketplace my-workflow-agent-skills\nplugin $OLD_ID enabled" "marketplace my-workflow-agent-skills"; do
+  H="$TMP/old-$RANDOM"; home "$H"; printf "$state\n" > "$H/claude.state"; BEFORE_STATE=$(cat "$H/claude.state")
+  run "$H"
+  [[ $CODE -ne 0 ]] || fail "installer exited 0 with the old plugin or marketplace present: $OUT"
+  [[ $ERR == *"claude plugin marketplace remove my-workflow-agent-skills"* ]] || fail "the error does not name the marketplace removal: $ERR"
+  if [[ $state == *plugin* ]]; then [[ $ERR == *"claude plugin uninstall $OLD_ID"* ]] || fail "the error does not name the uninstall: $ERR"; fi
+  [[ $(calls "plugin marketplace add ") -eq 0 && $(calls "plugin install ") -eq 0 && $(calls "plugin uninstall") -eq 0 ]] \
+    || fail "the installer changed the plugin list with the old copy present, log: $(cat "$LOG")"
+  [[ "$(cat "$H/claude.state")" == "$BEFORE_STATE" ]] || fail "the stub state changed: $(cat "$H/claude.state")"
+done
 
 # 7. Static: the installer checks the same skills the session-start hook reports on (and the two
 # hook suites use that list); the install command is spelled the same way in the README; nothing

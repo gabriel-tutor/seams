@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: On seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder, from 584de2b): the build is committed (the ladder, its pointers, the notice, the eval case, the docs); next its review against 584de2b, then the eval on 4.0.0 and the candidate (paid, asked), the record and the release of 4.1.0.
+Next: Built with the rename (.scratch/seams-rename) on seams-4.1/simplicity-ladder; ships as 5.0.0, not 4.1.0 (seams-rename decision 2); the review, the eval and the release are recorded there.
 Updated: 2026-10-04
 
 ## Decisions
@@ -21,6 +21,8 @@ Updated: 2026-10-04
 10. Design-lens points, mine (the user may overrule them): a bounded change routed to `tdd` reaches the ladder through one pointer line in the shared rules' process section; Seams' own checks (tdd at agreed seams, the process table) stand over ponytail's "one runnable check, no frameworks"; the handover keeps its four sections, "skipped: X, add when Y" going under What changed; the ladder never overrides a sensitive change's reviews, and the reviewer's over-building findings never delete trust-boundary validation, data-loss handling, security or accessibility code; no new dependency, no hook; rollback is reinstalling 4.0.0 or a revert; no ADR, nothing here being hard to reverse.
 
 11. The user confirmed the shared understanding on 2026-10-04: the flow releases 4.0.0 first (seams-revamp ticket 09), then builds this through matt-pocock-workflow:implement in a new worktree (matt-pocock-workflow:using-git-worktrees) as 4.1.0.
+
+12. Ships as 5.0.0 with the rename to `seams`, not as 4.1.0 (the user's choice, 2026-10-04; seams-rename decision 2).
 
 ## Open questions
 
