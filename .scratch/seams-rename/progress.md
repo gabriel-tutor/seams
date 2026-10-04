@@ -1,8 +1,8 @@
 # Progress: the plugin and marketplace renamed to seams
 
 Status: active
-Stage: designing
-Next: The user's confirmation; then the rename built test first on seams-4.1/simplicity-ladder in its worktree, with the ladder, as 5.0.0; reviews: code-review, a correctness review and the security review, all required (sensitive: public API).
+Stage: designed
+Next: Build the rename test first on seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder), then code-review, a correctness review and the security review over 584de2b...HEAD with the ladder; stop before main and the user's Mac.
 Updated: 2026-10-04
 
 ## Decisions
@@ -16,9 +16,11 @@ Updated: 2026-10-04
 6. Mine: the test seams are the existing suites under the new names; the read-only refusals tested under `seams:scout` and `seams:reviewer` (a missed agent name fails open); and a check that no live file names `matt-pocock-workflow` or `my-workflow-agent-skills`, history allowed (CHANGELOG entries before 5.0.0, docs/adr, docs/plugin-behavior-tests.md, docs/case-study, .scratch).
 7. Mine: the 5.0.0 CHANGELOG lists the breaking changes: the skill and agent names, the reinstall steps, and permission rules naming `Skill(matt-pocock-workflow:…)` to rename, which otherwise stop matching (a deny rule then fails open).
 
+8. The user confirmed on 2026-10-04: build it test first on seams-4.1/simplicity-ladder in its worktree, with the ladder, the three reviews required, and stop before anything reaches main or the user's Mac.
+
 ## Open questions
 
-- None; the user's confirmation.
+- None.
 
 ## Facts
 
