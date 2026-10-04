@@ -4,7 +4,8 @@
 # reads, scout's model the only pin; the size bounds of the skills, their references and the listing, and the paths a
 # skill gives Claude, the shared rules' sections among them; no skill injects a shell command; the routing table's rows;
 # the continuous flow's stops (ticket 06); the process table's floor and the docs rule (ticket 07); the third-party
-# notices and the copies' checksums. No other check pins a skill's or the README's wording: rewording a sentence that
+# notices and the copies' checksums; the plugin's name, with no live file naming the old one (seams-rename); the
+# simplicity ladder's pointers and its never-cut list (simplicity-ladder). No other check pins a skill's or the README's wording: rewording a sentence that
 # changes none of these leaves it green.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -92,13 +93,35 @@ V_CHANGELOG=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+' "$REPO/CHANGELOG.md" | c
 [[ -n $V_PLUGIN && $V_PLUGIN == "$V_README" && $V_PLUGIN == "$V_CHANGELOG" ]] \
   || fail "versions disagree: plugin.json $V_PLUGIN, README badge $V_README, CHANGELOG $V_CHANGELOG"
 
-# The plugin is `seams` from the marketplace `seams` (seams-rename decisions 1 and 6): nothing the plugin loads, and not
-# the marketplace manifest, names the old plugin or marketplace, since a missed name in the gate fails open for the
+# The plugin is `seams` from the marketplace `seams` (seams-rename decisions 1 and 6): no live file in the repository
+# names the old plugin or marketplace, since a missed name in the gate fails open for the
 # read-only agents and closed for every declaration. History (the CHANGELOG, the ADRs, the evidence) keeps the old names.
 [[ $(json_field "$PLUGIN/.claude-plugin/plugin.json" name) == seams ]] || fail "plugin.json's name is not seams"
 [[ $(json_field "$REPO/.claude-plugin/marketplace.json" name) == seams && $(json_field "$REPO/.claude-plugin/marketplace.json" plugins.0.name) == seams ]] \
   || fail "the marketplace or its entry is not named seams"
-OLD_NAMES=$(grep -rlE 'matt-pocock-workflow|my-workflow-agent-skills' "$PLUGIN" "$REPO/.claude-plugin" --exclude-dir=__pycache__ --exclude-dir=results || true)
+OLD_NAMES=$(python3 - "$REPO" <<'OLDPY'
+import os, re, sys
+root = sys.argv[1]
+old = re.compile(r"matt-pocock-workflow|my-workflow-agent-skills")
+skip_dirs = {".git", ".scratch", ".worktrees", "node_modules", "results", "__pycache__", "adr"}
+history = {"CHANGELOG.md", "docs/plugin-behavior-tests.md", "docs/compatibility.md", "scripts/install.sh",
+           "scripts/tests/test_install.sh", "scripts/tests/test_plugin.sh"}   # history, and the migration's own code
+for d, dirs, files in os.walk(root):
+    dirs[:] = [x for x in dirs if x not in skip_dirs]
+    for f in files:
+        rel = os.path.relpath(os.path.join(d, f), root)
+        if rel in history or rel.startswith("docs/case-study"):
+            continue
+        try:
+            text = open(os.path.join(d, f), encoding="utf-8").read()
+        except (UnicodeDecodeError, OSError):
+            continue
+        if rel == "README.md":   # the Updating section's migration from before 5.0.0 names the old copy on purpose
+            text = re.sub(r"(?s)\*\*From 4\.x or earlier\.\*\*.*?(?=\n### )", "", text)
+        if old.search(text):
+            print(rel)
+OLDPY
+)
 [[ -z $OLD_NAMES ]] || fail "still naming the old plugin or marketplace: $OLD_NAMES"
 
 # Every skill: frontmatter naming its own directory and a description. Model invocation stays on for
@@ -545,7 +568,8 @@ STOPS += [(what, path, scope, r"simplicity-ladder\.md") for what, path, scope in
     ("implement's build climbs the simplicity ladder", "skills/implement/SKILL.md", None),
     ("the correctness review checks the simplicity ladder", "skills/implement/references/reviews.md", None),
     ("the shared rules' process sends code to the simplicity ladder", RULES, PROCESS),
-    ("the grill sends a tdd build to the simplicity ladder", "skills/grill/SKILL.md", None))]
+    ("the grill sends a tdd build to the simplicity ladder", "skills/grill/SKILL.md", None),
+    ("the bootstrap sends code to the simplicity ladder", BOOT, None))]
 STOPS += [(f"the simplicity ladder never cuts {what}", LADDER, None, pattern) for what, pattern in (
     ("validation at a trust boundary", r"trust boundar"), ("data-loss handling", r"data loss"),
     ("security", r"\bsecurity\b"), ("accessibility", r"\baccessibility\b"))]

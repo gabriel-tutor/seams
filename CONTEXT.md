@@ -48,7 +48,7 @@ _Avoid_: stop guard, completion hook
 The ten axes the grill checks its design tree against before calling the frontier empty.
 
 **Shared rules**:
-The one reference that holds each rule several Seams skills follow (effort, the repository facts, the sensitive list, the stages, evidence, worktrees, official docs, the continuous flow, and the table of how much process a change gets by its size and risk); a skill names the section a step needs instead of repeating it.
+The one reference that holds each rule several Seams skills follow (effort, the repository facts, the sensitive list, the stages, evidence, worktrees, official docs, the continuous flow, and the table of how much process a change gets by its size and risk); a skill names the section a step needs instead of repeating it. The *Simplicity ladder* sits beside it, read only when code is written or reviewed.
 _Avoid_: common rules, policy (the bootstrap is the routing policy)
 
 **Handover**:

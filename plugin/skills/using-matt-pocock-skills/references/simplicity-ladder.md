@@ -14,7 +14,7 @@ Stop at the first rung that holds:
 6. **Can it be one line?** One line.
 7. **Only then** the least code that works.
 
-When two rungs work, take the higher. When two standard options are the same size, take the one that is correct on edge cases: less code, not a flimsier algorithm.
+When two rungs work, take the earlier one. When two standard options are the same size, take the one that is correct on edge cases: less code, not a flimsier algorithm.
 
 ## Rules
 
@@ -22,12 +22,12 @@ When two rungs work, take the higher. When two standard options are the same siz
 - **No unrequested abstraction:** no interface with one implementation, no factory for one product, no setting for a value that never changes, no scaffolding for later.
 - **Deletion over addition, boring over clever, the fewest files.** The shortest working diff wins once the problem is understood; the smallest change in the wrong place is a second bug.
 - **A deliberate shortcut is marked** where it is made, with a `ceiling:` comment naming its limit and its upgrade path: `# ceiling: one global lock; per-account locks if throughput matters`.
-- **What was skipped is said** in the handover's What changed: skipped X, add it when Y.
+- **What was skipped is said** in the handover's What changed, or in the reply when there is no handover: skipped X, add it when Y.
 - **Checks stay as the process sets them** (shared rules: Process by size and risk), never fewer because the code is short.
 
 ## Never cut
 
-The ladder never simplifies away validation at a trust boundary, error handling that prevents data loss, security measures, accessibility basics, or anything the user asked for. A sensitive change keeps every review its row requires. When the user insists on the fuller version, build it.
+The ladder never simplifies away validation at a trust boundary, error handling that prevents data loss, security measures, accessibility basics, what the definition of done requires (a failure path's test, a failure logged at its boundary, the docs), or anything the user asked for. A sensitive change keeps every review its row requires. When the user insists on the fuller version, build it.
 
 ## In a review
 

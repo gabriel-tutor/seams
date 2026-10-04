@@ -241,7 +241,7 @@ claude plugin update seams@seams
 
 Or re-run the installer, which does the same. The new hooks apply at the next session start.
 
-**From 4.x or earlier.** Before 5.0.0 the plugin was `matt-pocock-workflow@my-workflow-agent-skills`. Claude Code does not follow a rename, so remove the old copy first, then install; until it is gone the installer stops, since the old copy's gate would refuse every `seams:` skill:
+**From 4.x or earlier.** Before 5.0.0 the plugin was `matt-pocock-workflow@my-workflow-agent-skills`. Claude Code does not follow a rename, so remove the old copy first, then install; until it is gone the installer stops, since the two copies would both run their hooks on one ledger and list every skill twice:
 
 ```bash
 claude plugin uninstall matt-pocock-workflow@my-workflow-agent-skills
@@ -250,7 +250,7 @@ claude plugin marketplace add gabriel-tutor/seams
 claude plugin install seams@seams
 ```
 
-The skills are now `/seams:<name>` (`/seams:grill`, `/seams:implement`), and the agents `seams:scout` and `seams:reviewer`. A permission rule naming `Skill(matt-pocock-workflow:…)` stops matching, so rename it to `Skill(seams:…)`. Seams' own state, in `~/.local/state/seams`, carries over.
+The skills are now `/seams:<name>` (`/seams:grill`, `/seams:implement`), and the agents `seams:scout` and `seams:reviewer`. A permission rule naming `Skill(matt-pocock-workflow:…)` stops matching, so rename it to `Skill(seams:…)`: a deny rule above all, such as the one the 3.3.1 notes suggested for `pr-review`, stops denying until it is renamed. Seams' own state, in `~/.local/state/seams`, carries over.
 
 ### Once per repo
 
@@ -410,7 +410,7 @@ Until 3.3.1 only you could start the skill; since then Claude can too, when aske
 - `.claude-plugin/marketplace.json` — makes this repo a single-plugin marketplace
 - `scripts/install.sh` — the one-command installer; `scripts/test.sh` and `scripts/tests/` — the test suites, which `scripts/run_suites.py` runs at once
 - `docs/plugin-behavior-tests.md` — the routing evidence and its method; `docs/compatibility.md` — what it was tested with; `docs/adr/` — the decisions; `docs/case-study-web-downloader.md` — one feature end to end on a real repo; `docs/carousel/` — the workflow as five slides for sharing
-- `plugin/evals/` — the nineteen scenarios, one directory each, run by `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
+- `plugin/evals/` — the twenty scenarios, one directory each, run by `claude plugin eval` (prompt, expectation, setup, scaffold, graders), with the sandbox project (`_fixture`) and the shared spec and tests (`_shared`) beside them; `tests/runs/` — run records (gitignored)
 
 ## Tests
 
@@ -425,7 +425,7 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'   # the gate's thre
 claude plugin eval plugin --tag routing --tag gate --scaffold --allow-tools Edit Write   # the routing scenarios through claude plugin eval, from the clone
 ```
 
-The eval suite is the same nineteen scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
+The eval suite is the same twenty scenarios in `plugin/evals/`, so anyone with the plugin installed can run it against their own machine, model and Claude Code version, with a no-plugin baseline and a report:
 
 ```bash
 claude plugin eval seams@seams --tag routing --tag gate --scaffold --allow-tools Edit Write
@@ -434,6 +434,7 @@ claude plugin eval seams@seams --tag delegation --scaffold   # the grill's fact-
 claude plugin eval seams@seams --tag review --scaffold --allow-tools Edit Write Bash   # a build's reviews, by risk
 claude plugin eval seams@seams --tag flow --scaffold --allow-tools Edit Write   # the continuous flow from a confirmed design, and its gates
 claude plugin eval seams@seams --tag resume --scaffold --allow-tools Edit Write Bash   # work resumed from its progress file
+claude plugin eval seams@seams --tag ladder --scaffold --allow-tools Edit Write   # a small build up the simplicity ladder
 ```
 
 `--scaffold` runs each case's scaffold as you: it copies the fixture into the run's workspace, installs its dependencies, and hands the run the nine Matt Pocock skills from your own config directory (a run loads nothing else of yours). The nine `routing` and `gate` cases need only `Edit` and `Write`; `gate-shell-write` and `gate-commit` need `Bash`, and so do the two `review` cases, for git; the two `flow` cases need `Edit` and `Write`, so that a publish before your yes is possible and caught; of the three `resume` cases, `resume-grill` needs no grant, `resume-ticket` needs `Bash` and `resume-parallel` needs `Edit`, `Write` and `Bash`; the eval runs `Bash` under an OS sandbox that refuses to start on a Mac whose `~/.docker` holds symlinks (Docker Desktop's `cli-plugins/` does), so those run where the sandbox can. Add `--model claude-sonnet-5` to pin the model, `--ablation none` to skip the baseline, `--publish-report` for a shareable report. Every run is billed to your account.

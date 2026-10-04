@@ -165,12 +165,17 @@ run "$H"
 # 6b. The plugin before 5.0.0 still installed, or its marketplace still known: two copies' gates would both run and the
 # old one refuses every `seams:` declaration, so the installer stops, removes nothing, and prints the two commands that
 # remove the old copy (seams-rename decision 5).
-for state in "marketplace my-workflow-agent-skills\nplugin $OLD_ID enabled" "marketplace my-workflow-agent-skills"; do
-  H="$TMP/old-$RANDOM"; home "$H"; printf "$state\n" > "$H/claude.state"; BEFORE_STATE=$(cat "$H/claude.state")
+for state in "marketplace my-workflow-agent-skills|plugin $OLD_ID enabled" "marketplace my-workflow-agent-skills" \
+             "plugin $OLD_ID enabled" "plugin matt-pocock-workflow@a-fork disabled"; do
+  H="$TMP/old-${#state}-${state%% *}"; home "$H"; tr '|' '\n' <<< "$state" > "$H/claude.state"; BEFORE_STATE=$(cat "$H/claude.state")
   run "$H"
-  [[ $CODE -ne 0 ]] || fail "installer exited 0 with the old plugin or marketplace present: $OUT"
-  [[ $ERR == *"claude plugin marketplace remove my-workflow-agent-skills"* ]] || fail "the error does not name the marketplace removal: $ERR"
-  if [[ $state == *plugin* ]]; then [[ $ERR == *"claude plugin uninstall $OLD_ID"* ]] || fail "the error does not name the uninstall: $ERR"; fi
+  [[ $CODE -ne 0 ]] || fail "installer exited 0 with the old plugin or marketplace present ($state): $OUT"
+  if [[ $state == *marketplace* ]]; then [[ $ERR == *"claude plugin marketplace remove my-workflow-agent-skills"* ]] || fail "the error does not name the marketplace removal: $ERR"; fi
+  if [[ $state == *plugin* ]]; then
+    id=$(tr '|' '\n' <<< "$state" | awk '$1 == "plugin" {print $2}')
+    [[ $ERR == *"claude plugin uninstall $id"* ]] || fail "the error does not name the uninstall of $id: $ERR"
+  fi
+  [[ $ERR == *"Skill(seams:...)"* && $ERR == *"deny rule"* ]] || fail "the error does not warn about old permission rules: $ERR"
   [[ $(calls "plugin marketplace add ") -eq 0 && $(calls "plugin install ") -eq 0 && $(calls "plugin uninstall") -eq 0 ]] \
     || fail "the installer changed the plugin list with the old copy present, log: $(cat "$LOG")"
   [[ "$(cat "$H/claude.state")" == "$BEFORE_STATE" ]] || fail "the stub state changed: $(cat "$H/claude.state")"
