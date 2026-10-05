@@ -107,10 +107,17 @@ old = re.compile(r"matt-pocock-workflow|my-workflow-agent-skills")
 skip_dirs = {".git", ".scratch", ".worktrees", "node_modules", "results", "__pycache__", "adr"}
 history = {"CHANGELOG.md", "docs/plugin-behavior-tests.md", "docs/compatibility.md", "scripts/install.sh",
            "scripts/tests/test_install.sh", "scripts/tests/test_plugin.sh"}   # history, and the migration's own code
-for d, dirs, files in os.walk(root):
-    dirs[:] = [x for x in dirs if x not in skip_dirs]
-    for f in files:
-        rel = os.path.relpath(os.path.join(d, f), root)
+import subprocess
+try:   # the files git tracks: local, ignored files (eval logs under tests/runs/, caches) are nobody's live text
+    tracked = subprocess.run(["git", "-C", root, "ls-files", "-z"], capture_output=True, check=True).stdout.decode().split("\0")
+except (OSError, subprocess.CalledProcessError):
+    tracked = [os.path.relpath(os.path.join(d, f), root) for d, dirs, files in os.walk(root)
+               if not dirs.__setitem__(slice(None), [x for x in dirs if x not in skip_dirs]) for f in files]
+for rel in filter(None, tracked):
+    if set(rel.split("/")[:-1]) & skip_dirs:
+        continue
+    d, f = os.path.split(os.path.join(root, rel))
+    if True:
         if rel in history or rel.startswith("docs/case-study"):
             continue
         try:

@@ -24,6 +24,7 @@ Updated: 2026-10-04
 - 11 A `..` after a symlink is not placed (blocked by: 10) — added 2026-10-03 from ticket 10's security review, the user's choice: 4.0.0 waits for it — done, integrated on main at b62750a (built at ed0faab)
 - 12 A link made in the same command is not placed through (blocked by: 09) — added 2026-10-03 from ticket 11's security review, the user's choice: after 4.0.0, which makes none of its three bypasses worse; needs-triage until its start decides what a command that can make a link counts as
 - 13 A lighter read of the shared rules (blocked by: 09) — added 2026-10-04 from ticket 08's proof, task 2 dearer on the candidate, the user's choice: after 4.0.0; needs-triage until its start decides how the skills reach the shared rules
+- 14 pr-review's scripts write no bytecode into the plugin (blocked by: none) — added 2026-10-05 at 5.0.0's release check, the cache removed by hand; needs-triage
 
 ## Decisions
 
