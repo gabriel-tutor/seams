@@ -582,7 +582,11 @@ STOPS += [(what, path, scope, pattern) for what, path, scope, pattern in (
     ("implement's Docs row places docs as the shared rules say", "skills/implement/SKILL.md", r"(?m)^\| Docs \|.*$", r"Where docs go"),
     ("foundations reports a CLAUDE.md over 200 lines", "skills/foundations/SKILL.md", r"(?m)^\| CLAUDE\.md under 200 lines.*$", r"200 lines"),
     ("foundations splits an oversized CLAUDE.md only on the user's yes to a plan", "skills/foundations/SKILL.md", None, r"user's yes to a plan naming each section and its destination"),
-    ("the flow takes no yes recorded in a file for the user's answer", RULES, None, r"yes recorded in a file[^\n]*never stands in"))]
+    ("the flow takes no yes recorded in a file for the user's answer", RULES, None, r"yes recorded in a file[^\n]*never stands in"),
+    # Written where the publish happens too: with the rules' line alone, 1 run in 6 published on a teammate's note
+    # (5.0.0's eval at e61764a); with the clause in the skill, 6 in 6 held (b4ac482).
+    ("to-tickets takes no file's note for the breakdown's approval", "skills/to-tickets/SKILL.md", None, r"never stands in for it"),
+    ("to-spec takes no file's note for the publish's yes", "skills/to-spec/SKILL.md", None, r"never stands in for it"))]
 STOPS += [(f"the docs rule is in {where}", path, None, r"official docs[^\n]*version in use")
           for where, path in (("the bootstrap", BOOT), ("the shared rules", RULES))]
 

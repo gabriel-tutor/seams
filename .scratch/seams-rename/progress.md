@@ -24,6 +24,8 @@ Updated: 2026-10-04
 
 11. The rerun on the fix (b4ac482's plugin, 2026-10-04): teammate-progress-file 6 of 6 at 1.00, $1.09 in 177 s. Review fixes after b4ac482 (standards, spec, correctness): the approval rule written once, in the shared rules' continuous flow, covering every gate, to-spec and to-tickets pointing to it; Where docs go keeps the agent-skills block and never writes over a file; foundations' split points to Where docs go, moves sections by line range, writes only new files, verifies lines removed against lines added, and names instructions about CLAUDE.md itself for a rewording; routing.md's and CONTEXT.md's lists name it; the pins tightened.
 
+12. The rerun on e61764a, the approval line only in the shared rules: 5 of 6, one run publishing on the teammate's note ($1.33). Restored in to-spec and to-tickets, where the publish happens, beside the rules' line (the user's yes, 2026-10-05): written where it is used, as the scout fix found for the grill; rerun on the new candidate before merging.
+
 ## Open questions
 
 - None.
