@@ -68,6 +68,8 @@ The 3.0.0 runs: 35019368288 on `362f670`, through a throwaway pull request (#2, 
 
 The 4.0.0 runs: 37190625538 on `987c187` through the staging pull request #15, 2026-10-04, green on Ubuntu, macOS and the `system-python` job (Python 3.9); then 37190933337 on `987c187`, the push of 4.0.0 to `main`, green on all three.
 
+The 5.0.0 runs: 37309099015 on `f72d7d2` through the staging pull request #16, 2026-10-05, green on Ubuntu, macOS and `system-python`; then 37309099015 on `f72d7d2`, the push of 5.0.0 to `main`, green on all three.
+
 | Field | ubuntu-latest | macos-latest |
 | --- | --- | --- |
 | Operating system | Ubuntu 24.04.5 LTS, x64 (image `ubuntu-24.04` 20260907.300.1) | macOS 26.6.2 (25G83), arm64 (image `macos-26-arm64` 20260907.0351.1) |

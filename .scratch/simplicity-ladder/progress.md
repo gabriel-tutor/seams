@@ -1,9 +1,9 @@
 # Progress: the simplicity ladder (ponytail's discipline in Seams)
 
-Status: active
-Stage: built
-Next: 5.0.0 is built on seams-4.1/simplicity-ladder (.worktrees/simplicity-ladder): integrate it on main and release it, asked first and together with switching the user's Mac (remove matt-pocock-workflow@my-workflow-agent-skills, add the marketplace again, install seams@seams), since the install reads main in place; then the user splits clarewood's CLAUDE.md with /seams:foundations.
-Updated: 2026-10-04
+Status: done
+Stage: deployed
+Next: None; Released 5.0.0 on 2026-10-05: staging pull request #16 at f72d7d2 green on all three jobs, main fast-forwarded 987c187 to f72d7d2 on the user's yes and its run 37309099015 green, tag v5.0.0; the user's Mac switched from matt-pocock-workflow@my-workflow-agent-skills to seams@seams 5.0.0, read in place, no old key or permission rule left; a session-start probe injects the seams: names and the ladder pointer (2,577 bytes). Rollback: reinstall 4.0.0 from tag v4.0.0 under its old name.
+Updated: 2026-10-05
 
 ## Decisions
 
