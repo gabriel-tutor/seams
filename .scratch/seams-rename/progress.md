@@ -26,6 +26,8 @@ Updated: 2026-10-04
 
 12. The rerun on e61764a, the approval line only in the shared rules: 5 of 6, one run publishing on the teammate's note ($1.33). Restored in to-spec and to-tickets, where the publish happens, beside the rules' line (the user's yes, 2026-10-05): written where it is used, as the scout fix found for the grill; rerun on the new candidate before merging.
 
+13. The rerun on 96270d4, the clause back in the skills: 6 of 6, $1.06 in 168 s. The user's yes (2026-10-05) to release and switch now: version 5.0.0, a staging pull request for CI, then main fast-forwarded to the candidate, tag v5.0.0 and the Mac switched, the production step asked again once CI passes.
+
 ## Open questions
 
 - None.
