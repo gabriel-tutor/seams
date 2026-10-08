@@ -29,10 +29,12 @@ run again with the trees one after the other, and that run is the one that count
 port can neither blame the pull request nor hide a real failure. --share DIR is a folder the reviews of one batch
 share: a passing baseline run of a check is kept there by baseline commit, check, command and shell, and a later
 review of the same commit uses it ("shared": its baseline tree did not run that check) instead of running it
-again; two reviews starting the same one together run it once, the second waiting for the first. Only a pass is
-shared (a failing baseline is run by each review, none queuing behind another), never an install or a check
-that builds, generates or prepares files a later check may read, and not one older than --share-age seconds
-(three hours). The verdicts:
+again; two reviews starting the same one together run it once, the second waiting for the first. A pass is
+shared, and a failure once a second run alone confirmed it (both runs and their logs); a failure seen once is run
+by each review, none queuing behind another, until one confirms it. Never shared: an install or a check that
+builds, generates or prepares files a later check may read, or one older than --share-age seconds (three hours).
+Every run has $SEAMS_SIDE (base or head) and $SEAMS_RUN (a name unique to the review and side, safe for a
+database), so a check's command stays the same text on every pull request, which sharing needs. The verdicts:
 
   ok                 passes on both
   broken by the PR   passes on the baseline, fails on the candidate twice (a timeout is a failure)
@@ -143,13 +145,19 @@ def bash_major(shell: dict) -> int:
         return 0
 
 
-def run_side(command: str, tree: Path, log: Path, timeout: float, shell: dict) -> dict:
+def run_id(out: Path, side: str) -> str:
+    """A name unique to one review's side, safe for a database or a container: the command stays the same text on
+    every pull request (so a baseline run can be shared), and what must differ comes from $SEAMS_RUN."""
+    return f"r{hashlib.sha256(str(out.resolve()).encode()).hexdigest()[:10]}_{side}"
+
+
+def run_side(command: str, tree: Path, log: Path, timeout: float, shell: dict, side: str) -> dict:
     """One run of one check in one tree, with the chosen bash (its directory first on PATH, so
-    `#!/usr/bin/env bash` finds it too): its status (pass, fail, timeout, absent, or unsupported
-    when the log shows the shell lacking what the command needs), exit code, seconds, a short
-    reason and the log's file name."""
+    `#!/usr/bin/env bash` finds it too) and $SEAMS_SIDE (base or head) and $SEAMS_RUN set: its status (pass,
+    fail, timeout, absent, or unsupported when the log shows the shell lacking what the command needs), exit
+    code, seconds, a short reason and the log's file name."""
     tree = tree.resolve()
-    env = dict(os.environ, PWD=str(tree))
+    env = dict(os.environ, PWD=str(tree), SEAMS_SIDE=side, SEAMS_RUN=run_id(log.parent, side))
     if os.path.isabs(shell["path"]):
         env["PATH"] = os.path.dirname(shell["path"]) + os.pathsep + env.get("PATH", "")
     env.setdefault("CI", "1")
@@ -259,42 +267,73 @@ def read_shared(path: Path, age: float) -> "dict | None":
     return None
 
 
+def share_key(tree: Path, name: str, command: str, shell: dict) -> "str | None":
+    commit = baseline_commit(tree)
+    if commit is None:
+        return None
+    return hashlib.sha256(json.dumps([commit, name, command, shell.get("path"), shell.get("version")]).encode()).hexdigest()[:40]
+
+
+def publish(share: Path, key: str, result: dict, log: Path, rerun: "dict | None" = None,
+            rerun_log: "Path | None" = None) -> None:
+    """Keep a baseline run (and the second run that confirmed its failure) for the next review of the same commit."""
+    try:
+        shutil.copyfile(log, share / f"{key}.log")
+        if rerun is not None:
+            shutil.copyfile(rerun_log, share / f"{key}.rerun.log")
+        scratch = share / f"{key}.json.{os.getpid()}"
+        scratch.write_text(json.dumps({"at": time.time(), "result": result, "rerun": rerun}))
+        os.replace(scratch, share / f"{key}.json")
+    except OSError:
+        pass                                        # nothing shared this time: the result stands for this review
+
+
+def confirm_shared(share: Path, key: str, result: dict, log: Path, rerun: dict, rerun_log: Path) -> None:
+    """A baseline failure this review saw twice, the second time alone: shared from now on, like a pass."""
+    try:
+        with open(share / f"{key}.lock", "a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            publish(share, key, result, log, rerun, rerun_log)
+    except OSError:
+        pass
+
+
 def shared_run(share: Path, age: float, tree: Path, name: str, command: str, log: Path, timeout: float,
                shell: dict) -> dict:
     """One run of a baseline check, taken from the batch's shared results when a review of the same commit already
-    passed it. The first review to ask runs it, holding the check's lock, so a second one asking meanwhile waits for
-    the result instead of running it too. A failing first run is recorded and trusted by nobody: the others find it,
-    let go of the lock at once and run their own, side by side."""
-    commit = baseline_commit(tree)
-    if commit is None:
-        return run_side(command, tree, log, timeout, shell)
-    key = hashlib.sha256(json.dumps([commit, name, command, shell.get("path"), shell.get("version")]).encode()).hexdigest()[:40]
+    passed it, or saw it fail twice, the second time alone ("confirmed": that second run, its log copied beside this
+    review's). The first review to ask runs it, holding the check's lock, so a second one asking meanwhile waits for
+    the result instead of running it too. A failure seen once is trusted by nobody: the others find it, let go of
+    the lock at once and run their own, side by side, until a second run confirms it."""
+    key = share_key(tree, name, command, shell)
+    if key is None:
+        return run_side(command, tree, log, timeout, shell, "base")
     try:
         share.mkdir(parents=True, exist_ok=True)
         handle = open(share / f"{key}.lock", "a")
     except OSError:
-        return run_side(command, tree, log, timeout, shell)
+        return run_side(command, tree, log, timeout, shell, "base")
     with handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         entry = read_shared(share / f"{key}.json", age)
         if entry is not None:
-            if entry["result"].get("status") == "pass":
-                try:
+            status, rerun = entry["result"].get("status"), entry.get("rerun")
+            try:
+                if status == "pass":
                     shutil.copyfile(share / f"{key}.log", log)
                     return {**entry["result"], "shared": True, "log": log.name}
-                except OSError:
-                    pass
+                if status in ("fail", "timeout") and isinstance(rerun, dict) and rerun.get("status") in ("fail", "timeout"):
+                    rerun_log = log.with_name(log.name.replace(".base.log", ".base.rerun.log"))
+                    shutil.copyfile(share / f"{key}.log", log)
+                    shutil.copyfile(share / f"{key}.rerun.log", rerun_log)
+                    return {**entry["result"], "shared": True, "log": log.name,
+                            "confirmed": {**rerun, "log": rerun_log.name}}
+            except OSError:
+                pass
             fcntl.flock(handle, fcntl.LOCK_UN)
-            return run_side(command, tree, log, timeout, shell)
-        result = run_side(command, tree, log, timeout, shell)
-        try:
-            if result["status"] == "pass":
-                shutil.copyfile(log, share / f"{key}.log")
-            scratch = share / f"{key}.json.{os.getpid()}"
-            scratch.write_text(json.dumps({"at": time.time(), "result": result}))
-            os.replace(scratch, share / f"{key}.json")
-        except OSError:
-            pass                                    # nothing shared this time: the result stands for this review
+            return run_side(command, tree, log, timeout, shell, "base")
+        result = run_side(command, tree, log, timeout, shell, "base")
+        publish(share, key, result, log)
         return result
 
 
@@ -307,10 +346,10 @@ def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout:
     def first_base() -> dict:
         if share is not None and shareable(name, command):
             return shared_run(share, share_age, base, name, command, base_log, timeout, shell)
-        return run_side(command, base, base_log, timeout, shell)
+        return run_side(command, base, base_log, timeout, shell, "base")
 
     def first_head() -> dict:
-        return run_side(command, head, head_log, timeout, shell)
+        return run_side(command, head, head_log, timeout, shell, "head")
 
     if together:
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -332,11 +371,20 @@ def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout:
             result["schedule"] = "together, a failure run again alone"
     for side in sides:
         tree = base if side == "base" else head
-        second = run_side(command, tree, out / f"{name}.{side}.rerun.log", timeout, shell)
+        if side == "base" and base_run.get("confirmed"):
+            second = base_run.pop("confirmed")      # the shared baseline's own second run, alone
+        else:
+            second = run_side(command, tree, out / f"{name}.{side}.rerun.log", timeout, shell, side)
+            if (side == "base" and share is not None and shareable(name, command) and not base_run.get("shared")
+                    and base_run["status"] in ("fail", "timeout") and second["status"] in ("fail", "timeout")):
+                key = share_key(base, name, command, shell)
+                if key is not None:
+                    confirm_shared(share, key, base_run, base_log, second, out / f"{name}.base.rerun.log")
         if result["rerun"] is None or second["status"] == "pass" or side == "head":
             result["rerun"] = {"side": side, **second}
         if second["status"] == "pass":
             first = "flaky"
+    base_run.pop("confirmed", None)                 # a shared second run this verdict did not need
     result["verdict"] = first
     return result
 
@@ -454,7 +502,7 @@ def run_alone(result: dict, head: Path, out: Path, timeout: float, shell: dict) 
     """A check broken by the PR, run once more on the candidate with nothing else running (after a
     batch): passing now, the failures were the machine's load, and the verdict is flaky."""
     again = dict(result, alone=run_side(result["command"], head, out / f"{result['name']}.head.alone.log",
-                                         timeout, shell))
+                                         timeout, shell, "head"))
     if again["alone"]["status"] == "pass":
         again["verdict"] = "flaky"
     return again

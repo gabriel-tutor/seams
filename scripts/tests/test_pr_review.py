@@ -181,11 +181,42 @@ class CheckSchedulingTest(unittest.TestCase):
         self.assertTrue((self.tmp / "out-b" / "unit.base.log").exists())       # the evidence still holds a log
         self.assertIn("shared", (self.tmp / "out-b" / "checks.md").read_text())
 
-    def test_a_failing_baseline_is_never_shared(self):
+    def test_a_baseline_failure_confirmed_by_a_second_run_is_shared(self):
+        # The baseline fails, the head passes: the baseline ran twice and failed twice before "fixed by the PR",
+        # so the same commit's next review takes both runs instead of spending them again (pr-review-speed 9).
         first, second = self.reviews_of_one_baseline("touch RAN; test -f OK", ok=False)
-        self.assertEqual(first["unit"]["base"]["status"], "fail")
+        self.assertEqual(first["unit"]["verdict"], "fixed by the PR")
+        self.assertEqual(second["unit"]["verdict"], "fixed by the PR")
+        self.assertIs(second["unit"]["base"]["shared"], True)
+        self.assertEqual(second["unit"]["rerun"]["status"], "fail")
+        self.assertFalse((self.tmp / "base-b" / "RAN").exists(), "the second baseline tree never ran it")
+        for log in ("unit.base.log", "unit.base.rerun.log"):
+            self.assertTrue((self.tmp / "out-b" / log).exists(), log)
+
+    def test_a_baseline_failure_that_ran_once_is_not_shared(self):
+        # Failing on both trees one after the other is "already broken" after one run each: nothing confirmed
+        # the baseline's failure, so each review runs its own, as before.
+        first, second = self.reviews_of_one_baseline("touch RAN; test -f OK", ok=False, head_ok=False)
+        self.assertEqual(first["unit"]["verdict"], "already broken")
         self.assertNotIn("shared", second["unit"]["base"])
-        self.assertTrue((self.tmp / "base-b" / "RAN").exists(), "each review runs its own failing baseline")
+        self.assertTrue((self.tmp / "base-b" / "RAN").exists(), "each review runs its own unconfirmed failure")
+
+    def test_each_run_names_its_side_and_a_database_safe_run_id_of_its_own(self):
+        # A check's command is the same text on every pull request (so a baseline run can be shared); what must
+        # differ, such as a database name, comes from $SEAMS_RUN.
+        seen = f'echo "$SEAMS_SIDE $SEAMS_RUN" > "{self.tmp}/SEEN-$(basename "$OUT")-$(basename "$PWD")"'
+        for n in "ab":
+            code, checks, table = run_checks(self.base, self.head, self.tmp / f"out-{n}",
+                                             f"unit=OUT={self.tmp / f'out-{n}'}; {seen}", extra=("--sequential",))
+            self.assertEqual(code, 0, table)
+        runs = {}
+        for n in "ab":
+            for side in ("base", "head"):
+                said, run = (self.tmp / f"SEEN-out-{n}-{side}").read_text().split()
+                self.assertEqual(said, side)
+                self.assertRegex(run, r"^[a-z][a-z0-9_]{0,62}$")
+                runs[n, side] = run
+        self.assertEqual(len(set(runs.values())), 4)
 
     def test_an_install_and_a_producer_of_files_are_never_shared(self):
         for name in ("install", "build"):
@@ -243,7 +274,8 @@ class CheckSchedulingTest(unittest.TestCase):
         return repo
 
     def reviews_of_one_baseline(self, command: str, ok: bool, name: str = "unit", second_commit: bool = False,
-                                share: bool = True, share_age: "str | None" = None, pause: float = 0.0):
+                                share: bool = True, share_age: "str | None" = None, pause: float = 0.0,
+                                head_ok: bool = True):
         """Two reviews, one after the other, each with a worktree of the baseline commit (the second's at another
         commit when asked) and its own candidate tree. Returns each review's checks.json by name."""
         repo = self.baseline_repo()
@@ -257,7 +289,8 @@ class CheckSchedulingTest(unittest.TestCase):
             tree = self.tmp / f"base-{n}"
             subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(tree)], capture_output=True, check=True)
             (self.tmp / f"head-{n}").mkdir(exist_ok=True)
-            (self.tmp / f"head-{n}" / "OK").write_text("")
+            if head_ok:
+                (self.tmp / f"head-{n}" / "OK").write_text("")
             extra = ("--share", str(self.tmp / "shared")) if share else ()
             extra += ("--share-age", share_age) if share_age else ()
             code, checks, table = run_checks(tree, self.tmp / f"head-{n}", self.tmp / f"out-{n}", f"{name}={command}",
