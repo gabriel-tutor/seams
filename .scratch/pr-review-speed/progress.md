@@ -1,8 +1,8 @@
 # Progress: pr-review faster, the same quality
 
 Status: active
-Stage: designed
-Next: Slices 1-3 are committed on seams-5.2/pr-review-speed (from 0d2a84f). Next: the review of 0d2a84f..HEAD (code-review, and the security review: posting and pushing are outward actions), then fixes, the definition of done, and 5.2.0.
+Stage: built
+Next: Built on seams-5.2/pr-review-speed (from 0d2a84f; reviewed, findings fixed at b2c3068). Next: seams:finishing-a-development-branch to integrate into main (the user's yes), then seams:release for 5.2.0 (version bump, CHANGELOG, staging PR for CI, main and tag v5.2.0 on the user's yes).
 Updated: 2026-10-09
 
 ## Decisions
