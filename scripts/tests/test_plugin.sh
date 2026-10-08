@@ -550,6 +550,8 @@ STOPS += [(what, path, None, pattern) for what, path, pattern in (
     ("finishing-a-development-branch waits for the integration choice", FIN,
      r"Wait for their answer;\s+the integration decision\s+is theirs"),
     ("finishing-a-development-branch discards only on the typed word", FIN, r"Type 'discard' to confirm"),
+    ("finishing-a-development-branch sweeps merged worktrees", FIN, r"sweep_worktrees\.py list"),
+    ("the sweep removes only the worktrees the user chose", FIN, r"Remove only the paths the user chose"),
     ("release asks before its readiness checks", "skills/release/SKILL.md", r"check readiness now\?"),
     ("release asks before every deploy", "skills/release/SKILL.md", r"\*\*every time\*\*: \"Deploy candidate"),
     ("release asks again before production", "skills/release/SKILL.md", r"Production, or the public listing, gets its own question"),

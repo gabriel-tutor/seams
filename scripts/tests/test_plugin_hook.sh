@@ -589,4 +589,16 @@ PY
   done
 done
 
+# Worktrees pile up (worktree-sweep decision 1): over 10 in the repository, the user's notice says how many and points
+# to the sweep, from one `git worktree list`; Claude's context carries none of it, and 10 or fewer say nothing.
+WT="$TMP/many-worktrees"; mkdir -p "$WT"; git -C "$WT" init -q
+git -C "$WT" -c user.name=t -c user.email=t@e commit -q --allow-empty -m base
+for i in 1 2 3 4 5 6 7 8 9; do git -C "$WT" worktree add -q --detach "$TMP/wt-$i"; done
+OUT=$(start_out startup "$WT")   # the main worktree and 9 more: 10
+[[ $(out_field systemMessage <<< "$OUT") != *worktrees* ]] || fail "10 worktrees should give no notice: $OUT"
+git -C "$WT" worktree add -q --detach "$TMP/wt-10"
+OUT=$(start_out startup "$WT"); M=$(out_field systemMessage <<< "$OUT"); C=$(out_field additionalContext <<< "$OUT")
+[[ $M == *"11 worktrees"*"sweep"* ]] || fail "11 worktrees should give a notice naming them and the sweep: $M"
+[[ $C != *"11 worktrees"* ]] || fail "the worktree notice should stay out of Claude's context"
+
 echo "test_plugin_hook: OK"

@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Build through seams:implement in a new worktree under .worktrees/ (from 16c140a... main), test first; then the reviews and the 5.1.0 release, asked.
+Next: On seams-5.1/worktree-sweep (.worktrees/worktree-sweep, from 2461395): the build is committed; next code-review, a correctness review and the security review (destructive: sensitive) over 2461395...HEAD, then the record and 5.1.0.
 Updated: 2026-10-08
 
 ## Decisions
@@ -13,6 +13,8 @@ Updated: 2026-10-08
 4. Mine, the user may overrule them: merged means the worktree's HEAD is an ancestor of the base branch, local or on origin, or its branch's pull request is merged on GitHub (squash merges); a worktree with uncommitted changes or commits outside the base is never a candidate; removal is `git worktree remove` without force, then `git worktree prune`, and the branch deleted with `-d` only; the session-start hint is one `git worktree list` call, shown over 10 worktrees, no merge check at start; the sweep is a script beside `finishing-a-development-branch`, listing candidates with sizes and removing only the approved paths; tests on the script against temporary repositories (merged, squash-merged, dirty, unmerged), the hint in the hook suite, pins for the finishing step; released as 5.1.0.
 
 5. The user confirmed on 2026-10-08: build it through seams:implement in a new worktree under .worktrees/, released as 5.1.0.
+
+6. Mine (build): the session-start hint is the user's notice (systemMessage), not Claude's context, since the bootstrap's injection has about 6 bytes left under its cap; the sweep asks once for the list (all, choose, none) since AskUserQuestion holds four options; the finishing skill's step 7 runs it after Option 1 and on request, its description naming the sweep.
 
 ## Open questions
 

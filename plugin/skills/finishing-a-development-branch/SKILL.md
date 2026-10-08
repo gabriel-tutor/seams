@@ -1,13 +1,13 @@
 ---
 name: finishing-a-development-branch
-description: Use when implementation is complete, all tests pass, and you need to decide how to integrate the work
+description: Use when implementation is complete, all tests pass, and you need to decide how to integrate the work, or to sweep worktrees whose work is merged
 ---
 
 # Finishing a Development Branch
 
 ## Overview
 
-**Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.
+**Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up → Sweep merged worktrees.
 
 **Announce at start:** "I'm using the finishing-a-development-branch skill to complete this work."
 
@@ -205,6 +205,22 @@ Carry out the choice, then remove the worktree.
 
 **Otherwise:** The host environment owns this workspace — leave it in
 place. If your platform provides a workspace-exit tool, use it.
+
+## Step 7: Sweep Merged Worktrees
+
+**Runs after Option 1, and whenever your human partner asks to sweep worktrees.** Finished worktrees otherwise stay on disk: a pull request's or a kept branch's after its work lands, a failed parallel ticket's, or ones made by other tools beside the repository. From the main repo root:
+
+```bash
+python3 -B ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.py list --base <base-branch>
+```
+
+It lists the repository's worktrees, wherever they live, that are clean and whose work is in the base branch, local or on `origin`, or whose branch's pull request is merged (a squash merge). Never the main or current worktree, a locked one, or one with uncommitted changes or commits outside the base. With none, say so in one line. Otherwise show each one's path, branch, reason and size, with the total, and ask with AskUserQuestion: remove them all (recommended), choose which, or none. Remove only the paths the user chose:
+
+```bash
+python3 -B ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.py remove <path>... --base <base-branch>
+```
+
+It checks each path again, never forces, deletes a fully merged branch with `-d`, prunes, and reports what it removed and what it refused, with why; report both.
 
 ## Quick Reference
 

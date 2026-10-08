@@ -314,6 +314,25 @@ def resume_note(root: Path) -> "tuple[str, str] | None":
     return "\n".join(lines), f"Seams: resuming {newest['feature']} ({newest['stage']}): {newest['next']}"
 
 
+WORKTREE_LIMIT = 10                            # more than this, and the user is told the sweep exists
+
+
+def worktree_notice(root: Path) -> "str | None":
+    """One line for the user when the repository's worktrees pile up (worktree-sweep decision 1): one
+    `git worktree list`, no merge check at session start, nothing added to Claude's context."""
+    import subprocess
+    try:
+        out = subprocess.run(["git", "-C", str(root), "worktree", "list", "--porcelain"],
+                             capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    count = sum(line.startswith("worktree ") for line in out.stdout.splitlines()) if out.returncode == 0 else 0
+    if count <= WORKTREE_LIMIT:
+        return None
+    return (f"Seams: {count} worktrees in this repository; ask Claude to sweep the merged ones "
+            "(seams:finishing-a-development-branch lists them and removes those you approve).")
+
+
 def ledger_housekeeping(event: dict) -> None:
     """A new session or /clear starts with an empty ledger; compaction and resume keep it; a
     fork is a new session, with a new id and so an empty ledger; old ones go."""
@@ -347,6 +366,14 @@ def handle(event: dict) -> dict:
         text, notice = note
         output["hookSpecificOutput"]["additionalContext"] += text
         output["systemMessage"] = notice
+    try:
+        sweep = worktree_notice(repo_root(cwd) or cwd)
+    except Exception:                          # a count is never a reason to lose the session start
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sweep = None
+    if sweep:
+        output["systemMessage"] = "\n".join(filter(None, (output.get("systemMessage"), sweep)))
     return output
 
 
