@@ -1107,7 +1107,7 @@ class PosterHarness:
         bin_dir.mkdir()
         (bin_dir / "gh").write_text(FAKE_GH)
         (bin_dir / "gh").chmod(0o755)
-        self.env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}",
+        self.env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", TMPDIR=str(self.tmp),
                         FAKE_GH_STATE=str(self.tmp / "state.json"), FAKE_GH_LOG=str(self.tmp / "calls.log"))
         self.state = {"viewer": "me", "heads": {}, "reviews": {}, "posts": {}}
         self.save()
@@ -1189,6 +1189,45 @@ class PostReviewsTest(PosterHarness, unittest.TestCase):
         pace.wait(5, "third")                           # over the budget: waits for the first to leave the minute
         self.assertGreaterEqual(clock.now, 60.0)
         self.assertLess(clock.now, 62.0)
+
+    def test_separate_calls_share_one_budget_through_the_ledger(self):
+        # A batch posts each review as its reviewer finishes (pr-review-speed decision 2), one call each: the
+        # budget and a block's slowdown carry from one call to the next through the ledger.
+        post_reviews = load_script(POST_REVIEWS)
+        clock = FakeClock()
+        ledger = Path(tempfile.mkdtemp()) / "post-pace.json"
+        self.addCleanup(shutil.rmtree, ledger.parent)
+        first = post_reviews.Pace(per_minute=10, per_hour=250, minute=60.0, slow=45.0, clock=clock,
+                                  sleep=clock.sleep, ledger=ledger)
+        first.wait(5, "first")
+        first.sent_now(5)
+        clock.now += 1.0
+        first.wait(5, "second")
+        first.sent_now(5)
+        second = post_reviews.Pace(per_minute=10, per_hour=250, minute=60.0, slow=45.0, clock=clock,
+                                   sleep=clock.sleep, ledger=ledger)     # the next call, a new process
+        second.wait(5, "third")                         # the first call's 10 units fill the minute: it waits
+        self.assertGreaterEqual(clock.now, 60.0)
+        second.sent_now(5)
+        second.mark_blocked()                           # GitHub blocked a post in this call
+        third = post_reviews.Pace(per_minute=10, per_hour=250, minute=60.0, slow=45.0, clock=clock,
+                                  sleep=clock.sleep, ledger=ledger)
+        before = clock.now
+        third.wait(1, "fourth")                         # a later call posts slowly too
+        self.assertGreaterEqual(clock.now - before, 45.0)
+
+    def test_a_later_call_waits_for_the_budget_an_earlier_call_spent(self):
+        # Each review posts as its reviewer finishes, one call each: GitHub's limit is the account's, so the
+        # second call counts what the first one posted.
+        pacing = ("--minute", "2", "--per-minute", "10", "--backoff", "0.2")
+        code, out = self.post(self.evidence(1, comments=4), self.evidence(2, comments=4), pacing=pacing)
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("waiting before", out)
+        code, out = self.post(self.evidence(3, comments=4), pacing=pacing)
+        self.assertEqual(code, 0, out)
+        self.assertIn("waiting before o/r#3", out)
+        (first, _), (second, _), (third, _) = self.calls()
+        self.assertGreaterEqual(third - first, 1.9)
 
     def test_the_posts_all_go_out_in_order_under_a_tight_budget(self):
         folders = [self.evidence(n, comments=4) for n in (1, 2, 3)]

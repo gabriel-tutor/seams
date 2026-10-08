@@ -21,6 +21,10 @@ not taken: the run says when to post again. Any other refusal, a failure of gh i
 that does not lift ends the run: the reviews after it are not tried, so the person can decide, and
 running it again finds what is already posted. --minute shortens the budget's minute for tests.
 
+GitHub's limits are the account's, and a batch posts each review as its reviewer finishes, one call each: every
+call shares one budget through a ledger, ${TMPDIR:-/tmp}/seams-pr-review/post-pace.json (what was posted in the
+last hour, and whether GitHub has blocked a post), and one call posts at a time (post-pace.lock).
+
 With --auto a review posts without a person's yes only when it is fully verified at its head (CONTEXT.md) and the
 viewer can push to the repository; the rule is read from the evidence on disk, never from the model's say-so:
 checks/checks.json lists at least one check and none "could not run" or "flaky", review.json's not_verified is empty,
@@ -41,6 +45,7 @@ is on GitHub, 1 when any is not (each says why), and 2 on a usage error, before 
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -409,11 +414,41 @@ class Pace:
     of each limit. Once GitHub has blocked a post, the posts that follow are `slow` seconds apart."""
 
     def __init__(self, per_minute: int, per_hour: int, minute: float, slow: float,
-                 clock=time.monotonic, sleep=time.sleep):
+                 clock=time.time, sleep=time.sleep, ledger: "Path | None" = None):
         self.per_minute, self.per_hour, self.minute, self.slow = per_minute, per_hour, minute, slow
         self.clock, self.sleep = clock, sleep         # a test drives these without waiting
-        self.sent: list = []              # (monotonic time, units)
+        self.ledger = ledger              # shared by every call of a batch: one budget, posted as each review is ready
+        self.sent: list = []              # (time, units)
         self.blocked = False
+        self.load()
+
+    def load(self) -> None:
+        """What earlier calls posted in the last hour, and whether GitHub blocked one, from the ledger."""
+        if self.ledger is None:
+            return
+        try:
+            data = json.loads(self.ledger.read_text())
+            self.sent = [(float(t), int(u)) for t, u in data.get("sent", [])]
+            self.blocked = bool(data.get("blocked"))
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass                          # no ledger yet, or unreadable: this call starts its own record
+
+    def save(self) -> None:
+        if self.ledger is None:
+            return
+        now = self.clock()
+        self.sent = [(t, u) for t, u in self.sent if now - t < self.minute * 60]
+        try:
+            self.ledger.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.ledger.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"sent": self.sent, "blocked": self.blocked}) + "\n")
+            tmp.replace(self.ledger)
+        except OSError as err:            # pacing still holds within this call
+            print(f"post_reviews.py: cannot keep the pacing ledger {self.ledger}: {err}", file=sys.stderr)
+
+    def mark_blocked(self) -> None:
+        self.blocked = True
+        self.save()
 
     def wait(self, units: int, name: str) -> None:
         told, started = False, self.clock()
@@ -433,6 +468,7 @@ class Pace:
 
     def sent_now(self, units: int) -> None:
         self.sent.append((self.clock(), units))
+        self.save()
 
 
 def hashes(folder: Path) -> dict:
@@ -483,7 +519,11 @@ def main(argv: "list | None" = None) -> int:
     except (GhError, KeyError, ValueError, TypeError) as err:
         print(f"post_reviews.py: cannot tell who is posting: {err}", file=sys.stderr)
         return 2
-    pace = Pace(args.per_minute, args.per_hour, args.minute, args.slow)
+    ledger = Path(os.environ.get("TMPDIR") or "/tmp") / "seams-pr-review" / "post-pace.json"   # beside the evidence
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    lock = open(ledger.with_suffix(".lock"), "a")        # one call posts at a time; held until this process ends
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    pace = Pace(args.per_minute, args.per_hour, args.minute, args.slow, ledger=ledger)
     missing, stopped, rights = 0, None, {}
     for review in reviews:
         if stopped:
@@ -547,7 +587,7 @@ def post_one(review: dict, viewer: str, pace: Pace, args) -> "tuple[bool, str | 
             print(f"not posted: {review['name']}: GitHub's rate limit lifts at {at} "
                   f"(HTTP {status}: {message(body)}); run this again then")
             return False, f"since GitHub's rate limit lifts at {at}"
-        pace.blocked = True
+        pace.mark_blocked()
         print(f"GitHub blocked {review['name']} (HTTP {status}: {message(body)}); waiting {wait:g} s, "
               f"then posting more slowly", flush=True)
         time.sleep(wait)

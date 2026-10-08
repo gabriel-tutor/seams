@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Build through seams:implement in a new worktree under .worktrees/ (from main), slice 1 posting and load, slice 2 baseline and installs, slice 3 takeover; then the reviews and 5.2.0.
+Next: Slice 1 (posting as each review is ready, through a shared pacing ledger; reviewers matched to the check slots) is committed on seams-5.2/pr-review-speed, from 0d2a84f; slice 2 next: one shared baseline per base commit, failures included, and installs shared by lockfile, in run_checks.py.
 Updated: 2026-10-09
 
 ## Decisions
