@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.2.0 — 2026-10-09
+
+`/pr-review` is faster at the same bar: every check still runs on the pull request's tree, findings are still proven, and nothing posts that is not fully verified.
+
+- **Each review posts when it is ready.** A batch posted nothing until its last reviewer finished; now a fully verified review posts as soon as its reviewer does. Every `post_reviews.py` call on the machine shares one budget under GitHub's limits through a ledger beside the evidence (one call posts at a time, waiting `--lock-wait` seconds for another), and a GitHub block slows posting for the hour it counts. A check broken by the PR still waits for its run alone after the batch: `--auto` holds it while the batch is open.
+- **Reviewers match the machine.** As many run at once as there are check slots (half the cores), the next as one finishes, instead of up to 20 (thirteen at once once reached a load average of 53 on 14 cores).
+- **Baselines are shared for real.** Every check runs with `$SEAMS_SIDE` (base or head) and `$SEAMS_RUN` (unique to the review and tree, safe as a database name), and a check's command stays the same text on every pull request, so the reviews of one baseline commit share its runs (on one Mac, 98 reviews had 16 baselines, and none was ever shared). A failure confirmed by a second run alone is shared too, used only beside a passing candidate, since a pull request's code could forge one.
+- **Take-overs in parallel.** Several take-overs fix and prove at once, one subagent each; `run_checks.py --base-from` takes the review's own baseline runs of the same tree, while the fixed tree runs every check; one question lists every push, and the ticked ones go out in one command, so Claude Code asks once.
+
 ## 5.1.0 — 2026-10-08
 
 - **Finished worktrees are swept.** Worktrees stayed on disk after their work landed: a pull request's or a kept branch's, and any made beside the repository by other tools (one project held 126, 45 GB). `finishing-a-development-branch` now sweeps after every local merge, and on request: `scripts/sweep_worktrees.py` lists the repository's worktrees that are clean and whose work is in the base branch or whose pull request was merged at that very commit, wherever they live, never the main, current or a locked one, one just made, or one holding ignored files a build doesn't regenerate (removal deletes ignored files), and removes only the ones you choose, without force, deleting a fully merged branch with `-d`. When a repository has more than ten worktrees, the session start tells you, at no cost to Claude's context.
