@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designing
-Next: The grill's next round: takeover speed, installs shared by lockfile, agents matched to the check slots.
+Next: The user's confirmation; then built through seams:implement in a new worktree, three slices, as 5.2.0.
 Updated: 2026-10-09
 
 ## Decisions
@@ -11,9 +11,14 @@ Updated: 2026-10-09
 2. Posting (the user's choice): each review posts as soon as its pull request is fully verified, paced under GitHub's rate limit; only reviews that need the user's yes, or a recheck of a flaky check on a quiet machine, wait for the end of the batch.
 3. Baseline (the user's choice): one baseline per distinct base commit in a batch, shared by every pull request on that commit, failures included (the same commit gives the same result); today it re-runs per pull request and shares only passing runs.
 
+4. Takeover (the user's choice): several pull requests are taken over at once, each fixed by its own builder in its own worktree, every check still re-run after the fix; the user approves the list of pushes once, at the end.
+5. Installs (the user's choice): the first install for a lockfile is kept and cloned (APFS copy-on-write) into every other tree with the identical lockfile; a pull request that changes the lockfile installs fresh.
+6. Load (the user's choice): as many pull-request agents run at once as there are check slots (half the cores), the next starting as one finishes, instead of up to 20.
+7. Mine, the user may overrule them: posting's rate pacing persists in the batch folder, so posts made at different moments stay under GitHub's limit together; the shared baseline runs first for its commit, and the flaky-check reruns and the comparison of failing test names work as today; a takeover's push still goes through takeover.py behind Claude Code's permission prompt; tests first on pr-review's existing suites, so nothing changes but speed; built through implement in a worktree in three slices (posting and load, baseline and installs, takeover), released together as 5.2.0.
+
 ## Open questions
 
-- Takeover speed; installs shared by lockfile; agents matched to the check slots.
+- None; the user's confirmation.
 
 ## Facts
 
