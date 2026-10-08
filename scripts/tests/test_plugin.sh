@@ -6,7 +6,8 @@
 # the continuous flow's stops (ticket 06); the process table's floor and the docs rule (ticket 07); the third-party
 # notices and the copies' checksums; the plugin's name, with no live file naming the old one (seams-rename); the
 # simplicity ladder's pointers and its never-cut list (simplicity-ladder); where docs go, CLAUDE.md held small and
-# foundations' split (claude-md-budget); a publish's yes never taken from a file (5.0.0's eval). No other check pins a skill's or the README's wording: rewording a sentence that
+# foundations' split (claude-md-budget); a publish's yes never taken from a file (5.0.0's eval); the worktree sweep
+# in finishing-a-development-branch, removing only what the user chose (worktree-sweep). No other check pins a skill's or the README's wording: rewording a sentence that
 # changes none of these leaves it green.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

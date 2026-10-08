@@ -27,4 +27,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: /usr/bin/python3 -c 'import sys; assert sys.version_info[:2] == (3, 9), sys.version; print(sys.version)'
-      - run: scripts/test.sh --python /usr/bin/python3 --only gate,hooks,plugin_hook,pr_review,evals
+      - run: scripts/test.sh --python /usr/bin/python3 --only gate,hooks,plugin_hook,pr_review,evals,sweep

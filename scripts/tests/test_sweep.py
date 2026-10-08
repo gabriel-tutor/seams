@@ -47,7 +47,7 @@ class SweepTest(unittest.TestCase):
             git(self.main, "merge", "-q", "--no-edit", name)
         return path
 
-    def sweep(self, *args, gh=None):
+    def sweep(self, *args, gh=None, cwd=None):
         env = {**os.environ, **GIT_ENV, "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}"}
         if gh is not None:                     # a stand-in for the gh CLI: prints what a merged-PR query returns
             (self.bin / "gh").write_text(f"#!/bin/sh\necho '{gh}'\n")
@@ -56,7 +56,7 @@ class SweepTest(unittest.TestCase):
             (self.bin / "gh").write_text("#!/bin/sh\nexit 1\n")
             (self.bin / "gh").chmod(0o755)
         out = subprocess.run([sys.executable, "-B", str(SWEEP), *args, "--repo", str(self.main), "--base", "main"],
-                             capture_output=True, text=True, env=env)
+                             capture_output=True, text=True, env=env, cwd=cwd)
         return out
 
     def listed(self, **kw):
@@ -82,7 +82,46 @@ class SweepTest(unittest.TestCase):
     def test_a_squash_merged_branch_is_offered_when_its_pull_request_is_merged(self):
         self.worktree("squashed")                              # its commit never reached main
         self.assertEqual(self.listed(gh="[]"), {})
-        self.assertEqual(self.listed(gh='[{"number":7}]')["squashed"]["reason"], "pull request merged")
+        head = git(self.tmp / "squashed", "rev-parse", "HEAD")
+        self.assertEqual(self.listed(gh=f'[{{"headRefOid":"{head}"}}]')["squashed"]["reason"], "pull request merged")
+
+    def test_a_merged_pull_request_at_another_commit_does_not_count(self):
+        # A reused branch name, or work after the merge: the merged PR's head is not this HEAD.
+        self.worktree("reused")
+        self.assertEqual(self.listed(gh='[{"headRefOid":"0000000000000000000000000000000000000000"}]'), {})
+
+    def test_ignored_files_block_removal_unless_they_are_regenerable(self):
+        (self.main / ".gitignore").write_text(".env\nnode_modules/\n")
+        git(self.main, "add", ".gitignore")
+        git(self.main, "commit", "-qm", "ignore")
+        keep = self.worktree("secrets", merge=True)
+        (keep / ".env").write_text("TOKEN=x\n")
+        deps = self.worktree("deps", merge=True)
+        (deps / "node_modules").mkdir()
+        (deps / "node_modules" / "x.js").write_text("x\n")
+        self.assertEqual(set(self.listed()), {"deps"})
+        out = json.loads(self.sweep("remove", str(keep)).stdout)
+        self.assertIn(".env", out["refused"][str(keep)])
+        self.assertTrue((keep / ".env").exists())
+
+    def test_a_fresh_worktree_at_the_base_tip_is_not_offered(self):
+        self.worktree("fresh", commit=False)                   # just made, nothing done in it yet
+        self.assertEqual(self.listed(), {})
+
+    def test_work_merged_only_on_origin_is_offered(self):
+        origin = self.tmp / "origin.git"
+        git(self.tmp, "clone", "-q", "--bare", str(self.main), str(origin))
+        git(self.main, "remote", "add", "origin", str(origin))
+        path = self.worktree("remote-merged")
+        git(path, "push", "-q", "origin", "remote-merged:main")
+        git(self.main, "fetch", "-q", "origin")
+        self.assertEqual(self.listed()["remote-merged"]["reason"], "merged")
+
+    def test_the_current_worktree_is_never_offered_even_from_a_subfolder(self):
+        path = self.worktree("here", merge=True)
+        (path / "sub").mkdir()
+        out = self.sweep("list", cwd=path / "sub")
+        self.assertEqual(json.loads(out.stdout)["candidates"], [])
 
     def test_remove_takes_an_approved_merged_worktree_and_its_branch(self):
         path = self.worktree("done", merge=True)

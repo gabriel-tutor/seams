@@ -16,6 +16,8 @@ Updated: 2026-10-08
 
 6. Mine (build): the session-start hint is the user's notice (systemMessage), not Claude's context, since the bootstrap's injection has about 6 bytes left under its cap; the sweep asks once for the list (all, choose, none) since AskUserQuestion holds four options; the finishing skill's step 7 runs it after Option 1 and on request, its description naming the sweep.
 
+7. Review fixes (standards, spec, correctness, security; mine): a worktree is clean only when `git status --ignored` succeeds and shows nothing but ignored files a build regenerates (node_modules/, caches, build output), since `git worktree remove` deletes ignored files; a pull request counts only when merged at this very HEAD; a worktree at the base's tip counts only when its own HEAD reflog records a commit (a fresh one does not, a fast-forward merge does); the current worktree is protected from any subfolder; no global prune, and one missing on disk is not offered; the porcelain read with -z; the sweep runs after a parallel run's integrations too; CI's Python 3.9 job runs the sweep suite. Left: the gate holds no consent of its own (the skill's question and Claude Code's permission prompt do), and a new branch fast-forwarded with no commit of its own is not offered.
+
 ## Open questions
 
 - None.

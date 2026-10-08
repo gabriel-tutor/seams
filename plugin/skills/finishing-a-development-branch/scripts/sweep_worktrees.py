@@ -4,10 +4,14 @@
     sweep_worktrees.py list [--repo DIR] [--base BRANCH]          JSON: {"base", "candidates": [{path, branch, reason, size_kb}]}
     sweep_worktrees.py remove PATH... [--repo DIR] [--base BRANCH]  JSON: {"removed": [...], "refused": {path: why}}
 
-A candidate is clean (nothing uncommitted or untracked) and merged: its HEAD is in the base branch, local or on
-origin, or its branch's pull request is merged on GitHub (a squash merge). The main worktree, the current one and a
-locked one never are. `remove` checks each path again, runs `git worktree remove` without force, deletes the branch
-with -d (which refuses one not fully merged), and prunes. Standard library only; it writes no bytecode.
+A candidate is clean and merged. Clean: `git status` succeeds and shows nothing uncommitted or untracked, and any
+ignored file is one a build regenerates (node_modules/, caches, build output), since `git worktree remove` deletes
+ignored files. Merged: its HEAD is a commit of the base branch, local or on origin, and work was committed in it
+(a worktree just made sits at the base's tip too), or its branch's pull request was merged on GitHub at this very HEAD
+(a squash merge). The main worktree, the current one, a locked one and one missing on disk never are. `remove`
+checks each path again, runs `git worktree remove` without force and deletes the branch with -d (which refuses one
+not fully merged); it prunes nothing else. Exit 0 with the JSON; exit 1 when the repository can't be read.
+Standard library only; it writes no bytecode.
 """
 from __future__ import annotations
 
@@ -19,26 +23,35 @@ import sys
 
 sys.dont_write_bytecode = True
 
+REGENERABLE = {"node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",
+               "dist", "build", ".next", ".nuxt", ".turbo", ".parcel-cache", ".cache", "coverage", "target", ".gradle",
+               ".expo", ".DS_Store"}
+
 
 def git(repo, *args, check=True):
     out = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
     if check and out.returncode != 0:
-        raise SystemExit(f"git {' '.join(args)}: {out.stderr.strip()}")
+        print(f"git {' '.join(args)}: {out.stderr.strip()}", file=sys.stderr)
+        raise SystemExit(1)
     return out
 
 
 def worktrees(repo):
-    """Every worktree from `git worktree list --porcelain`, the main one first."""
+    """Every worktree from `git worktree list --porcelain -z`, the main one first."""
     entries, cur = [], {}
-    for line in git(repo, "worktree", "list", "--porcelain").stdout.splitlines() + [""]:
-        if not line:
+    for field in git(repo, "worktree", "list", "--porcelain", "-z").stdout.split("\0"):
+        if not field:
             if cur:
                 entries.append(cur)
             cur = {}
             continue
-        key, _, value = line.partition(" ")
+        key, _, value = field.partition(" ")
         cur[key] = value or True
     return entries
+
+
+def branch_of(entry):
+    return str(entry.get("branch", "")).removeprefix("refs/heads/")
 
 
 def default_base(repo):
@@ -51,41 +64,60 @@ def default_base(repo):
     return "main"
 
 
-def pr_merged(repo, branch):
+def pr_merged_at(repo, branch, head):
+    """Whether a pull request from this branch was merged with this exact HEAD (a reused name or later work is not)."""
     try:
-        out = subprocess.run(["gh", "pr", "list", "--head", branch, "--state", "merged", "--json", "number",
-                              "--limit", "1"], cwd=str(repo), capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    try:
-        return out.returncode == 0 and bool(json.loads(out.stdout or "[]"))
-    except ValueError:
+        out = subprocess.run(["gh", "pr", "list", "--head", branch, "--state", "merged", "--json", "headRefOid",
+                              "--limit", "20"], cwd=str(repo), capture_output=True, text=True, timeout=30)
+        return out.returncode == 0 and any(p.get("headRefOid") == head for p in json.loads(out.stdout or "[]"))
+    except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError):
         return False
 
 
-def judge(repo, entry, base, here):
-    """Why this worktree may be removed, or None with the reason it may not."""
+def unclean(path):
+    """Why the worktree is not clean, or None."""
+    out = git(path, "status", "--porcelain", "--ignored", "--untracked-files=normal", check=False)
+    if out.returncode != 0:
+        return "git status failed: " + out.stderr.strip()
+    kept = []
+    for line in out.stdout.splitlines():
+        if not line.startswith("!! "):
+            return "not clean: uncommitted or untracked files"
+        name = line[3:].rstrip("/").split("/")[-1]
+        if name not in REGENERABLE and not name.endswith((".pyc", ".log")):
+            kept.append(line[3:])
+    return f"not clean: ignored files would be deleted ({', '.join(kept[:5])})" if kept else None
+
+
+def committed_in(path):
+    """Whether work was committed in this worktree: at the base's tip, a fast-forward merge reads like a worktree
+    just made, and only its own HEAD reflog tells them apart."""
+    out = git(path, "reflog", "--format=%gs", "-n", "50", "HEAD", check=False)
+    return out.returncode == 0 and any(line.startswith("commit") for line in out.stdout.splitlines())
+
+
+def judge(repo, entry, base, protected):
+    """(reason, None) when the worktree may be removed, else (None, why not)."""
     path = entry["worktree"]
-    if os.path.realpath(path) in (os.path.realpath(repo_main(repo)), here):
+    if os.path.realpath(path) in protected:
         return None, "the main or current worktree"
     if entry.get("locked"):
         return None, "locked"
-    if entry.get("prunable"):
-        return "missing on disk", None
-    if git(path, "status", "--porcelain", check=False).stdout.strip():
-        return None, "not clean"
-    head = entry.get("HEAD", "")
+    if entry.get("prunable") or not os.path.isdir(path):
+        return None, "missing on disk (`git worktree prune` clears it)"
+    why = unclean(path)
+    if why:
+        return None, why
+    head = str(entry.get("HEAD", ""))
     for ref in (base, f"origin/{base}"):
-        if git(repo, "merge-base", "--is-ancestor", head, ref, check=False).returncode == 0:
+        tip = git(repo, "rev-parse", "--verify", "--quiet", ref, check=False).stdout.strip()
+        if tip and git(repo, "merge-base", "--is-ancestor", head, ref, check=False).returncode == 0 \
+                and (head != tip or committed_in(path)):
             return "merged", None
-    branch = entry.get("branch", "").removeprefix("refs/heads/")
-    if branch and pr_merged(repo, branch):
+    branch = branch_of(entry)
+    if branch and pr_merged_at(repo, branch, head):
         return "pull request merged", None
-    return None, "not merged"
-
-
-def repo_main(repo):
-    return worktrees(repo)[0]["worktree"]
+    return None, "not merged (or nothing committed in it yet)"
 
 
 def size_kb(path):
@@ -102,15 +134,16 @@ def main():
     args = parser.parse_args()
     repo = git(args.repo, "rev-parse", "--show-toplevel").stdout.strip()
     base = args.base or default_base(repo)
-    here = os.path.realpath(os.getcwd())
     entries = worktrees(repo)
+    here = git(os.getcwd(), "rev-parse", "--show-toplevel", check=False).stdout.strip()
+    protected = {os.path.realpath(entries[0]["worktree"])} | ({os.path.realpath(here)} if here else set())
     if args.action == "list":
         candidates = []
         for entry in entries[1:]:
-            reason, _ = judge(repo, entry, base, here)
+            reason, _ = judge(repo, entry, base, protected)
             if reason:
-                candidates.append({"path": entry["worktree"], "branch": entry.get("branch", "").removeprefix("refs/heads/"),
-                                   "reason": reason, "size_kb": size_kb(entry["worktree"])})
+                candidates.append({"path": entry["worktree"], "branch": branch_of(entry), "reason": reason,
+                                   "size_kb": size_kb(entry["worktree"])})
         print(json.dumps({"base": base, "candidates": candidates}, indent=1))
         return
     by_path = {os.path.realpath(e["worktree"]): e for e in entries}
@@ -120,20 +153,17 @@ def main():
         if entry is None:
             refused[path] = "not a worktree of this repository"
             continue
-        reason, why = judge(repo, entry, base, here)
+        reason, why = judge(repo, entry, base, protected)
         if not reason:
             refused[path] = why
             continue
-        if reason != "missing on disk":
-            out = git(repo, "worktree", "remove", entry["worktree"], check=False)
-            if out.returncode != 0:
-                refused[path] = out.stderr.strip()
-                continue
-        branch = entry.get("branch", "").removeprefix("refs/heads/")
-        if branch and reason == "merged":
-            git(repo, "branch", "-d", branch, check=False)
+        out = git(repo, "worktree", "remove", entry["worktree"], check=False)
+        if out.returncode != 0:
+            refused[path] = out.stderr.strip()
+            continue
+        if reason == "merged" and branch_of(entry):
+            git(repo, "branch", "-d", branch_of(entry), check=False)
         removed.append(path)
-    git(repo, "worktree", "prune")
     print(json.dumps({"removed": removed, "refused": refused}, indent=1))
 
 

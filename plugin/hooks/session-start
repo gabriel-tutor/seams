@@ -14,6 +14,8 @@ preamble: Claude Code's hooks docs say text framed as out-of-band system command
 Claude's prompt-injection defenses. After the bootstrap comes the resume note (ADR 0003): the
 repository's unfinished work from its progress files, and the newest unfinished pr-review batch run
 in it, as data, with a one-line systemMessage telling the user what is being resumed.
+When the repository holds more than ten worktrees, the systemMessage also says so and points to the sweep
+(finishing-a-development-branch), from one `git worktree list`, adding nothing to Claude's context.
 Also keeps the gate's ledger: a new session or /clear starts with an empty one.
 Fails open (see seams_ledger.run_hook), and a bad progress file only drops out of the note.
 Python 3.9: macOS's system interpreter may run this.

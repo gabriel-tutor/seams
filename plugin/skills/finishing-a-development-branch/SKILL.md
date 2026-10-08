@@ -208,13 +208,13 @@ place. If your platform provides a workspace-exit tool, use it.
 
 ## Step 7: Sweep Merged Worktrees
 
-**Runs after Option 1, and whenever your human partner asks to sweep worktrees.** Finished worktrees otherwise stay on disk: a pull request's or a kept branch's after its work lands, a failed parallel ticket's, or ones made by other tools beside the repository. From the main repo root:
+**Runs after Option 1, after a parallel run's integrations, and whenever your human partner asks to sweep worktrees.** Finished worktrees otherwise stay on disk: a pull request's or a kept branch's after its work lands, or ones made by other tools beside the repository. From the main repo root:
 
 ```bash
 python3 -B ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.py list --base <base-branch>
 ```
 
-It lists the repository's worktrees, wherever they live, that are clean and whose work is in the base branch, local or on `origin`, or whose branch's pull request is merged (a squash merge). Never the main or current worktree, a locked one, or one with uncommitted changes or commits outside the base. With none, say so in one line. Otherwise show each one's path, branch, reason and size, with the total, and ask with AskUserQuestion: remove them all (recommended), choose which, or none. Remove only the paths the user chose:
+It lists the repository's worktrees, wherever they live, that are clean and whose work is in the base branch, local or on `origin`, or whose branch's pull request is merged (a squash merge). Never the main or current worktree, a locked one, one with uncommitted or untracked files or commits outside the base, one still at the base's tip with nothing committed in it, or one holding ignored files a build doesn't regenerate (a `.env`, a local database), since removal deletes ignored files. With none, say so in one line. Otherwise show each one's path, branch, reason and size, with the total, and ask with AskUserQuestion: remove them all (recommended), choose which, or none. Remove only the paths the user chose:
 
 ```bash
 python3 -B ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.py remove <path>... --base <base-branch>
@@ -231,6 +231,8 @@ It checks each path again, never forces, deletes a fully merged branch with `-d`
 | 3. Keep as-is | - | - | yes | - |
 | Discard (explicit request only) | - | - | - | yes (force) |
 
+After Option 1, and whenever asked: Step 7 sweeps the repository's other merged, clean worktrees, on your human partner's choice.
+
 ## Common Rationalizations
 
 | Excuse | Reality |
@@ -240,7 +242,7 @@ It checks each path again, never forces, deletes a fully merged branch with `-d`
 | "They seem done with this feature — I'll offer to discard it" | The menu is complete as written. Discard happens only when your human partner asks for it in so many words. |
 | "'Yeah, get rid of it' counts as confirmation" | Only the typed word `discard` authorizes deletion. |
 | "The PR is up, so the worktree is clutter now" | PR feedback gets fixed in that worktree. It stays until the work lands. |
-| "This other worktree looks stale — I'll clean it too" | Clean up only worktrees under `.worktrees/` or `worktrees/`. Everything else belongs to the host. |
+| "This other worktree looks stale — I'll clean it too" | Step 6 cleans up only this branch's worktree, and only under `.worktrees/` or `worktrees/`. Any other goes through Step 7's sweep: offered only when merged and clean, removed only on your human partner's choice. |
 | "Removal refused — `--force` is just finishing the cleanup" | The refusal means files exist only in that worktree. `--force` destroys them permanently. Show your human partner and ask. |
 | "The merged-result failure is probably flaky" | A failing merged result stops everything. Branch and worktree stay put while you investigate. |
 | "The base branch is obviously main" | Confirm the fork point or ask. Merging into the wrong base is expensive to undo. |
