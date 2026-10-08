@@ -1,8 +1,8 @@
 # Progress: worktrees whose work is merged are swept
 
 Status: active
-Stage: designed
-Next: On seams-5.1/worktree-sweep (.worktrees/worktree-sweep, from 2461395): the build is committed; next code-review, a correctness review and the security review (destructive: sensitive) over 2461395...HEAD, then the record and 5.1.0.
+Stage: built
+Next: Built on seams-5.1/worktree-sweep (.worktrees/worktree-sweep): integrate and release 5.1.0 through seams:release, asked (the user's install reads main in place, so integrating updates it).
 Updated: 2026-10-08
 
 ## Decisions
