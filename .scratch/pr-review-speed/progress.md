@@ -1,8 +1,8 @@
 # Progress: pr-review faster, the same quality
 
 Status: active
-Stage: designing
-Next: The user's confirmation; then built through seams:implement in a new worktree, three slices, as 5.2.0.
+Stage: designed
+Next: Build through seams:implement in a new worktree under .worktrees/ (from main), slice 1 posting and load, slice 2 baseline and installs, slice 3 takeover; then the reviews and 5.2.0.
 Updated: 2026-10-09
 
 ## Decisions
@@ -16,9 +16,11 @@ Updated: 2026-10-09
 6. Load (the user's choice): as many pull-request agents run at once as there are check slots (half the cores), the next starting as one finishes, instead of up to 20.
 7. Mine, the user may overrule them: posting's rate pacing persists in the batch folder, so posts made at different moments stay under GitHub's limit together; the shared baseline runs first for its commit, and the flaky-check reruns and the comparison of failing test names work as today; a takeover's push still goes through takeover.py behind Claude Code's permission prompt; tests first on pr-review's existing suites, so nothing changes but speed; built through implement in a worktree in three slices (posting and load, baseline and installs, takeover), released together as 5.2.0.
 
+8. The user confirmed on 2026-10-09: build it through seams:implement in a new worktree, three slices, released together as 5.2.0.
+
 ## Open questions
 
-- None; the user's confirmation.
+- None.
 
 ## Facts
 
