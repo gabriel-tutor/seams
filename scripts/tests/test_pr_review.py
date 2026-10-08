@@ -1229,6 +1229,21 @@ class PostReviewsTest(PosterHarness, unittest.TestCase):
         (first, _), (second, _), (third, _) = self.calls()
         self.assertGreaterEqual(third - first, 1.9)
 
+    def test_the_ledger_never_writes_through_a_planted_link(self):
+        # Without TMPDIR the ledger is under the shared /tmp: a link another user plants at its lock or its
+        # ledger must not let a post write into the file the link points at.
+        victim = self.tmp / "victim.txt"
+        victim.write_text("keep\n")
+        folder = self.tmp / "seams-pr-review"
+        folder.mkdir()
+        for name in ("post-pace.lock", "post-pace.json"):
+            (folder / name).symlink_to(victim)
+        code, out = self.post(self.evidence(1))
+        self.assertEqual(victim.read_text(), "keep\n")
+        self.assertNotEqual(code, 0, out)
+        self.assertIn("post-pace.lock", out)
+        self.assertEqual(self.calls(), [])                  # nothing posted without its pacing
+
     def test_the_posts_all_go_out_in_order_under_a_tight_budget(self):
         folders = [self.evidence(n, comments=4) for n in (1, 2, 3)]
         code, out = self.post(*folders, pacing=("--minute", "1", "--per-minute", "10", "--backoff", "0.2"))

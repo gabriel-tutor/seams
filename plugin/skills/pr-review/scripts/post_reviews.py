@@ -440,9 +440,11 @@ class Pace:
         self.sent = [(t, u) for t, u in self.sent if now - t < self.minute * 60]
         try:
             self.ledger.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.ledger.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"sent": self.sent, "blocked": self.blocked}) + "\n")
-            tmp.replace(self.ledger)
+            tmp = self.ledger.with_name(f"{self.ledger.name}.{os.getpid()}.tmp")
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w") as handle:
+                handle.write(json.dumps({"sent": self.sent, "blocked": self.blocked}) + "\n")
+            tmp.replace(self.ledger)                     # replaces a link at the ledger, never writes through it
         except OSError as err:            # pacing still holds within this call
             print(f"post_reviews.py: cannot keep the pacing ledger {self.ledger}: {err}", file=sys.stderr)
 
@@ -521,7 +523,11 @@ def main(argv: "list | None" = None) -> int:
         return 2
     ledger = Path(os.environ.get("TMPDIR") or "/tmp") / "seams-pr-review" / "post-pace.json"   # beside the evidence
     ledger.parent.mkdir(parents=True, exist_ok=True)
-    lock = open(ledger.with_suffix(".lock"), "a")        # one call posts at a time; held until this process ends
+    try:                                                 # one call posts at a time; held until this process ends
+        lock = os.open(ledger.with_suffix(".lock"), os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except OSError as err:                               # a link planted in a shared /tmp is never followed
+        print(f"post_reviews.py: cannot take the pacing lock {ledger.with_suffix('.lock')}: {err}", file=sys.stderr)
+        return 2
     fcntl.flock(lock, fcntl.LOCK_EX)
     pace = Pace(args.per_minute, args.per_hour, args.minute, args.slow, ledger=ledger)
     missing, stopped, rights = 0, None, {}
