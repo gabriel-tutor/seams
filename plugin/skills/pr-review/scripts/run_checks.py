@@ -27,11 +27,13 @@ of the cores by default) running both trees at once could only slow every review
 shared the machine, or what the command and the tree settle (absent, unsupported): a failure or a timeout in it is
 run again with the trees one after the other, and that run is the one that counts, so two runs colliding on a
 port can neither blame the pull request nor hide a real failure. --share DIR is a folder the reviews of one batch
-share: a passing baseline run of a check is kept there by baseline commit, check, command and shell, and a later
+share: a baseline run of a check is kept there by baseline commit, check, command and shell, and a later
 review of the same commit uses it ("shared": its baseline tree did not run that check) instead of running it
 again; two reviews starting the same one together run it once, the second waiting for the first. A pass is
-shared, and a failure once a second run alone confirmed it (both runs and their logs); a failure seen once is run
-by each review, none queuing behind another, until one confirms it. Never shared: an install or a check that
+shared, and a failure once a second run alone confirmed it (both runs and their logs), the latter used only beside
+a passing candidate: a pull request's code runs as the user and could forge one, so beside a failing candidate the
+baseline runs again here. A failure seen once is run by each review, none queuing behind another, until one
+confirms it, and a review whose own run passes shares that pass. Never shared: an install or a check that
 builds, generates or prepares files a later check may read, or one older than --share-age seconds (three hours).
 --base-from DIR does the same from one earlier review's checks folder of this very baseline tree (a take-over's).
 Every run has $SEAMS_SIDE (base or head) and $SEAMS_RUN (a name unique to the review and side, safe for a
@@ -275,9 +277,13 @@ def share_key(tree: Path, name: str, command: str, shell: dict) -> "str | None":
     return hashlib.sha256(json.dumps([commit, name, command, shell.get("path"), shell.get("version")]).encode()).hexdigest()[:40]
 
 
+FAILING = ("fail", "timeout")
+
+
 def publish(share: Path, key: str, result: dict, log: Path, rerun: "dict | None" = None,
             rerun_log: "Path | None" = None) -> None:
-    """Keep a baseline run (and the second run that confirmed its failure) for the next review of the same commit."""
+    """Keep a baseline run (and the second run that confirmed its failure) for the next review of the same commit.
+    The caller holds the check's lock."""
     try:
         shutil.copyfile(log, share / f"{key}.log")
         if rerun is not None:
@@ -289,14 +295,34 @@ def publish(share: Path, key: str, result: dict, log: Path, rerun: "dict | None"
         pass                                        # nothing shared this time: the result stands for this review
 
 
-def confirm_shared(share: Path, key: str, result: dict, log: Path, rerun: dict, rerun_log: Path) -> None:
-    """A baseline failure this review saw twice, the second time alone: shared from now on, like a pass."""
+def record_shared(share: Path, key: str, age: float, result: dict, log: Path, rerun: "dict | None" = None,
+                  rerun_log: "Path | None" = None) -> None:
+    """After the check's lock was let go: share this review's own baseline pass, which can only make a later verdict
+    stricter, or its failure confirmed by a second run alone, but only over a failure seen once, never over a pass
+    another review shared meanwhile."""
     try:
         with open(share / f"{key}.lock", "a") as handle:
             fcntl.flock(handle, fcntl.LOCK_EX)
+            entry = read_shared(share / f"{key}.json", age)
+            if rerun is not None and not (entry is not None and entry["result"].get("status") in FAILING
+                                          and entry.get("rerun") is None):
+                return
             publish(share, key, result, log, rerun, rerun_log)
     except OSError:
         pass
+
+
+def taken(result: dict, log: Path, source: Path, rerun: "dict | None" = None,
+          rerun_source: "Path | None" = None) -> dict:
+    """A baseline run another review made, its logs copied beside this review's: "shared", and a failure's second
+    run as "confirmed"."""
+    shutil.copyfile(source, log)
+    taken_run = {**result, "shared": True, "log": log.name}
+    if rerun is not None:
+        rerun_log = log.with_name(log.name[:-len(".base.log")] + ".base.rerun.log")
+        shutil.copyfile(rerun_source, rerun_log)
+        taken_run["confirmed"] = {**{k: v for k, v in rerun.items() if k != "side"}, "log": rerun_log.name}
+    return taken_run
 
 
 def shared_run(share: Path, age: float, tree: Path, name: str, command: str, log: Path, timeout: float,
@@ -305,7 +331,7 @@ def shared_run(share: Path, age: float, tree: Path, name: str, command: str, log
     passed it, or saw it fail twice, the second time alone ("confirmed": that second run, its log copied beside this
     review's). The first review to ask runs it, holding the check's lock, so a second one asking meanwhile waits for
     the result instead of running it too. A failure seen once is trusted by nobody: the others find it, let go of
-    the lock at once and run their own, side by side, until a second run confirms it."""
+    the lock at once and run their own, side by side; one that passes shares its pass."""
     key = share_key(tree, name, command, shell)
     if key is None:
         return run_side(command, tree, log, timeout, shell, "base")
@@ -321,18 +347,16 @@ def shared_run(share: Path, age: float, tree: Path, name: str, command: str, log
             status, rerun = entry["result"].get("status"), entry.get("rerun")
             try:
                 if status == "pass":
-                    shutil.copyfile(share / f"{key}.log", log)
-                    return {**entry["result"], "shared": True, "log": log.name}
-                if status in ("fail", "timeout") and isinstance(rerun, dict) and rerun.get("status") in ("fail", "timeout"):
-                    rerun_log = log.with_name(log.name.replace(".base.log", ".base.rerun.log"))
-                    shutil.copyfile(share / f"{key}.log", log)
-                    shutil.copyfile(share / f"{key}.rerun.log", rerun_log)
-                    return {**entry["result"], "shared": True, "log": log.name,
-                            "confirmed": {**rerun, "log": rerun_log.name}}
+                    return taken(entry["result"], log, share / f"{key}.log")
+                if status in FAILING and isinstance(rerun, dict) and rerun.get("status") in FAILING:
+                    return taken(entry["result"], log, share / f"{key}.log", rerun, share / f"{key}.rerun.log")
             except OSError:
                 pass
             fcntl.flock(handle, fcntl.LOCK_UN)
-            return run_side(command, tree, log, timeout, shell, "base")
+            result = run_side(command, tree, log, timeout, shell, "base")
+            if result["status"] == "pass":
+                record_shared(share, key, age, result, log)
+            return result
         result = run_side(command, tree, log, timeout, shell, "base")
         publish(share, key, result, log)
         return result
@@ -340,21 +364,21 @@ def shared_run(share: Path, age: float, tree: Path, name: str, command: str, log
 
 def from_review(folder: Path, name: str, command: str, shell: dict, log: Path) -> "dict | None":
     """The baseline run of this check in an earlier review of the same baseline tree (a take-over's), when it passed,
-    or failed and a second run alone confirmed it: the same run the review believed, its logs copied beside."""
+    or failed and a second run alone confirmed it: the same run the review believed, its logs copied beside. Its
+    checks.json is read as evidence a pull request's code could have rewritten: only the check's own log files
+    are ever copied."""
     try:
         earlier = json.loads((folder / "checks.json").read_text())
         found = next(c for c in earlier if c.get("name") == name and c.get("command") == command and c.get("shell") == shell)
         run, rerun = found["base"], found.get("rerun") or {}
+        if run.get("log") != f"{name}.base.log":
+            return None
         if run.get("status") == "pass":
-            shutil.copyfile(folder / run["log"], log)
-            return {**run, "shared": True, "log": log.name}
-        if run.get("status") in ("fail", "timeout") and rerun.get("side") == "base" and rerun.get("status") in ("fail", "timeout"):
-            rerun_log = log.with_name(log.name.replace(".base.log", ".base.rerun.log"))
-            shutil.copyfile(folder / run["log"], log)
-            shutil.copyfile(folder / rerun["log"], rerun_log)
-            confirmed = {k: v for k, v in rerun.items() if k != "side"}
-            return {**run, "shared": True, "log": log.name, "confirmed": {**confirmed, "log": rerun_log.name}}
-    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+            return taken(run, log, folder / run["log"])
+        if (run.get("status") in FAILING and rerun.get("side") == "base" and rerun.get("status") in FAILING
+                and rerun.get("log") == f"{name}.base.rerun.log"):
+            return taken(run, log, folder / run["log"], rerun, folder / rerun["log"])
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration):
         pass
     return None
 
@@ -363,7 +387,8 @@ def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout:
             together: bool = False, share: "Path | None" = None, share_age: float = SHARE_AGE,
             base_from: "Path | None" = None) -> dict:
     """Both runs of one check (at the same time when `together`), the second run when the two disagree, and the
-    verdict."""
+    verdict. The baseline's runs may come from another review (`share`, `base_from`): a pass, or a failure a second
+    run confirmed, the latter only beside a passing candidate, where it cannot excuse anything."""
     base_log, head_log = out / f"{name}.base.log", out / f"{name}.head.log"
 
     def first_base() -> dict:
@@ -385,6 +410,15 @@ def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout:
     else:
         base_run = first_base()
         head_run = first_head()
+    ran_alone = False
+    if base_run.get("shared") and base_run["status"] in FAILING and head_run["status"] in FAILING:
+        # A pull request's code runs as the user and could have forged that shared failure: beside a failing
+        # candidate, "already broken" must rest on this review's own baseline run, made alone.
+        base_run = run_side(command, base, base_log, timeout, shell, "base")
+        ran_alone = True
+        key = share_key(base, name, command, shell) if share is not None and base_run["status"] == "pass" else None
+        if key is not None:
+            record_shared(share, key, share_age, base_run, base_log)
     result = {"name": name, "command": command, "shell": shell,
               "schedule": "together" if together else "one after the other",
               "base": base_run, "head": head_run, "rerun": None}
@@ -393,7 +427,8 @@ def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout:
     if together and first != "removed by the PR":
         # Only a pass is believed from a run that shared the machine: each side that failed (or timed out) in it
         # runs again alone, one after the other, as its second run. Passing then, the check is flaky, as ever.
-        sides = [side for side, run in (("base", base_run), ("head", head_run)) if run["status"] in ("fail", "timeout")]
+        sides = [side for side, run in (("base", base_run), ("head", head_run))
+                 if run["status"] in FAILING and not (side == "base" and ran_alone)]
         if sides:
             result["schedule"] = "together, a failure run again alone"
     for side in sides:
@@ -403,10 +438,10 @@ def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout:
         else:
             second = run_side(command, tree, out / f"{name}.{side}.rerun.log", timeout, shell, side)
             if (side == "base" and share is not None and shareable(name, command) and not base_run.get("shared")
-                    and base_run["status"] in ("fail", "timeout") and second["status"] in ("fail", "timeout")):
+                    and base_run["status"] in FAILING and second["status"] in FAILING):
                 key = share_key(base, name, command, shell)
                 if key is not None:
-                    confirm_shared(share, key, base_run, base_log, second, out / f"{name}.base.rerun.log")
+                    record_shared(share, key, share_age, base_run, base_log, second, out / f"{name}.base.rerun.log")
         if result["rerun"] is None or second["status"] == "pass" or side == "head":
             result["rerun"] = {"side": side, **second}
         if second["status"] == "pass":
@@ -600,8 +635,8 @@ def main(argv: "list | None" = None) -> int:
                         help="run both trees of a check at once only while the one-minute load average is below "
                              "this (default: three quarters of the cores)")
     parser.add_argument("--share", type=Path,
-                        help="a folder the reviews of one batch share: a passing baseline run is not run again by a "
-                             "later review of the same commit")
+                        help="a folder the reviews of one batch share: a baseline pass, or a confirmed failure, is not run "
+                             "again by a later review of the same commit")
     parser.add_argument("--base-from", type=Path,
                         help="a review's checks folder whose baseline tree this run shares (a take-over): a pass, or a "
                              "failure a second run confirmed, is taken from it instead of run again")

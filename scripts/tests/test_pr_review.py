@@ -193,6 +193,42 @@ class CheckSchedulingTest(unittest.TestCase):
         for log in ("unit.base.log", "unit.base.rerun.log"):
             self.assertTrue((self.tmp / "out-b" / log).exists(), log)
 
+    def test_a_shared_baseline_failure_never_excuses_a_failing_candidate(self):
+        # The pull request's code runs as the user and can write a "confirmed failure" into the share folder: a
+        # shared failure is trusted only where it cannot hide anything, beside a passing candidate. Beside a failing
+        # one the baseline runs here, so "already broken" always rests on this review's own run (security review).
+        self.reviews_of_one_baseline("touch RAN; test -f OK", ok=False)          # a confirmed failure is shared
+        for n in "c":
+            tree = self.tmp / f"base-{n}"
+            subprocess.run(["git", "-C", str(self.tmp / "repo"), "worktree", "add", "--detach", str(tree)],
+                           capture_output=True, check=True)
+            (self.tmp / f"head-{n}").mkdir()                                     # no OK: the candidate fails
+            code, checks, table = run_checks(tree, self.tmp / f"head-{n}", self.tmp / f"out-{n}",
+                                             "unit=touch RAN; test -f OK",
+                                             extra=("--share", str(self.tmp / "shared"), "--sequential"))
+            self.assertEqual(code, 0, table)
+            self.assertNotIn("shared", checks["unit"]["base"])
+            self.assertTrue((tree / "RAN").exists(), "the baseline ran in this review")
+
+    def test_a_review_whose_own_baseline_passes_shares_that_pass_over_a_failure_seen_once(self):
+        # The first review's baseline failed once (then passed: flaky); the next one passes it and publishes that
+        # pass, so a third takes the pass, and the first failure can never be confirmed over it (correctness review).
+        repo = self.baseline_repo()
+        once = f'case "$PWD" in *base*) [ -e "{self.tmp}/SEEN" ] || {{ touch "{self.tmp}/SEEN"; exit 1; }};; esac; touch RAN'
+        results = []
+        for n in "abc":
+            tree = self.tmp / f"base-{n}"
+            subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(tree)], capture_output=True, check=True)
+            (self.tmp / f"head-{n}").mkdir()
+            code, checks, table = run_checks(tree, self.tmp / f"head-{n}", self.tmp / f"out-{n}", f"unit={once}",
+                                             extra=("--share", str(self.tmp / "shared"), "--sequential"))
+            self.assertEqual(code, 0, table)
+            results.append(checks["unit"])
+        self.assertEqual(results[0]["verdict"], "flaky")
+        self.assertNotIn("shared", results[1]["base"])
+        self.assertIs(results[2]["base"].get("shared"), True)
+        self.assertEqual(results[2]["base"]["status"], "pass")
+
     def test_a_baseline_failure_that_ran_once_is_not_shared(self):
         # Failing on both trees one after the other is "already broken" after one run each: nothing confirmed
         # the baseline's failure, so each review runs its own, as before.
@@ -224,6 +260,27 @@ class CheckSchedulingTest(unittest.TestCase):
         self.assertEqual(self.count("COUNT-base") - before, 2)          # lint's two baseline runs, never unit's
         self.assertEqual(self.count("COUNT-fixed"), 2)                  # every check on the fixed tree
         self.assertTrue((self.tmp / "takeover" / "unit.base.log").exists())
+
+    def test_a_take_over_takes_only_the_logs_its_check_is_named_for(self):
+        # checks.json is evidence a pull request's code could rewrite: a log named outside the check's own files
+        # (another path, a parent) is never copied, and the baseline runs here instead (security review).
+        (self.base / "PASS").write_text("")
+        (self.head / "PASS").write_text("")
+        code, review, table = self.go(self.out, "unit=test -f PASS", extra=("--sequential",))
+        self.assertEqual(code, 0, table)
+        rows = json.loads((self.out / "checks.json").read_text())
+        (self.tmp / "secret.txt").write_text("not evidence")
+        rows[0]["base"]["log"] = "../secret.txt"
+        (self.out / "checks.json").write_text(json.dumps(rows))
+        code, after, table = run_checks(self.base, self.head, self.tmp / "takeover", "unit=test -f PASS",
+                                        extra=("--sequential", "--base-from", str(self.out)))
+        self.assertEqual(code, 0, table)
+        self.assertNotIn("shared", after["unit"]["base"])
+        self.assertNotIn("not evidence", (self.tmp / "takeover" / "unit.base.log").read_text())
+        (self.out / "checks.json").write_text(json.dumps({"not": "a list"}))      # unreadable: runs, never crashes
+        code, after, table = run_checks(self.base, self.head, self.tmp / "takeover2", "unit=test -f PASS",
+                                        extra=("--sequential", "--base-from", str(self.out)))
+        self.assertEqual(code, 0, table)
 
     def test_each_run_names_its_side_and_a_database_safe_run_id_of_its_own(self):
         # A check's command is the same text on every pull request (so a baseline run can be shared); what must
@@ -1273,6 +1330,42 @@ class PostReviewsTest(PosterHarness, unittest.TestCase):
         third.wait(1, "fourth")                         # a later call posts slowly too
         self.assertGreaterEqual(clock.now - before, 45.0)
 
+    def test_a_block_and_a_post_dated_entry_expire_with_the_hour(self):
+        # A block slows the posts for the hour it counts, not for good; an entry dated in the future (a clock set
+        # back, or a forged ledger) counts for nothing (correctness and security reviews).
+        post_reviews = load_script(POST_REVIEWS)
+        clock = FakeClock()
+        ledger = Path(tempfile.mkdtemp()) / "post-pace.json"
+        self.addCleanup(shutil.rmtree, ledger.parent)
+        pace = post_reviews.Pace(per_minute=10, per_hour=250, minute=60.0, slow=45.0, clock=clock,
+                                 sleep=clock.sleep, ledger=ledger)
+        pace.wait(1, "first")
+        pace.sent_now(1)
+        pace.mark_blocked()
+        clock.now += 3700.0
+        later = post_reviews.Pace(per_minute=10, per_hour=250, minute=60.0, slow=45.0, clock=clock,
+                                  sleep=clock.sleep, ledger=ledger)
+        self.assertFalse(later.blocked)
+        ledger.write_text(json.dumps({"sent": [[clock.now + 5000, 250]], "blocked": False}))
+        forged = post_reviews.Pace(per_minute=10, per_hour=250, minute=60.0, slow=45.0, clock=clock,
+                                   sleep=clock.sleep, ledger=ledger)
+        before = clock.now
+        forged.wait(5, "next")
+        self.assertLess(clock.now - before, 2.0)
+
+    def test_a_call_waits_a_bounded_time_for_another_call_posting(self):
+        # Another session posting holds the lock: this call says so, waits --lock-wait seconds, then leaves every
+        # review drafted (exit 1) instead of hanging the batch (correctness review).
+        import fcntl
+        folder = self.tmp / "seams-pr-review"
+        folder.mkdir(mode=0o700)
+        with open(folder / "post-pace.lock", "a") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            code, out = self.post(self.evidence(1), pacing=("--minute", "0.5", "--lock-wait", "1"))
+        self.assertEqual(code, 1, out)
+        self.assertIn("another post_reviews.py", out)
+        self.assertEqual(self.calls(), [])
+
     def test_a_later_call_waits_for_the_budget_an_earlier_call_spent(self):
         # Each review posts as its reviewer finishes, one call each: GitHub's limit is the account's, so the
         # second call counts what the first one posted.
@@ -2018,6 +2111,27 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
     def deny_push(self, repo: str) -> None:
         self.state.setdefault("perms", {})[repo] = {"pull": True, "triage": True, "push": False}
         self.save()
+
+    def test_a_check_broken_by_the_pr_waits_for_its_run_alone_while_its_batch_is_open(self):
+        # A batch posts each review as its reviewer finishes; a check broken by the PR may still be the machine's
+        # load until it ran alone after the batch, so --auto holds that review while its batch is open, from the
+        # evidence, never on the model's say-so (spec review). Outside a batch nothing changes.
+        broken = [{"name": "pg", "verdict": "broken by the PR", "base": {"status": "pass"}, "head": {"status": "fail"}}]
+        folder = self.verified(1, event="REQUEST_CHANGES")
+        self.checks(folder, broken)
+        (folder / ".seams-pr-review").write_text("{}")
+        (self.tmp / "progress-batch.md").write_text(
+            f"# Batch\n\nStatus: active\nRepository: {self.tmp}\nEvidence: {folder.name}\n")
+        code, out = self.auto(folder)
+        self.assertEqual(code, 1, out)
+        self.assertIn("broken by the PR, not yet run alone: pg", out)
+        self.checks(folder, [dict(broken[0], alone={"status": "fail"})])
+        code, out = self.auto(folder)
+        self.assertEqual(code, 0, out)
+        single = self.verified(2, event="REQUEST_CHANGES")
+        self.checks(single, broken)
+        code, out = self.auto(single)
+        self.assertEqual(code, 0, out)
 
     def auto(self, *folders: Path) -> "tuple[int, str]":
         return self.post("--auto", *folders)
