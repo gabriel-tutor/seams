@@ -1,20 +1,22 @@
 # Progress: worktrees whose work is merged are swept
 
 Status: active
-Stage: designing
-Next: The user's confirmation and where to build; then the build, released as 5.1.0.
+Stage: designed
+Next: Build through seams:implement in a new worktree under .worktrees/ (from 16c140a... main), test first; then the reviews and the 5.1.0 release, asked.
 Updated: 2026-10-08
 
 ## Decisions
 
 1. When (the user's choice, 2026-10-08): `finishing-a-development-branch` sweeps every merged, clean worktree of the repository at each integration, one yes for the list; the session start adds one line when worktrees pile up, pointing to the sweep.
 2. Scope (the user's choice): any worktree of the repository, wherever it lives (clarewood's `~/clarewoodcapital/wt-*` included), always only merged and clean ones, after the user's yes.
-3. Clarewood's merged worktrees are cleaned by the new sweep after the release (the user's choice).
+3. Clarewood's worktrees: the user is deleting them by hand (2026-10-08, replacing the earlier choice to sweep them after the release); this work is the plugin only.
 4. Mine, the user may overrule them: merged means the worktree's HEAD is an ancestor of the base branch, local or on origin, or its branch's pull request is merged on GitHub (squash merges); a worktree with uncommitted changes or commits outside the base is never a candidate; removal is `git worktree remove` without force, then `git worktree prune`, and the branch deleted with `-d` only; the session-start hint is one `git worktree list` call, shown over 10 worktrees, no merge check at start; the sweep is a script beside `finishing-a-development-branch`, listing candidates with sizes and removing only the approved paths; tests on the script against temporary repositories (merged, squash-merged, dirty, unmerged), the hint in the hook suite, pins for the finishing step; released as 5.1.0.
+
+5. The user confirmed on 2026-10-08: build it through seams:implement in a new worktree under .worktrees/, released as 5.1.0.
 
 ## Open questions
 
-- None; the user's confirmation.
+- None.
 
 ## Facts
 
