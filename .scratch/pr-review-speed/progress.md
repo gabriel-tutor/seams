@@ -1,8 +1,8 @@
 # Progress: pr-review faster, the same quality
 
 Status: active
-Stage: built
-Next: Built on seams-5.2/pr-review-speed (from 0d2a84f; reviewed, findings fixed at b2c3068). Next: seams:finishing-a-development-branch to integrate into main (the user's yes), then seams:release for 5.2.0 (version bump, CHANGELOG, staging PR for CI, main and tag v5.2.0 on the user's yes).
+Stage: deployed
+Next: 5.2.0 is on local main at 7a0ff74 and installed (seams@seams 5.2.0, read in place); not pushed, at the user's word ("let's go local, then install it"). Owed: a live before/after batch timing (a posting run, asked first).
 Updated: 2026-10-09
 
 ## Decisions
@@ -23,6 +23,8 @@ Updated: 2026-10-09
 10. Mine, within decision 4: a take-over's baseline comes from its review's own checks (`run_checks.py --base-from`), a pass or a confirmed failure, since it is the same tree at the same commit; the fixed tree runs every check. The pushes ticked in the one question go out in one Bash call, so Claude Code's permission prompt (still the push's own yes) comes once.
 
 11. The review (2026-10-09), acted on: a shared baseline failure is used only beside a passing candidate (a pull request's code could forge one), and a take-over takes only its check's own logs; a review's own baseline pass is shared over a failure seen once; a block and a post-dated ledger entry expire with the hour; the post lock waits --lock-wait seconds (90) and says so, in a folder checked to be the user's alone; `--auto` holds a check broken by the PR that has not run alone while its batch is open; the end of a batch posts every review not yet on GitHub. The ledger is per machine, not per batch as decision 7 said: GitHub's limit is the account's (a `ceiling:` comment marks two accounts on one machine).
+
+12. The user chose push and a pull request, then, asked before pushing, said: "let's go local for then install it i need to use it" (2026-10-09): 5.2.0 merged into local main and installed; nothing pushed.
 
 ## Open questions
 
