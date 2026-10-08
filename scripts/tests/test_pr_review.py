@@ -201,6 +201,30 @@ class CheckSchedulingTest(unittest.TestCase):
         self.assertNotIn("shared", second["unit"]["base"])
         self.assertTrue((self.tmp / "base-b" / "RAN").exists(), "each review runs its own unconfirmed failure")
 
+    def test_a_take_over_reuses_the_reviews_baseline_and_runs_every_check_on_the_fixed_tree(self):
+        # The take-over's baseline is the review's own tree at the same commit: its pass, or its failure that a
+        # second run confirmed, is taken from the review's checks; the fixed tree runs everything (decision 4).
+        (self.base / "PASS").write_text("")
+        (self.head / "PASS").write_text("")
+        count = f'echo x >> "{self.tmp}/COUNT-$(basename "$PWD")"'
+        checks = (f"unit={count}; test -f PASS || test -f FIXED", f"lint={count}; test -f FIXED")
+        code, review, table = self.go(self.out, *checks, extra=("--sequential",))
+        self.assertEqual(code, 0, table)
+        self.assertEqual((review["unit"]["verdict"], review["lint"]["verdict"]), ("ok", "already broken"))
+        fixed = self.tmp / "fixed"
+        fixed.mkdir()
+        (fixed / "FIXED").write_text("")
+        before = self.count("COUNT-base")
+        code, after, table = run_checks(self.base, fixed, self.tmp / "takeover", *checks,
+                                        extra=("--sequential", "--base-from", str(self.out)))
+        self.assertEqual(code, 0, table)
+        self.assertIs(after["unit"]["base"]["shared"], True)            # a pass: taken from the review
+        self.assertNotIn("shared", after["lint"]["base"])               # a failure seen once: run again
+        self.assertEqual(after["lint"]["verdict"], "fixed by the PR")
+        self.assertEqual(self.count("COUNT-base") - before, 2)          # lint's two baseline runs, never unit's
+        self.assertEqual(self.count("COUNT-fixed"), 2)                  # every check on the fixed tree
+        self.assertTrue((self.tmp / "takeover" / "unit.base.log").exists())
+
     def test_each_run_names_its_side_and_a_database_safe_run_id_of_its_own(self):
         # A check's command is the same text on every pull request (so a baseline run can be shared); what must
         # differ, such as a database name, comes from $SEAMS_RUN.

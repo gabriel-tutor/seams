@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Slices 1 and 2 are committed on seams-5.2/pr-review-speed (from 0d2a84f): posting as ready, reviewers matched to slots, and shared baselines that work ($SEAMS_SIDE, $SEAMS_RUN, confirmed failures shared). Slice 3 next: parallel takeovers with one yes for the pushes (takeover.md, batch handover).
+Next: Slices 1-3 are committed on seams-5.2/pr-review-speed (from 0d2a84f). Next: the review of 0d2a84f..HEAD (code-review, and the security review: posting and pushing are outward actions), then fixes, the definition of done, and 5.2.0.
 Updated: 2026-10-09
 
 ## Decisions
@@ -19,6 +19,8 @@ Updated: 2026-10-09
 8. The user confirmed on 2026-10-09: build it through seams:implement in a new worktree, three slices, released together as 5.2.0.
 
 9. Slice 2 changed (the user's choice, 2026-10-09, on the evidence below): no install sharing (installs took 0-4 s); instead make baseline sharing work: run_checks.py gives each run $SEAMS_SIDE (base or head) and a $SEAMS_RUN unique to the review and side, the checks instructions keep a check's command the same text on every pull request (no evidence paths, database names from $SEAMS_RUN), and a baseline failure confirmed by a second run alone is shared like a pass.
+
+10. Mine, within decision 4: a take-over's baseline comes from its review's own checks (`run_checks.py --base-from`), a pass or a confirmed failure, since it is the same tree at the same commit; the fixed tree runs every check. The pushes ticked in the one question go out in one Bash call, so Claude Code's permission prompt (still the push's own yes) comes once.
 
 ## Open questions
 

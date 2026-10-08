@@ -3,7 +3,7 @@
 
   run_checks.py --base DIR --head DIR --out DIR --check NAME=COMMAND [--check ...] [--timeout SECONDS]
                 [--merge] [--slots N] [--slot-dir DIR] [--bash PATH] [--serial NAME ...] [--sequential]
-                [--share DIR] [--share-age SECONDS] [--load-limit N]
+                [--share DIR] [--share-age SECONDS] [--base-from DIR] [--load-limit N]
   run_checks.py --base DIR --head DIR --out DIR --recheck NAME [--recheck ...]
 
 Each check runs with `bash -c COMMAND`, in the newest bash on PATH or in the usual install places
@@ -33,6 +33,7 @@ again; two reviews starting the same one together run it once, the second waitin
 shared, and a failure once a second run alone confirmed it (both runs and their logs); a failure seen once is run
 by each review, none queuing behind another, until one confirms it. Never shared: an install or a check that
 builds, generates or prepares files a later check may read, or one older than --share-age seconds (three hours).
+--base-from DIR does the same from one earlier review's checks folder of this very baseline tree (a take-over's).
 Every run has $SEAMS_SIDE (base or head) and $SEAMS_RUN (a name unique to the review and side, safe for a
 database), so a check's command stays the same text on every pull request, which sharing needs. The verdicts:
 
@@ -337,13 +338,39 @@ def shared_run(share: Path, age: float, tree: Path, name: str, command: str, log
         return result
 
 
+def from_review(folder: Path, name: str, command: str, shell: dict, log: Path) -> "dict | None":
+    """The baseline run of this check in an earlier review of the same baseline tree (a take-over's), when it passed,
+    or failed and a second run alone confirmed it: the same run the review believed, its logs copied beside."""
+    try:
+        earlier = json.loads((folder / "checks.json").read_text())
+        found = next(c for c in earlier if c.get("name") == name and c.get("command") == command and c.get("shell") == shell)
+        run, rerun = found["base"], found.get("rerun") or {}
+        if run.get("status") == "pass":
+            shutil.copyfile(folder / run["log"], log)
+            return {**run, "shared": True, "log": log.name}
+        if run.get("status") in ("fail", "timeout") and rerun.get("side") == "base" and rerun.get("status") in ("fail", "timeout"):
+            rerun_log = log.with_name(log.name.replace(".base.log", ".base.rerun.log"))
+            shutil.copyfile(folder / run["log"], log)
+            shutil.copyfile(folder / rerun["log"], rerun_log)
+            confirmed = {k: v for k, v in rerun.items() if k != "side"}
+            return {**run, "shared": True, "log": log.name, "confirmed": {**confirmed, "log": rerun_log.name}}
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        pass
+    return None
+
+
 def compare(name: str, command: str, base: Path, head: Path, out: Path, timeout: float, shell: dict,
-            together: bool = False, share: "Path | None" = None, share_age: float = SHARE_AGE) -> dict:
+            together: bool = False, share: "Path | None" = None, share_age: float = SHARE_AGE,
+            base_from: "Path | None" = None) -> dict:
     """Both runs of one check (at the same time when `together`), the second run when the two disagree, and the
     verdict."""
     base_log, head_log = out / f"{name}.base.log", out / f"{name}.head.log"
 
     def first_base() -> dict:
+        if base_from is not None and shareable(name, command):
+            earlier = from_review(base_from, name, command, shell, base_log)
+            if earlier is not None:
+                return earlier
         if share is not None and shareable(name, command):
             return shared_run(share, share_age, base, name, command, base_log, timeout, shell)
         return run_side(command, base, base_log, timeout, shell, "base")
@@ -575,6 +602,9 @@ def main(argv: "list | None" = None) -> int:
     parser.add_argument("--share", type=Path,
                         help="a folder the reviews of one batch share: a passing baseline run is not run again by a "
                              "later review of the same commit")
+    parser.add_argument("--base-from", type=Path,
+                        help="a review's checks folder whose baseline tree this run shares (a take-over): a pass, or a "
+                             "failure a second run confirmed, is taken from it instead of run again")
     parser.add_argument("--share-age", type=float, default=SHARE_AGE,
                         help="seconds a shared result may be used (default 10800)")
     parser.add_argument("--bash", help="run the checks with this bash (default: the newest one found)")
@@ -627,7 +657,7 @@ def main(argv: "list | None" = None) -> int:
         results = [compare(name, command, args.base, args.head, args.out, args.timeout, shell,
                            together=not (args.sequential or name.casefold() in serial or needs_service(name, command))
                            and has_room(args.load_limit),
-                           share=args.share, share_age=args.share_age)
+                           share=args.share, share_age=args.share_age, base_from=args.base_from)
                    for name, command in checks]
         if args.merge:
             results = merged(earlier, results)
