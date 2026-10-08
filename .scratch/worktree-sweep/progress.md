@@ -1,8 +1,8 @@
 # Progress: worktrees whose work is merged are swept
 
-Status: active
-Stage: built
-Next: Built on seams-5.1/worktree-sweep (.worktrees/worktree-sweep): integrate and release 5.1.0 through seams:release, asked (the user's install reads main in place, so integrating updates it).
+Status: done
+Stage: deployed
+Next: None; released 5.1.0 on 2026-10-08: staging pull request #17 at 4fa3fcf green (run 37793619120), main fast-forwarded f72d7d2 to 4fa3fcf on the user's yes and green (37794811393), tag v5.1.0, the user's install at seams 5.1.0; the build's own worktree removed by the sweep itself (the one candidate it listed). Rollback: reinstall from tag v5.0.0, or revert.
 Updated: 2026-10-08
 
 ## Decisions

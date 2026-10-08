@@ -70,6 +70,8 @@ The 4.0.0 runs: 37190625538 on `987c187` through the staging pull request #15, 2
 
 The 5.0.0 runs: 37308564116 on `f72d7d2` through the staging pull request #16, 2026-10-05, green on Ubuntu, macOS and `system-python`; then 37309099015 on `f72d7d2`, the push of 5.0.0 to `main`, green on all three.
 
+The 5.1.0 runs: 37793619120 on `4fa3fcf` through the staging pull request #17, 2026-10-08, green on Ubuntu, macOS and `system-python` (now running the sweep suite under Python 3.9); then 37794811393 on `4fa3fcf`, the push of 5.1.0 to `main`, green on all three.
+
 | Field | ubuntu-latest | macos-latest |
 | --- | --- | --- |
 | Operating system | Ubuntu 24.04.5 LTS, x64 (image `ubuntu-24.04` 20260907.300.1) | macOS 26.6.2 (25G83), arm64 (image `macos-26-arm64` 20260907.0351.1) |
