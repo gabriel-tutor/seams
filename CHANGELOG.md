@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (5.1.0)
+## 5.1.0 — 2026-10-08
 
 - **Finished worktrees are swept.** Worktrees stayed on disk after their work landed: a pull request's or a kept branch's, and any made beside the repository by other tools (one project held 126, 45 GB). `finishing-a-development-branch` now sweeps after every local merge, and on request: `scripts/sweep_worktrees.py` lists the repository's worktrees that are clean and whose work is in the base branch or whose pull request was merged at that very commit, wherever they live, never the main, current or a locked one, one just made, or one holding ignored files a build doesn't regenerate (removal deletes ignored files), and removes only the ones you choose, without force, deleting a fully merged branch with `-d`. When a repository has more than ten worktrees, the session start tells you, at no cost to Claude's context.
 
