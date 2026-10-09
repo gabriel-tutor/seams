@@ -1,9 +1,9 @@
 # Progress: pr-review faster, the same quality
 
-Status: active
+Status: done
 Stage: deployed
-Next: 5.2.0 is on local main at 7a0ff74 and installed (seams@seams 5.2.0, read in place); not pushed, at the user's word ("let's go local, then install it"). Owed: a live before/after batch timing (a posting run, asked first).
-Updated: 2026-10-09
+Next: None. 5.2.0 released 2026-10-10: origin/main and tag v5.2.0 at d190be8, CI green (staging PR #18, run 37960155232; main, run 37961135973). Still owed: a live before/after batch timing (a posting run, asked first).
+Updated: 2026-10-10
 
 ## Decisions
 
