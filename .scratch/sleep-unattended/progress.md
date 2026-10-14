@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Slices 1-2 committed on seams-5.3/sleep-unattended (from e96818a): the Unattended mode rule, pointers, the session-start notice, the subagent-start brief, the gate's per-builder route. Slice 3 next: the personal sleep-mode skill (launcher sets SEAMS_UNATTENDED=1, heartbeat runs one builder per ticket through the full flow, the merge bar of decision 6, the morning list of auto-answers).
+Next: Built on seams-5.3/sleep-unattended (from e96818a; Seams side at 65556e4) and in ~/.claude/skills/sleep-mode. Next: the review of e96818a..HEAD (code-review, security: the gate), fixes, the definition of done, then 5.3.0.
 Updated: 2026-10-14
 
 ## Decisions
@@ -27,6 +27,8 @@ Updated: 2026-10-14
 9. Gabriel confirmed on 2026-10-14: build it through seams:implement in a new worktree, .worktrees/sleep-unattended from main, test first; then the personal sleep-mode skill; then 5.3.0, each push asked.
 
 10. Mine, in the build: writing the spec and tickets into the project's own issue tracker is part of the unattended flow; the publish gate is a package, release or site. using-git-worktrees stays byte-identical to its Superpowers original, so the rule names its stop (a worktree's consent) instead of a pointer in it.
+
+11. Slice 3, in ~/.claude/skills/sleep-mode (not a repository; .bak-2026-10-14 beside each changed file): sleepclaude sets SEAMS_UNATTENDED=1 (pinned in tests/test_launch.py); SKILL.md's step 0 checks it, one builder per ticket runs the full flow in its own worktree, the handover check reads the flow's evidence, merges follow decision 6, and the morning summary lists every Auto-answered line.
 
 ## Open questions
 
