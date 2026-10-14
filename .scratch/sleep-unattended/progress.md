@@ -14,9 +14,11 @@ Updated: 2026-10-14
 4. Builders (Gabriel's choice): one builder per ticket, in its own worktree, running the full route its size needs (grill; spec and tickets for a feature; implement with tdd; the reviews; verification), ending in a pull request; the heartbeat starts builders, checks their evidence and keeps the morning record.
 5. Enforcement (Gabriel's choice): in unattended mode the gate requires each builder to invoke a routing skill itself before editing project files (today the main session's route covers every subagent), and a builder's handover is checked for verification-before-completion's evidence, since the done-check doesn't run in a subagent.
 
+6. Merge bar (Gabriel's choice): a pull request merges into develop overnight only when its builder ran the full flow and the evidence is on disk: Seams' definition of done met row by row, an independent code-review and the principal-engineer checklist with every Jira point MET, CI green on the exact head, up to date with develop, and its owner's acceptance where the card names one; anything short stays merge-ready for the morning.
+
 ## Open questions
 
-- The overnight merge bar.
+- Test seams.
 
 ## Facts
 
