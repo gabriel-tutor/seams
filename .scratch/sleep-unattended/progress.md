@@ -10,11 +10,12 @@ Updated: 2026-10-14
 1. Answers (Gabriel's choice, 2026-10-14): overnight, every question a Seams skill would ask, product and business calls included, takes its recommended option; each one is recorded as auto-answered for his morning review.
 2. Scope (Gabriel's choice): his own sleep mode first (~/.claude/skills/sleep-mode), proven over a night or two; the team's /clarewood:sleep-mode follows in a later PR. The user's standing rules hold: build in a worktree, never in place; don't ruin pr-review.
 
+3. Where (Gabriel's choice): Seams gains an unattended mode, on only when the launcher sets it; every stop in every skill takes its recommended option and is written to the feature's progress file as auto-answered; the hard gates (push to main, deploy, publish, paid runs, discards) still never happen. A Seams release, 5.3.0.
+4. Builders (Gabriel's choice): one builder per ticket, in its own worktree, running the full route its size needs (grill; spec and tickets for a feature; implement with tdd; the reviews; verification), ending in a pull request; the heartbeat starts builders, checks their evidence and keeps the morning record.
+5. Enforcement (Gabriel's choice): in unattended mode the gate requires each builder to invoke a routing skill itself before editing project files (today the main session's route covers every subagent), and a builder's handover is checked for verification-before-completion's evidence, since the done-check doesn't run in a subagent.
+
 ## Open questions
 
-- Where the unattended rule lives (Seams itself, or the sleep-mode skill only).
-- Who runs the flow for a ticket (one builder per ticket, the whole flow, in its own worktree).
-- Whether Seams' gate enforces the flow for builders.
 - The overnight merge bar.
 
 ## Facts
