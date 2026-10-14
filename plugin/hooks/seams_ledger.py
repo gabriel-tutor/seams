@@ -273,14 +273,16 @@ def subagent_of(declaration: dict) -> str | None:
     return agent if isinstance(agent, str) and agent else None
 
 
-def declared_for(ledger: dict, agent_id: object = None) -> bool:
+def declared_for(ledger: dict, agent_id: object = None, unattended: bool = False) -> bool:
     """Whether a call is covered: by the main conversation's declarations, which cover every call, a subagent's
     included, or by the calling subagent's own, which cover it alone. So a parallel run's builder never opens the
-    gate for the main conversation (user story 48). Declarations that are not a list, and entries that are not objects,
-    open nothing: a damaged ledger is never a route."""
+    gate for the main conversation (user story 48). Unattended (overnight), a subagent is covered by its own
+    declaration only: every builder routes its own work. Declarations that are not a list, and entries that are not
+    objects, open nothing: a damaged ledger is never a route."""
     caller = agent_id if isinstance(agent_id, str) and agent_id else None
+    owners = (caller,) if unattended and caller else (None, caller)
     for d in _listed(ledger, "declarations"):
-        if isinstance(d, dict) and subagent_of(d) in (None, caller):
+        if isinstance(d, dict) and subagent_of(d) in owners:
             return True
     return False
 

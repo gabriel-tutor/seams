@@ -9,6 +9,8 @@ Turn the current conversation into a spec and publish it to the project's issue 
 
 **Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
 
+**Unattended mode** (`SEAMS_UNATTENDED=1`): each question below takes its recommended option, recorded as auto-answered, and a hard gate parks the work instead, as the shared rules' Unattended mode says (`${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`).
+
 ## Gate
 
 Start at once, with no opening question, when the flow reached this skill from a confirmed design (shared rules: The continuous flow), or when the user's last message asks for a spec or says yes to an offer to write one. Otherwise, before reading anything, ask "Write the spec now?" with AskUserQuestion, recommended answer first, and wait for a yes; a general go-ahead such as "let's get going" or "next" is not a request for a spec.

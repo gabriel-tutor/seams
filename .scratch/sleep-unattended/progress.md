@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: seams:implement in .worktrees/sleep-unattended (branch seams-5.3/sleep-unattended from main): slice 1 the unattended rule and switch, slice 2 the gate's per-builder route, slice 3 the personal sleep-mode skill; then the reviews and 5.3.0.
+Next: Slices 1-2 committed on seams-5.3/sleep-unattended (from e96818a): the Unattended mode rule, pointers, the session-start notice, the subagent-start brief, the gate's per-builder route. Slice 3 next: the personal sleep-mode skill (launcher sets SEAMS_UNATTENDED=1, heartbeat runs one builder per ticket through the full flow, the merge bar of decision 6, the morning list of auto-answers).
 Updated: 2026-10-14
 
 ## Decisions
@@ -25,6 +25,8 @@ Updated: 2026-10-14
    - Release as Seams 5.3.0 (staging PR, CI, main and tag each asked when they come); the personal sleep-mode skill changes with backups beside each file.
 
 9. Gabriel confirmed on 2026-10-14: build it through seams:implement in a new worktree, .worktrees/sleep-unattended from main, test first; then the personal sleep-mode skill; then 5.3.0, each push asked.
+
+10. Mine, in the build: writing the spec and tickets into the project's own issue tracker is part of the unattended flow; the publish gate is a package, release or site. using-git-worktrees stays byte-identical to its Superpowers original, so the rule names its stop (a worktree's consent) instead of a pointer in it.
 
 ## Open questions
 

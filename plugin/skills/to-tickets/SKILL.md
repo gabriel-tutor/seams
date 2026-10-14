@@ -9,6 +9,8 @@ Break a spec, a plan or the current conversation into a set of **tickets**: trac
 
 **Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
 
+**Unattended mode** (`SEAMS_UNATTENDED=1`): each question below takes its recommended option, recorded as auto-answered, and a hard gate parks the work instead, as the shared rules' Unattended mode says (`${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`).
+
 ## Gate
 
 The source is the spec that was just published, or the one the user names (a spec path, an issue, or the conversation). Start at once, with no opening question, when the flow reached this skill from a confirmed design (shared rules: The continuous flow), or when the user's last message asks for tickets, says yes to an offer to write them, or asks to build a spec they call agreed. Otherwise confirm the source and ask "Split it into tickets now?" with AskUserQuestion, recommended answer first, and wait for a yes.

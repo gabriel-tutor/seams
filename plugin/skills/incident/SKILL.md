@@ -9,6 +9,8 @@ An outage or degradation that users feel now. Contain and restore come before di
 
 **Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
 
+**Unattended mode** (`SEAMS_UNATTENDED=1`): each question below takes its recommended option, recorded as auto-answered, and a hard gate parks the work instead, as the shared rules' Unattended mode says (`${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`).
+
 ## Impact
 
 Establish three facts before touching anything, read-only, from the platform, the repo and the user:

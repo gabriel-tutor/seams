@@ -11,6 +11,8 @@ Take an integrated candidate to its target and prove that exact candidate is wha
 
 **Repository facts.** The Seams hook adds them as this skill starts (shared rules: Repository facts).
 
+**Unattended mode** (`SEAMS_UNATTENDED=1`): each question below takes its recommended option, recorded as auto-answered, and a hard gate parks the work instead, as the shared rules' Unattended mode says (`${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`).
+
 ## Gate
 
 Establish three facts, from the repo where the repo can answer (facts are not questions):

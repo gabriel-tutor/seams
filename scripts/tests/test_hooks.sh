@@ -207,6 +207,7 @@ STEPS = [
      "`seams:implement` starts outside a git repository"),
     ("PostToolUse", skill("seams:verification-before-completion"), None, ""),
     ("Stop", {"stop_hook_active": False}, None, ""),        # the verification was recorded
+    ("SubagentStart", {"agent_id": "b1", "agent_type": "general-purpose"}, None, ""),   # by day it briefs no one
 ]
 assert set(hooks) == {event for event, *_ in STEPS}, f"the config's events changed: {sorted(hooks)}"
 

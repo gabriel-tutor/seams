@@ -17,6 +17,8 @@ Build what a spec, a ticket or an agreed design describes: tests first at the ag
 
 **Parallel tickets.** `${CLAUDE_SKILL_DIR}/references/parallel.md`: read this when two or more tickets are unblocked, before the gate's question, and to resume a parallel run.
 
+**Unattended mode** (`SEAMS_UNATTENDED=1`): each question below takes its recommended option, recorded as auto-answered, and a hard gate parks the work instead, as the shared rules' Unattended mode says (`${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`).
+
 ## Gate
 
 Before reading the work, settle which spec, ticket or design you build, and where, asking only what nothing settled. The flow (shared rules: The continuous flow) brings the next unblocked ticket, or the parallel offer when two or more are; where is what the user said, else the branch the last record names, else what the confirmation recorded. Otherwise offer a worktree through `seams:using-git-worktrees` (shared rules: Worktrees), which asks for consent, or the current branch, and wait for the answer. A ticket resumed as its progress file records skips this (Resuming, below).

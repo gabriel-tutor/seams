@@ -376,6 +376,12 @@ def handle(event: dict) -> dict:
         sweep = None
     if sweep:
         output["systemMessage"] = "\n".join(filter(None, (output.get("systemMessage"), sweep)))
+    if os.environ.get("SEAMS_UNATTENDED") == "1":      # set by a launcher such as sleep mode's
+        output["hookSpecificOutput"]["additionalContext"] += (
+            "\n\n## Unattended mode is on\nNo one will answer questions in this session: follow the shared rules' "
+            f"Unattended mode ({PLUGIN}/skills/using-matt-pocock-skills/references/rules.md).")
+        output["systemMessage"] = "\n".join(filter(None, (output.get("systemMessage"),
+            "Seams: unattended mode is on: questions take their recommended option, recorded as auto-answered.")))
     return output
 
 

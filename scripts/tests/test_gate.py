@@ -1111,6 +1111,23 @@ class SubagentDeclarations(unittest.TestCase):
         self.assertFalse(self.allowed(), "a typed message never borrows a builder's route")
         self.assertTrue(self.allowed("builder-1"))
 
+    def test_unattended_a_builder_needs_its_own_route(self):
+        # Overnight (SEAMS_UNATTENDED=1, set by the sleep-mode launcher) every builder runs the flow itself: the main
+        # conversation's route no longer covers a subagent's edits, so a builder that skipped its routing skill is
+        # refused, and the refusal says what to invoke (.scratch/sleep-unattended, decision 5).
+        seams_ledger.add_declaration(self.ledger, "seams:implement")
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            self.assertTrue(self.allowed(), "the main conversation keeps its own route")
+            edit = event("Edit", agent_id="builder-1", file_path="/proj/src/a.ts", old_string="a", new_string="b")
+            refused = gate.decide_pre_tool_use(edit, self.ledger)
+            self.assertEqual(refused["decision"], "deny")
+            self.assertIn("unattended", refused["reason"])
+            seams_ledger.add_declaration(self.ledger, "tdd", "builder-1")
+            self.assertTrue(self.allowed("builder-1"))
+            self.assertFalse(self.allowed("builder-2"))
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": ""}):
+            self.assertTrue(self.allowed("builder-2"), "by day the main conversation's route covers a subagent, as before")
+
     def test_a_typed_skill_still_declares_its_request_when_a_subagent_declared_the_same_skill(self):
         # The prompt hook first, then the prompt's own expansion: a subagent's declaration of the same skill is not
         # this request's.

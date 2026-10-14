@@ -11,6 +11,8 @@ This is Matt Pocock's grilling, presented as clickable questions, every independ
 
 **Repository facts.** The Seams hook adds them as this skill starts (shared rules: Repository facts).
 
+**Unattended mode** (`SEAMS_UNATTENDED=1`): each question below takes its recommended option, recorded as auto-answered, and a hard gate parks the work instead, as the shared rules' Unattended mode says (`${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`).
+
 ## Method
 
 1. Invoke Matt Pocock's `grilling` skill with the Skill tool, and follow its method exactly:

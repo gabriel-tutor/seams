@@ -249,6 +249,12 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
     change = change_for_event(event, config_dir)
     if change is None:
         return {"decision": "allow", "reason": None, "change": None}
-    if not declared_for(ledger, event.get("agent_id")):
+    unattended = os.environ.get("SEAMS_UNATTENDED") == "1"
+    if not declared_for(ledger, event.get("agent_id"), unattended):
+        if unattended and event.get("agent_id"):
+            return {"decision": "deny", "change": None, "reason": (
+                f"{REFUSAL_PREFIX}unattended mode: a builder routes its own work. Invoke the skill your ticket's size "
+                f"needs first (seams:grill, then tdd or seams:implement; seams:trivial for a typo), then change "
+                f"{describe(change)}.")}
         return {"decision": "deny", "reason": deny_reason(change), "change": None}
     return {"decision": "allow", "reason": None, "change": change}
