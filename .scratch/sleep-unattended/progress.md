@@ -1,8 +1,8 @@
 # Progress: sleep mode runs the full Seams flow unattended
 
 Status: active
-Stage: designing
-Next: Gabriel's confirmation; then seams:implement in a worktree (.worktrees/sleep-unattended from main), then the personal sleep-mode skill, then 5.3.0.
+Stage: designed
+Next: seams:implement in .worktrees/sleep-unattended (branch seams-5.3/sleep-unattended from main): slice 1 the unattended rule and switch, slice 2 the gate's per-builder route, slice 3 the personal sleep-mode skill; then the reviews and 5.3.0.
 Updated: 2026-10-14
 
 ## Decisions
@@ -24,9 +24,11 @@ Updated: 2026-10-14
    - A builder whose ticket fails its gate after the review-fix loop parks it BLOCKED with the evidence, rather than looping.
    - Release as Seams 5.3.0 (staging PR, CI, main and tag each asked when they come); the personal sleep-mode skill changes with backups beside each file.
 
+9. Gabriel confirmed on 2026-10-14: build it through seams:implement in a new worktree, .worktrees/sleep-unattended from main, test first; then the personal sleep-mode skill; then 5.3.0, each push asked.
+
 ## Open questions
 
-- None; Gabriel's confirmation.
+- None.
 
 ## Facts
 
