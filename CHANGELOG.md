@@ -1,5 +1,15 @@
 # Changelog
 
+## 5.3.0 — 2026-10-14
+
+- **Unattended mode** ([ADR 0007](docs/adr/0007-unattended-mode.md)). Overnight runs had no process: builders skipped the flow, since the main conversation's route covered every subagent, and the flow's questions waited for no one. When a launcher sets `SEAMS_UNATTENDED=1` (sleep mode's does):
+  - every stop of the continuous flow takes the skill's recommended option, product calls included, and records it in the feature's progress file under `## Auto-answered` for the morning; pull requests, comments, cards and files stay evidence, never answers;
+  - the hard gates park the work instead: a push to main or master, a deploy, publishing a package, release or site, installing software, a paid run, anything destructive;
+  - each builder must route its own work at the gate, and a new SubagentStart hook briefs it, while pr-review's own reviewers and take-over fixers stay covered by its route;
+  - the session start says the mode is on.
+
+  Day sessions don't change: without the variable the hooks behave as before.
+
 ## 5.2.0 — 2026-10-09
 
 `/pr-review` is faster at the same bar: every check still runs on the pull request's tree, findings are still proven, and nothing posts that is not fully verified.

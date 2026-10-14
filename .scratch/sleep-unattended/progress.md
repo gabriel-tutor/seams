@@ -1,8 +1,8 @@
 # Progress: sleep mode runs the full Seams flow unattended
 
 Status: active
-Stage: designed
-Next: The review's findings are fixed on seams-5.3/sleep-unattended (from e96818a) and in ~/.claude/skills/sleep-mode. Next: the definition of done, then 5.3.0 (staging PR, CI, main and tag each asked).
+Stage: built
+Next: Built on seams-5.3/sleep-unattended (from e96818a), reviewed, findings fixed at 1945197, version 5.3.0; the personal sleep mode changed in ~/.claude/skills/sleep-mode. Next: seams:release for 5.3.0 (staging PR for CI, then main and tag, each asked); the team's sleep mode follows in a later PR (decision 2).
 Updated: 2026-10-14
 
 ## Decisions
