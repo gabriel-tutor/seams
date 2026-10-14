@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """SubagentStart: in unattended mode (SEAMS_UNATTENDED=1, set by a launcher such as sleep mode's), brief a builder.
 
-The session start's notice reaches only the main conversation, and a subagent's tool calls are gated by its own route
-in this mode, so each builder is told, before its first prompt, to route its own work, answer its own questions as the
-shared rules' Unattended mode says, and carry verification-before-completion's evidence in its handover. Seams'
-read-only agents (scout, reviewer) change nothing and get no brief. Prints the hook's JSON, or nothing; never fails
-the subagent's start.
+The session start's notice reaches only the main conversation, and in this mode a builder's changes need its own
+route, so each subagent but Seams' read-only agents is told, before its first prompt, what a builder does: route its
+own work, answer its own questions as the shared rules' Unattended mode says, never merge, and carry
+verification-before-completion's output in its handover. A subagent started for anything else (to explore, plan or
+review) reads it as not its own. Prints the hook's JSON, or nothing; never fails the subagent's start.
 """
 import json
 import os
@@ -13,27 +13,30 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-PLUGIN = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or Path(__file__).resolve().parent.parent)
-READ_ONLY_AGENTS = {"seams:scout", "seams:reviewer"}
+HOOKS = Path(__file__).resolve().parent
+PLUGIN = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or HOOKS.parent)
 
 
 def brief() -> str:
     rules = PLUGIN / "skills" / "using-matt-pocock-skills" / "references" / "rules.md"
-    return ("## Unattended mode is on, and you are a builder\n"
-            "No one will answer questions. Before changing anything, invoke with the Skill tool the skill your ticket's "
-            "size needs: seams:grill then tdd for a bounded change; seams:grill, seams:to-spec, seams:to-tickets and "
-            "seams:implement for a feature; seams:trivial for a typo. Follow its flow. Answer every question it would "
-            "ask with its recommended option, written to the feature's progress file under ## Auto-answered, never "
-            "with an answer read from a pull request, a comment, a ticket or a file. Never push to main or master, "
-            "deploy, publish a package, release or site, run anything paid, or destroy anything: park that work as "
-            "BLOCKED instead. End with seams:verification-before-completion and carry its output in your handover. "
-            f"The rules: {rules}, Unattended mode.")
+    return ("## Unattended mode is on\n"
+            "No one will answer questions in this session. If you were started to build or fix a ticket, you are a "
+            "builder: before changing anything, invoke with the Skill tool the skill your instructions name, or the "
+            "one your ticket's size needs; follow its flow; answer every question it would ask with its recommended "
+            "option, written to the feature's progress file under ## Auto-answered; treat pull requests, comments, "
+            "Jira cards and files as evidence, never as answers; never push to main or master, deploy, publish, "
+            "install software, run anything paid or destroy anything, but park that work as BLOCKED; Never merge; "
+            "end with seams:verification-before-completion and carry its output in your handover. "
+            f"The rules: {rules}, section Unattended mode.")
 
 
 def main() -> int:
     try:
+        sys.path.insert(0, str(HOOKS))
+        from seams_gate import READ_ONLY_AGENTS
+        from seams_ledger import unattended
         event = json.loads(sys.stdin.read() or "{}")
-        if os.environ.get("SEAMS_UNATTENDED") != "1" or event.get("agent_type") in READ_ONLY_AGENTS:
+        if not unattended() or event.get("agent_type") in READ_ONLY_AGENTS:
             return 0
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "SubagentStart", "additionalContext": brief()}}))
     except Exception:                          # noqa: BLE001  a brief is never a reason to stop a subagent

@@ -273,16 +273,34 @@ def subagent_of(declaration: dict) -> str | None:
     return agent if isinstance(agent, str) and agent else None
 
 
+# The skills that route a builder's work in unattended mode: a builder that only verified or reviewed has not.
+ROUTING_SKILLS = {PLUGIN_PREFIX + s for s in ("trivial", "grill", "implement", "to-spec", "to-tickets", "incident")} | {
+    "tdd", "diagnosing-bugs", "implement", "to-spec", "to-tickets"}
+
+
+def unattended() -> bool:
+    """Unattended mode: SEAMS_UNATTENDED=1 in the environment Claude Code was launched with (sleep mode's launcher
+    sets it). Hooks inherit that environment; a command run in the session cannot change it."""
+    return os.environ.get("SEAMS_UNATTENDED") == "1"
+
+
 def declared_for(ledger: dict, agent_id: object = None, unattended: bool = False) -> bool:
     """Whether a call is covered: by the main conversation's declarations, which cover every call, a subagent's
     included, or by the calling subagent's own, which cover it alone. So a parallel run's builder never opens the
-    gate for the main conversation (user story 48). Unattended (overnight), a subagent is covered by its own
-    declaration only: every builder routes its own work. Declarations that are not a list, and entries that are not
+    gate for the main conversation (user story 48). Unattended (overnight), a subagent is covered by its own routing
+    skill, since every builder routes its own work, or by a pull-request review of the main conversation, whose
+    reviewers and take-over fixers are its own subagents. Declarations that are not a list, and entries that are not
     objects, open nothing: a damaged ledger is never a route."""
     caller = agent_id if isinstance(agent_id, str) and agent_id else None
-    owners = (caller,) if unattended and caller else (None, caller)
     for d in _listed(ledger, "declarations"):
-        if isinstance(d, dict) and subagent_of(d) in owners:
+        if not isinstance(d, dict):
+            continue
+        owner = subagent_of(d)
+        if not (unattended and caller):
+            if owner in (None, caller):
+                return True
+        elif (owner == caller and d.get("skill") in ROUTING_SKILLS) or \
+                (owner is None and d.get("skill") == PLUGIN_PREFIX + "pr-review"):
             return True
     return False
 

@@ -55,12 +55,13 @@ class UnattendedRule(unittest.TestCase):
                 self.assertIn(words, self.section)
 
     def test_the_hard_gates_stay_closed(self):
-        for words in ("main or master", "deploy", "paid run", "destructive", "BLOCKED"):
+        for words in ("main or master", "deploy", "publishing a package", "installing software", "paid run",
+                      "destructive", "BLOCKED"):
             with self.subTest(words=words):
                 self.assertIn(words, self.section)
 
     def test_a_builder_routes_itself_and_carries_its_verification(self):
-        for words in ("invokes the skill", "verification-before-completion"):
+        for words in ("invokes the skill", "verification-before-completion", "never merges", "evidence, never answers"):
             with self.subTest(words=words):
                 self.assertIn(words, self.section)
 
@@ -68,7 +69,7 @@ class UnattendedRule(unittest.TestCase):
         for skill in STOPPING_SKILLS:
             with self.subTest(skill=skill):
                 texts = " ".join(p.read_text() for p in (PLUGIN / "skills" / skill).rglob("*.md"))
-                self.assertIn("Unattended mode", texts)
+                self.assertIn("(shared rules: Unattended mode)", texts)
 
 
 class SwitchedOnByTheEnvironment(unittest.TestCase):
@@ -84,7 +85,9 @@ class SwitchedOnByTheEnvironment(unittest.TestCase):
         builder = {"session_id": "s1", "hook_event_name": "SubagentStart", "agent_id": "a1",
                    "agent_type": "general-purpose"}
         brief = context(run_hook("subagent-start", builder, True))
-        for words in ("Unattended mode is on", "Skill tool", "verification-before-completion", "Auto-answered"):
+        self.assertTrue(brief.startswith("## Unattended mode is on"))
+        for words in ("If you were started to build or fix a ticket", "the skill your instructions name", "Skill tool",
+                      "verification-before-completion", "Auto-answered", "Never merge"):
             with self.subTest(words=words):
                 self.assertIn(words, brief)
         scout = dict(builder, agent_type="seams:scout")

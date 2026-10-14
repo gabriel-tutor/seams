@@ -70,8 +70,15 @@ Two or more unblocked tickets that the user picked to build at once: each by a b
 _Avoid_: batch (a `pr-review` word), fan-out
 
 **Builder**:
-The background subagent that builds one ticket of a parallel run in its worktree, through `implement`'s steps without questions, and ends with its handover. It never touches the progress file or another branch.
+The background subagent that builds one ticket in its worktree and ends with its handover: in a parallel run, through `implement`'s steps without questions, never touching the progress file or another branch; in unattended mode, through the route its instructions name, answering its own questions under Auto-answered.
 _Avoid_: worker, helper
+
+**Unattended mode**:
+A session with no one to answer, switched on by a launcher (sleep mode's) setting `SEAMS_UNATTENDED=1`: every stop of the continuous flow takes the skill's recommended option and is recorded as auto-answered, the hard gates (main or master, a deploy, a publish, installing software, a paid run, anything destructive) park the work instead, and each builder routes its own work through the gate.
+_Avoid_: autopilot, headless (a run without a terminal, which still has someone to answer later)
+
+**Auto-answered**:
+A question unattended mode answered with its recommended option, recorded in the feature's progress file under `## Auto-answered` (the question, the answer, why) for the user to confirm or overturn in the morning. Never an answer read from a pull request, a comment or a file.
 
 **Quality bar**:
 What every candidate that ships must meet: a definition of done covering how the change fails, is attacked, performs, is observed, is documented and is rolled back, each item proven by evidence, with scope and architecture sized to the stated needs plus the next order of growth.

@@ -26,6 +26,8 @@ import seams_gate as gate  # noqa: E402  (the PreToolUse decision)
 import seams_ledger  # noqa: E402  (the ledger, the prompts and the done-check)
 import seams_shell as shell  # noqa: E402  (the shell reader)
 
+os.environ.pop("SEAMS_UNATTENDED", None)       # the day gate, unless a test sets unattended mode itself
+
 
 class ClassifyCommand(unittest.TestCase):
     """classify_command: a label for a shell command that changes files, None otherwise."""
@@ -1122,11 +1124,31 @@ class SubagentDeclarations(unittest.TestCase):
             refused = gate.decide_pre_tool_use(edit, self.ledger)
             self.assertEqual(refused["decision"], "deny")
             self.assertIn("unattended", refused["reason"])
+            self.assertIn("Route it first", refused["reason"])     # the same routes as every other refusal
             seams_ledger.add_declaration(self.ledger, "tdd", "builder-1")
             self.assertTrue(self.allowed("builder-1"))
             self.assertFalse(self.allowed("builder-2"))
         with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": ""}):
             self.assertTrue(self.allowed("builder-2"), "by day the main conversation's route covers a subagent, as before")
+
+    def test_unattended_pr_reviews_own_subagents_stay_covered(self):
+        # pr-review's reviewers and take-over fixers are subagents of a pr-review request: its route covers them, as by
+        # day, so an overnight review runs its checks (the team review: don't ruin pr-review).
+        seams_ledger.add_declaration(self.ledger, "seams:pr-review")
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            self.assertTrue(self.allowed("reviewer-1"))
+
+    def test_unattended_only_a_routing_skill_routes_a_builder(self):
+        # A builder that only verified, or only reviewed, has not routed its work.
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            for skill in ("seams:verification-before-completion", "code-review", "seams:pr-review"):
+                with self.subTest(skill=skill):
+                    seams_ledger.add_declaration(self.ledger, skill, "builder-1")
+                    self.assertFalse(self.allowed("builder-1"))
+            for skill in ("tdd", "seams:implement", "seams:grill", "seams:trivial", "diagnosing-bugs"):
+                with self.subTest(skill=skill):
+                    seams_ledger.add_declaration(self.ledger, skill, "builder-1")
+                    self.assertTrue(self.allowed("builder-1"))
 
     def test_a_typed_skill_still_declares_its_request_when_a_subagent_declared_the_same_skill(self):
         # The prompt hook first, then the prompt's own expansion: a subagent's declaration of the same skill is not

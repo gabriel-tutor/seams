@@ -171,7 +171,8 @@ def runs(base, event, fields, session, flags=()):
             done.append(subprocess.run([put(hook["command"]), *flags] + [put(a) for a in hook["args"]], cwd=proj,
                                        input=json.dumps(dict(fields, session_id=session, cwd=proj, hook_event_name=event)),
                                        capture_output=True, text=True, timeout=60,
-                                       env=dict(os.environ, CLAUDE_PLUGIN_ROOT=base)))
+                                       env={**{k: v for k, v in os.environ.items() if k != "SEAMS_UNATTENDED"},
+                                            "CLAUDE_PLUGIN_ROOT": base}))
     return done
 
 

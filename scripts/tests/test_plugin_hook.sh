@@ -2,6 +2,7 @@
 # The plugin's SessionStart hook, run against fixture homes, working directories and a
 # fixture copy of the plugin. The real ~/.claude is never touched.
 set -euo pipefail
+unset SEAMS_UNATTENDED   # the day hook: test_unattended.py covers what an unattended session adds
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HOOK="$REPO/plugin/hooks/session-start"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP" "$HOMES_BASE"' EXIT

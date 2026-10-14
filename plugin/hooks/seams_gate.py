@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import re
 
-from seams_ledger import PLUGIN_PREFIX, config_dir, declared_for, describe, ledger_root, temp_dir
+from seams_ledger import PLUGIN_PREFIX, config_dir, declared_for, describe, ledger_root, temp_dir, unattended
 
 # --- Project changes and the decision ------------------------------------------------------
 
@@ -249,12 +249,11 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
     change = change_for_event(event, config_dir)
     if change is None:
         return {"decision": "allow", "reason": None, "change": None}
-    unattended = os.environ.get("SEAMS_UNATTENDED") == "1"
-    if not declared_for(ledger, event.get("agent_id"), unattended):
-        if unattended and event.get("agent_id"):
-            return {"decision": "deny", "change": None, "reason": (
-                f"{REFUSAL_PREFIX}unattended mode: a builder routes its own work. Invoke the skill your ticket's size "
-                f"needs first (seams:grill, then tdd or seams:implement; seams:trivial for a typo), then change "
-                f"{describe(change)}.")}
-        return {"decision": "deny", "reason": deny_reason(change), "change": None}
+    overnight = unattended()
+    if not declared_for(ledger, event.get("agent_id"), overnight):
+        reason = deny_reason(change)
+        if overnight and event.get("agent_id"):
+            reason += (" In unattended mode a builder routes its own work: invoke the skill your instructions name, "
+                       "or the one your ticket's size needs, yourself.")
+        return {"decision": "deny", "reason": reason, "change": None}
     return {"decision": "allow", "reason": None, "change": change}

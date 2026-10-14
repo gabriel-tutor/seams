@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Built on seams-5.3/sleep-unattended (from e96818a; Seams side at 65556e4) and in ~/.claude/skills/sleep-mode. Next: the review of e96818a..HEAD (code-review, security: the gate), fixes, the definition of done, then 5.3.0.
+Next: The review's findings are fixed on seams-5.3/sleep-unattended (from e96818a) and in ~/.claude/skills/sleep-mode. Next: the definition of done, then 5.3.0 (staging PR, CI, main and tag each asked).
 Updated: 2026-10-14
 
 ## Decisions
@@ -29,6 +29,10 @@ Updated: 2026-10-14
 10. Mine, in the build: writing the spec and tickets into the project's own issue tracker is part of the unattended flow; the publish gate is a package, release or site. using-git-worktrees stays byte-identical to its Superpowers original, so the rule names its stop (a worktree's consent) instead of a pointer in it.
 
 11. Slice 3, in ~/.claude/skills/sleep-mode (not a repository; .bak-2026-10-14 beside each changed file): sleepclaude sets SEAMS_UNATTENDED=1 (pinned in tests/test_launch.py); SKILL.md's step 0 checks it, one builder per ticket runs the full flow in its own worktree, the handover check reads the flow's evidence, merges follow decision 6, and the morning summary lists every Auto-answered line.
+
+12. Take-overs overnight (Gabriel's choice, 2026-10-14, after the review): pr-review's take-over is auto-answered too, pushing to the pull request's own branch (never main); posting reviews stays allowed; installing software is a hard gate.
+13. Owner acceptance (Gabriel's choice): a card that names its owner's acceptance never merges overnight; it waits for Gabriel in the morning queue, whatever Jira says.
+14. The review, acted on (mine): pr-review's own subagents stay covered by its route; only a routing skill routes a builder; the brief is for builders only, defers to the skill its instructions name, says never merge and that comments are evidence; one unattended() helper; the refusal extends the gate's own; short pointers (shared rules: Unattended mode), pr-review's in its take-over reference and the rules' opening; glossary (Builder, Unattended mode, Auto-answered) and ADR 0007; the heartbeat sets each ticket's route, re-runs its gate and starts its own reviewer before a merge, and reads builders' worktree progress files; tests pass with or without SEAMS_UNATTENDED in the environment. Not built: refusing the switch outside bypass, since the hooks don't receive the permission mode (ADR 0007 records the remaining risk).
 
 ## Open questions
 

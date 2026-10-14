@@ -9,7 +9,7 @@ Break a spec, a plan or the current conversation into a set of **tickets**: trac
 
 **Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
 
-**Unattended mode** (`SEAMS_UNATTENDED=1`): each question below takes its recommended option, recorded as auto-answered, and a hard gate parks the work instead, as the shared rules' Unattended mode says (`${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`).
+**Unattended mode.** When no one is there to answer: (shared rules: Unattended mode), in `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`.
 
 ## Gate
 
