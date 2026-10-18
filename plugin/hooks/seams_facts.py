@@ -38,18 +38,19 @@ class GitSilent(Exception):
     """git could not run, or did not answer in time: the facts end with the reason."""
 
 
-def _git(cwd: str, *args: str) -> tuple:
+def _git(cwd: str, *args: str, timeout: Optional[float] = None) -> tuple:
     """(exit status, stdout, stderr) of `git <args>` in `cwd`. Raises GitSilent when git could not run or did not
-    answer within GIT_TIMEOUT. Its process group is killed with it, and the wait for its output after that is bounded
-    too, since a process that left the group may still hold the pipes."""
-    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", LC_ALL="C")
+    answer within `timeout` seconds (GIT_TIMEOUT by default). Its process group is killed with it, and the wait for its output after that is
+    bounded too, since a process that left the group may still hold the pipes. A partial clone fetches nothing."""
+    timeout = GIT_TIMEOUT if timeout is None else timeout
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1", LC_ALL="C")
     try:
         proc = subprocess.Popen(["git", *args], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, env=env, start_new_session=True)
     except OSError:
         raise GitSilent("git could not run here") from None
     try:
-        out, err = proc.communicate(timeout=GIT_TIMEOUT)
+        out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
@@ -59,7 +60,7 @@ def _git(cwd: str, *args: str) -> tuple:
             proc.communicate(timeout=DRAIN_TIMEOUT)
         except subprocess.TimeoutExpired:
             pass
-        raise GitSilent(f"git did not answer within {GIT_TIMEOUT} s") from None
+        raise GitSilent(f"git did not answer within {timeout:g} s") from None
     return proc.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 
 

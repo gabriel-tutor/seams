@@ -18,7 +18,7 @@ HOMES="$HOMES_BASE/$(printf '%0*d' $((46 - ${#HOMES_BASE})) 0 | tr 0 h)"; mkdir 
 # A fixture copy of the plugin whose bootstrap body is a known literal.
 FIX="$TMP/plugin"
 mkdir -p "$FIX/hooks" "$FIX/skills/using-matt-pocock-skills"
-cp "$HOOK" "$FIX/hooks/session-start"; cp "$REPO/plugin/hooks/seams_ledger.py" "$FIX/hooks/"
+cp "$HOOK" "$FIX/hooks/session-start"; cp "$REPO/plugin/hooks/seams_ledger.py" "$REPO/plugin/hooks/seams_facts.py" "$FIX/hooks/"
 cat > "$FIX/skills/using-matt-pocock-skills/SKILL.md" <<'MD'
 ---
 name: using-matt-pocock-skills
@@ -243,19 +243,20 @@ E=$(entries_of "$C")
 # The card holds pointers only (senior-overnight ticket 01): nothing of the file's sections is copied into it.
 [[ "$C" != *"A settled decision"* && "$C" != *"An open question"* ]] || fail "the card should copy no section of the file: $C"
 
-# The current branch and commit head the card (senior-overnight ticket 01), from the local repository: a branch at its
-# commit, a branch with no commit yet, a detached head; outside a repository, no such line.
+# The current branch and commit head the card's lines (senior-overnight ticket 01), after the sentence that frames them
+# as data, from the local repository: a branch at its commit, a branch alone before its first commit, a detached head;
+# outside a repository, no such line.
 gitc() { git -C "$1" -c user.name=t -c user.email=t@e "${@:2}"; }
 HEADED="$TMP/note-headed"; mkdir -p "$HEADED"; git -C "$HEADED" init -q -b trunk
 progress "$HEADED" gift-cards active designing 2026-09-20 "Ask the open questions."
-first_line() { note_of "$(out_field additionalContext <<< "$(start_out startup "$1")")" | head -1; }
-[[ $(first_line "$HEADED") == "Branch trunk, no commits yet." ]] || fail "an unborn branch should head the card: $(first_line "$HEADED")"
+first_line() { note_of "$(out_field additionalContext <<< "$(start_out startup "$1")")" | sed -n 2p; }
+[[ $(first_line "$HEADED") == "Branch trunk." ]] || fail "an unborn branch should head the card: $(first_line "$HEADED")"
 gitc "$HEADED" commit -q --allow-empty -m base; HEADED_SHA=$(git -C "$HEADED" rev-parse --short HEAD)
 [[ $(first_line "$HEADED") == "Branch trunk at $HEADED_SHA." ]] || fail "the branch and its commit should head the card: $(first_line "$HEADED")"
 git -C "$HEADED" checkout -q --detach
 [[ $(first_line "$HEADED") == "Detached HEAD at $HEADED_SHA." ]] || fail "a detached head should head the card: $(first_line "$HEADED")"
 NOREPO="$TMP/note-norepo"; progress "$NOREPO" gift-cards active designing 2026-09-20 "Ask the open questions."
-[[ $(first_line "$NOREPO") == "The progress files of this repository"* ]] || fail "outside a repository no branch line: $(first_line "$NOREPO")"
+[[ $(first_line "$NOREPO") == "- gift-cards: "* ]] || fail "outside a repository no branch line: $(first_line "$NOREPO")"
 
 # A stale record is flagged (senior-overnight ticket 01): its branch has commits newer than the file's last change (its
 # last commit, or its own edit when it differs from HEAD or isn't committed), or it hasn't changed in three days. Each
@@ -298,13 +299,14 @@ touch -t "$(python3 -c 'import time; print(time.strftime("%Y%m%d%H%M", time.loca
   || fail "a committed file's age is its last commit's, not its modification time: $(entry_of edited-old)"
 
 # The card reads only local sources (senior-overnight ticket 01): in a repository with a remote, the hook runs only local
-# git commands, none taking the index's optional lock, starts no network tool, and its Python opens no socket.
+# git commands, none taking the index's optional lock or fetching what a partial clone lacks, starts no network tool,
+# and its Python opens no socket.
 OFFLINE="$TMP/offline-bin"; mkdir -p "$OFFLINE"; REAL_GIT=$(command -v git); NETLOG="$TMP/offline.log"; : > "$NETLOG"
 cat > "$OFFLINE/git" <<SH
 #!/usr/bin/env bash
-args=("\$@"); i=0; locks=""
+args=("\$@"); i=0; locks=""; [[ "\${GIT_OPTIONAL_LOCKS:-}" == 0 && "\${GIT_NO_LAZY_FETCH:-}" == 1 ]] && locks=" nolocks"
 while [[ "\${args[i]}" == -* ]]; do
-  case "\${args[i]}" in -C|-c) i=\$((i + 2)) ;; --no-optional-locks) locks=" nolocks"; i=\$((i + 1)) ;; *) i=\$((i + 1)) ;; esac
+  case "\${args[i]}" in -C|-c) i=\$((i + 2)) ;; *) i=\$((i + 1)) ;; esac
 done
 echo "git \${args[i]}\$locks" >> "$NETLOG"; exec "$REAL_GIT" "\$@"
 SH
@@ -326,7 +328,7 @@ OUT=$(printf '{"source":"startup","cwd":"%s"}' "$TMP/offline" | PATH="$OFFLINE:$
 [[ $(entries_of "$(out_field additionalContext <<< "$OUT")") == "$COUPONS, stale (its branch has newer commits); next: "* ]] \
   || fail "the card should come out offline: $OUT"
 grep -q '^git log nolocks$' "$NETLOG" || fail "the offline check should have seen the hook's git commands: $(cat "$NETLOG")"
-[[ -z $(grep -v -E '^git (symbolic-ref|log|diff) nolocks$|^git worktree$' "$NETLOG") ]] \
+[[ -z $(grep -v -E '^git (symbolic-ref|log|status) nolocks$|^git worktree$' "$NETLOG") ]] \
   || fail "the card should run only local git commands and no network tool: $(sort -u "$NETLOG")"
 
 # The card's git work has a total time limit: with a git that takes 2 seconds a call and a dozen committed active
@@ -635,7 +637,7 @@ import json, re, sys
 out = json.loads(sys.argv[1])
 context = out["hookSpecificOutput"]["additionalContext"]
 entries = [l for l in context[context.index("## Work in progress"):].splitlines() if l.startswith("- ")]
-assert entries and entries[0].startswith("- pr-review batch: stage 3 pull requests"), entries   # the newest of three
+assert entries and entries[0].startswith("- pr-review batch: stage 3 pull requests"), entries   # the newest entry
 m = re.fullmatch(r"- pr-review batch: stage (.+), updated 2026-09-26; next: (.+) File: (.+)", entries[0])
 assert m, entries[0]
 for field in m.groups():
@@ -672,7 +674,7 @@ E=$(entries_of "$(out_field additionalContext <<< "$(batch_out startup "$RREPO" 
 
 # Guard: the longest note, from a cache-length plugin path, in a repository with a long path whose four features'
 # fields run past their caps, with and without a batch whose fields run past them too (the newest entry): what follows
-# the bootstrap stays under 1,500 characters, entries whole or left out, so the injection stays within the bootstrap's
+# the bootstrap stays under 1,500 characters, entries whole or by name only, so the injection stays within the bootstrap's
 # cap plus the note's, far under Claude Code's 10,000-character hook limit.
 BIG="$HOMES/$(printf '%0*d' 150 0 | tr 0 b)"; mkdir -p "$BIG"; git -C "$BIG" init -q
 for n in 1 2 3 4; do
@@ -689,18 +691,22 @@ for T in "$BT_BIG" "$NO_BATCH"; do
   for H in "$MP_HOME" "$PARTIAL_HOME"; do
     OUT=$(printf '{"source":"compact","cwd":"%s"}' "$BIG" | TMPDIR="$T" HOME="$H" CLAUDE_PLUGIN_ROOT="$ROOT120" "$REPO/plugin/hooks/session-start")
     python3 - "$OUT" "$([[ $T == "$BT_BIG" ]] && echo batch)" <<'PY' || fail "the injection with the longest note is over its caps (HOME=$H TMPDIR=$T)"
-import json, sys
+import json, re, sys
 context, batch = json.loads(sys.argv[1])["hookSpecificOutput"]["additionalContext"], sys.argv[2]
 at = context.index("\n\n## Work in progress")
 bootstrap, note = context[:at], context[at:]
 entries = [l for l in note.splitlines() if l.startswith("- ")]
-assert entries, "no entry fits"
-assert entries[0].startswith("- pr-review batch: ") == bool(batch), entries[:1]
+rest = [l for l in note.splitlines() if l.startswith("Also active")]
+m = re.fullmatch(r"Also active, by name only: (.+?)(?: \(and (\d+) more\))?\.|Also active: (\d+) more\.", rest[0]) if rest else None
+named, more = (m.group(1).split(", ") if m.group(1) else [], int(m.group(2) or m.group(3) or 0)) if m else ([], 0)
+listed = [e.split(": ")[0][2:] for e in entries] + named
+assert len(listed) + more == (5 if batch else 4), (listed, more)   # each one, in full, by name or counted
+assert listed[0] == "pr-review batch" if batch else listed[0].startswith("feature-4-"), listed[:1]
 assert len(bootstrap.encode()) <= 2900, f"bootstrap {len(bootstrap.encode())} bytes"
 assert len(note) < 1500, f"note {len(note)} characters"
 assert len(context) <= 2900 + 1500, f"injection {len(context)} characters"
 print(f"  {len(bootstrap.encode())} bytes of bootstrap + {len(note)} characters of note{' with a batch' if batch else ''}"
-      f" ({len(entries)} of {5 if batch else 4} entries) = {len(context)} characters")
+      f" ({len(entries)} of {5 if batch else 4} in full, {len(named)} by name) = {len(context)} characters")
 PY
   done
 done
@@ -727,7 +733,7 @@ assert (more > 0) == (count > 100), more
 print(f"  {count} active files: {len(full)} in full, {len(named)} by name, {more} more; note {len(note)} characters")
 PY2
 }
-for COUNT in 6 200; do
+for COUNT in 5 200; do
   MANY="$TMP/many-$COUNT"; mkdir -p "$MANY"; git -C "$MANY" init -q
   for n in $(seq 1 "$COUNT"); do
     progress "$MANY" "f$(printf '%03d' "$n")-$(printf '%0*d' 40 0 | tr 0 x)" active built \
@@ -736,6 +742,42 @@ for COUNT in 6 200; do
   progress "$MANY" "f999-$(printf '%0*d' 40 0 | tr 0 x)" done operated 2026-12-31 "Nothing left."   # newest, and done
   check_many "$MANY" "$COUNT"
 done
+
+# Names so long that not even one fits the room the full entries leave: the card counts them instead. Tuned to the
+# card's framing in a repository of a fixed-length path (the fixture homes'): if the framing changes, check that this
+# case still reaches the count.
+FALLBACK="$HOMES/fb-200"; mkdir -p "$FALLBACK"; git -C "$FALLBACK" init -q -b main
+for n in 1 2 3 4 5 6; do
+  progress "$FALLBACK" "$n$(printf '%0*d' 178 0 | tr 0 n)" active built "2026-09-0$n" "$(printf '%0*d' 200 0 | tr 0 x)"
+done
+python3 - "$(start_out startup "$FALLBACK")" <<'PY2' || fail "names too long for the room left should be counted, within the cap"
+import json, sys
+context = json.loads(sys.argv[1])["hookSpecificOutput"]["additionalContext"]
+note = context[context.index("\n\n## Work in progress"):]
+full = [l for l in note.splitlines() if l.startswith("- ")]
+assert len(note) < 1500 and len(full) == 1 and full[0].startswith("- 6nnn"), (len(note), [l[:8] for l in full])
+assert note.endswith("\nAlso active: 5 more."), note[-80:]
+PY2
+
+# What git prints is read whatever its bytes or its config: a path that isn't UTF-8 (in the index only: macOS refuses
+# the name on disk), a signed commit under log.showSignature, and a feature name that would be a glob to git (a?c
+# matching abc). Each card is whole and right.
+BYTES="$TMP/git-bytes"; dated_repo git-bytes; commit_at "$BYTES" 3600 record .scratch/coupons/progress.md
+git -C "$BYTES" update-index --add --cacheinfo 100644,"$(printf x | git -C "$BYTES" hash-object -w --stdin)",$'.scratch/\xff'
+[[ $(entry_of git-bytes) == "$COUPONS; next: "* ]] || fail "a path git prints that isn't UTF-8 should not cost the card: $(entry_of git-bytes)"
+if command -v ssh-keygen > /dev/null; then
+  SIGNED="$TMP/git-signed"; dated_repo git-signed; ssh-keygen -q -t ed25519 -N "" -f "$TMP/sign-key"
+  git -C "$SIGNED" add .scratch; gitc "$SIGNED" -c gpg.format=ssh -c user.signingkey="$TMP/sign-key.pub" commit -q -S -m signed
+  printf '[log]\n\tshowSignature = true\n' > "$TMP/sign-config"
+  C=$(GIT_CONFIG_GLOBAL="$TMP/sign-config" start_out startup "$SIGNED" | out_field additionalContext)
+  [[ $(note_of "$C" | sed -n 2p) == "Branch main at $(git -C "$SIGNED" rev-parse --short HEAD)." && $(entries_of "$C") == "$COUPONS; next: "* ]] \
+    || fail "log.showSignature should not reach the card: $(note_of "$C" | sed -n '2,3p')"
+fi
+GLOB="$TMP/git-glob"; mkdir -p "$GLOB"; git -C "$GLOB" init -q -b main
+progress "$GLOB" 'a?c' active built 2026-09-24 "Implement ticket 03."; progress "$GLOB" abc active built 2026-09-23 "Other."
+commit_at "$GLOB" $((4 * 86400)) old ':(literal).scratch/a?c/progress.md'; commit_at "$GLOB" 3600 new .scratch/abc/progress.md
+[[ $(entries_of "$(out_field additionalContext <<< "$(start_out startup "$GLOB")")" | head -1) == "- a?c: stage built, updated 2026-09-24, stale (its branch has newer commits, unchanged for 4 days); next: "* ]] \
+  || fail "a feature name should be a path to git, never a glob: $(entries_of "$(out_field additionalContext <<< "$(start_out startup "$GLOB")")")"
 
 # Worktrees pile up (worktree-sweep decision 1): over 10 in the repository, the user's notice says how many and points
 # to the sweep, from one `git worktree list`; Claude's context carries none of it, and 10 or fewer say nothing.
