@@ -2,12 +2,20 @@
 
 Status: active
 Stage: designed
-Next: seams:implement: tickets 01, 02 and 03 have no blockers (the parallel offer); then 04, 05, 06 and the 5.4.0 release.
+Next: A parallel run is under way (see ## Parallel): 01 and 02 by builders in their worktrees, 03 in the main session in ~/.claude/skills/sleep-mode (not a repository; backups beside each file).
+Ticket: 01, 02, 03
 Updated: 2026-10-18
 
 ## Spec
 
 .scratch/senior-overnight/spec.md (ready-for-agent)
+
+## Parallel
+
+Base: main at 23e302e, 2 at once
+- 01: building, branch senior-overnight/01-live-card, worktree .claude/worktrees/senior-overnight-01
+- 02: building, branch senior-overnight/02-claims-learning-reconcile, worktree .claude/worktrees/senior-overnight-02
+- 03: building in the main session, ~/.claude/skills/sleep-mode
 
 ## Tickets
 
@@ -43,6 +51,8 @@ Updated: 2026-10-18
 15. Gabriel confirmed on 2026-10-18: spec it (seams:to-spec), then the tickets (he approves the breakdown), then each ticket built in .worktrees/senior-overnight from main.
 
 16. The breakdown (Gabriel approved it, 2026-10-18): seven tickets under .scratch/senior-overnight/issues/, as listed above.
+
+17. Sends overnight (Gabriel's choice, 2026-10-18, amending 4): the project's ask rules on message sends stay, and an ask rule prompts even under a hook's allow, so overnight every WhatsApp, email and CRM send or record write is refused cleanly and drafted for the morning; no recipient list.
 
 ## Open questions
 
