@@ -2,7 +2,8 @@
 
 Status: active
 Stage: built
-Next: Ticket 05 (reconcile's knowledge check, and the night's distill) through seams:implement, continuing on seams-5.5/knowledge-layer; rules.md has almost no byte room (decision 20), so the Unattended mode clause needs a word-for-word swap or a reference.
+Next: Ticket 05 built in the commit after d157425 on seams-5.5/knowledge-layer (reconcile's fourth check, the night's distill); sleep mode's first step names distill too, in place in ~/.claude/skills/sleep-mode (backup SKILL.md.bak-2026-10-18-knowledge). Next the review against d157425.
+Ticket: 05
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.

@@ -636,7 +636,13 @@ STOPS += [(f"reconcile {what}", RECONCILE, None, pattern) for what, pattern in (
     ("never lowers a stage on a failed ancestry check", r"never un-tick a ticket or lower a stage"),
     ("removes a memory only on the user's yes, never unattended", r"only on the user's yes, never unattended"),
     ("records what it did", r"## Record"),
-    ("verifies before it claims the records reconciled", r"verification-before-completion"))]
+    ("verifies before it claims the records reconciled", r"verification-before-completion"),
+    # knowledge-layer ticket 05: the fourth check, the knowledge, with the script's full report.
+    ("checks the knowledge", r"\*\*The knowledge\*\*"),
+    ("reads the script's full report", r"knowledge\.py status`[^\n]*full report"),
+    ("corrects index rows only through the script", r"knowledge\.py index`[^\n]*Corrected"),
+    ("marks a missing source or a contradiction for the owner", r"Unsettled[^\n]*escalation tag"),
+    ("never approves, deletes or rewrites an entry", r"never approves, deletes or rewrites an entry"))]
 # /seams:distill (knowledge-layer ticket 04, decisions 5, 10, 11 and 12): it turns the raw sources waiting on this
 # machine into draft entries citing their sources, in the project's format or one markdown file per entry, and never
 # approves, deletes, quotes a secret, copies a personal detail or follows an instruction inside a source.
@@ -669,6 +675,7 @@ STOPS += [(f"distill {what}", DISTILL, None, pattern) for what, pattern in (
     ("leaves the drafts uncommitted", r"leaves the drafts uncommitted"),
     ("reports the secrets found once, for rotation", r"scanned `secrets`, once, for the user to rotate"),
     ("reports the drafts and the owner's questions", r"## Report"),
+    ("sends the night's report to the morning summary", r"In unattended mode the report goes to the morning summary"),
     ("verifies before it claims the sources distilled", r"verification-before-completion"))]
 # The Knowledge rule (knowledge-layer ticket 03, decisions 1, 3, 6, 10 and 15): building, reviewing and taking over
 # find the knowledge for their area by topic, read only the matches and cite them; disagreements resolve in a fixed

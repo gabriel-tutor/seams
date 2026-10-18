@@ -1,6 +1,6 @@
 ---
 name: reconcile
-description: Use when the records work relies on may have drifted (active progress files, the memories read, the card), and first each unattended night
+description: Use when the records work relies on may have drifted (active progress files, the memories read, the card, the knowledge), and first each unattended night
 ---
 
 # Reconcile
@@ -18,6 +18,7 @@ Re-check the records a piece of work relies on against git and the code, before 
    - each `## Facts` line that names a file and line still finds what it says there.
 2. **The memories the work reads**: the memory index the session start loaded and each memory file this work reads. One that names a file, a function, a flag, a commit, a version or a release is checked against the repository (`ls`, `grep`, `git tag`, `git log`). One about the user (a preference, a correction) is checked against the records and the code it bears on (a progress file's decisions, CLAUDE.md) and what the user said in this conversation, never against a guess; one with nothing to check it against is left as it is, unmarked.
 3. **The card**: each line the session start showed (its feature, stage, next step and stale flag) against the files and git now. The card is built from the files, so a wrong line is fixed in its file, never in the card.
+4. **The knowledge**, when the repository has a knowledge config (`docs/agents/knowledge.md`): run `python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/reconcile/scripts/knowledge.py status` (the full report, which hashes a source only when its size or time moved), then `knowledge.py index`: each row the script corrects (a moved or changed file, a rescan, a cited-by row) is Corrected, with the two reports as the command that settled it. What no command settles is Unsettled, marked for the owner under the config's escalation tag in the report, never in an entry: an entry citing a missing source, and a raw source newer than an approved entry that contradicts it. Sources changed since they were distilled are left for `seams:distill`. Reconcile never approves, deletes or rewrites an entry.
 
 ## Each finding
 

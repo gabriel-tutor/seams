@@ -68,7 +68,8 @@ class UnattendedRule(unittest.TestCase):
     def test_the_night_starts_by_reconciling_and_the_morning_lists_its_outward_claims(self):
         # senior-overnight ticket 02 (decisions 8 and 9): no builder starts on a stale record, and each claim the night
         # made to a person reaches the morning with what it rests on.
-        for words in ("starts with `seams:reconcile`**, before any builder starts", "the memories the night reads and the card are re-checked",
+        for words in ("starts with `seams:reconcile`, then `seams:distill`** (drafts only), before any builder starts",
+                      "the memories the night reads, the card and the knowledge are re-checked",
                       "under `## Outward claims`", "the morning summary lists them all, each with its source"):
             with self.subTest(words=words):
                 self.assertIn(words, self.section)
