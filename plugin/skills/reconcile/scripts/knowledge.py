@@ -105,6 +105,7 @@ CREDENTIALS = re.compile("|".join((
 BINARY = (".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".tif", ".tiff", ".zip", ".gz", ".mp3", ".m4a",
           ".mp4", ".mov", ".wav", ".docx", ".docm", ".doc", ".xlsx", ".xlsm", ".xls", ".pptx", ".ppt", ".odt", ".ods",
           ".odp", ".pages", ".numbers", ".key", ".epub", ".rtfd")
+ENTRY_BYTES = 1 << 20                              # an entry's citations are in its first megabyte
 SCAN_BYTES = 8 << 20                                # ceiling: a longer text file is "unscanned", never "clean"
 MAIL = re.compile(rb"(?im)^(?:mime-version:|content-transfer-encoding:[ \t]*(?:base64|quoted-printable))")
 MBOX_SPLIT = re.compile(rb"(?m)^(?=From )")         # a mailbox (a Gmail export): each message on its own
@@ -124,15 +125,41 @@ def git(cwd: str, *args: str, input: "str | None" = None) -> "subprocess.Complet
         return None
 
 
-def roots(cwd: str) -> "tuple[str, str]":
-    """(the worktree's root, the main checkout's root): the index and the entries are tracked, so they are read
-    where the session works; the inbox is gitignored, so it exists only in the main checkout."""
-    done = git(cwd, "rev-parse", "--show-toplevel", "--git-common-dir")
+def roots(cwd: str) -> "tuple[str, str, bool]":
+    """(the worktree's root, the main checkout's root, whether they belong together): the index and the entries are
+    tracked, so they are read where the session works; the inbox is gitignored, so it exists only in the main
+    checkout. A linked worktree's git directory must point back at it, and a checkout that isn't one must be its own
+    main checkout: a `.git` file naming another repository's git directory would otherwise read that one's inbox."""
+    done = git(cwd, "rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir")
     lines = done.stdout.splitlines() if done and done.returncode == 0 else []
     top = os.path.realpath(lines[0]) if lines else os.path.realpath(cwd)
-    common = os.path.abspath(os.path.join(cwd, lines[1])) if len(lines) > 1 else ""
-    main = os.path.dirname(common) if os.path.basename(common) == ".git" else top
-    return top, os.path.realpath(main)
+    if len(lines) < 3:
+        return top, top, True
+    gitdir, common = (os.path.realpath(os.path.join(cwd, line)) for line in lines[1:3])
+    main = os.path.realpath(os.path.dirname(common)) if os.path.basename(common) == ".git" else top
+    if gitdir == common:
+        return top, main, main == top
+    try:                                             # a linked worktree: its git directory names its .git file
+        back = read_text(os.path.join(gitdir, "gitdir"), "the worktree's git directory", limit=4096).strip()
+    except (OSError, KnowledgeError):
+        return top, main, False
+    return top, main, os.path.realpath(os.path.dirname(back)) == top
+
+
+def read_text(path: str, what: str, limit: "int | None" = None, strict: bool = True) -> str:
+    """A file's text, only when it is a regular file (never a pipe, a device or a link), at most `limit` bytes.
+    FileNotFoundError passes through; anything else it can't trust is a KnowledgeError."""
+    found = os.lstat(path)
+    if not stat_kind.S_ISREG(found.st_mode):
+        raise KnowledgeError(f"{what} isn't a regular file")
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read() if limit is None else handle.read(limit)
+        return data.decode("utf-8", errors="strict" if strict else "replace")
+    except ValueError:
+        raise KnowledgeError(f"{what} can't be read as UTF-8 text")
+    except OSError:
+        raise KnowledgeError(f"{what} can't be read")
 
 
 def inside(path: str, root: str) -> bool:
@@ -146,11 +173,9 @@ def listed(value: str) -> "list[str]":
 def read_config(top: str, main: str) -> "dict | None":
     path = os.path.join(top, CONFIG)
     try:
-        text = open(path, encoding="utf-8").read()
+        text = read_text(path, CONFIG)
     except FileNotFoundError:
         return None
-    except (OSError, ValueError):
-        raise KnowledgeError(f"{CONFIG} can't be read as UTF-8 text")
     block = re.search(r"^```knowledge\s*\n(.*?)^```", text, re.S | re.M)
     if not block:
         raise KnowledgeError(f"{CONFIG} has no ```knowledge block")
@@ -266,9 +291,9 @@ def entry_citations(config: dict, top: str) -> "dict[str, set]":
     cites = {}
     for home in listed(config["entries"]):
         for path, _ in files_under(os.path.join(top, home)):
-            try:
-                text = open(path, encoding="utf-8", errors="replace").read()
-            except OSError:
+            try:                                     # ceiling: an entry's first ENTRY_BYTES; entries are short
+                text = read_text(path, "an entry", limit=ENTRY_BYTES, strict=False)
+            except (OSError, KnowledgeError):
                 continue
             cites[os.path.relpath(path, top)] = set(SOURCE_ID.findall(text))
     return cites
@@ -282,11 +307,9 @@ SHAPES = {"id": str, "date": str, "topics": list, "scan": str, "cited_by": list,
 
 def read_rows(path: str, fields: "tuple[str, ...]", what: str) -> "dict[str, dict]":
     try:
-        lines = open(path, encoding="utf-8").read().splitlines()
+        lines = read_text(path, what).splitlines()
     except FileNotFoundError:
         return {}
-    except (OSError, ValueError):
-        raise KnowledgeError(f"{what} can't be read as UTF-8 text")
     rows = {}
     for number, line in enumerate(lines, 1):
         if not line.strip():
@@ -606,11 +629,9 @@ def journal_path(store: Store) -> str:
 
 def read_journal(store: Store) -> dict:
     try:
-        text = open(journal_path(store), encoding="utf-8").read()
+        text = read_text(journal_path(store), "the inbox's move journal")
     except FileNotFoundError:
         return {"folders": {}, "steps": []}
-    except (OSError, ValueError):
-        raise KnowledgeError("the inbox's move journal can't be read as UTF-8 text")
     inbox = os.path.normpath(store.config["inbox"])
 
     def under(path: object, root: str) -> bool:      # a relative, normal path inside root ("" is the repository)
@@ -923,8 +944,10 @@ def main(argv: "list[str]") -> int:
     if command not in ("status", "index", "distilled", "topics", "move"):
         print(f"knowledge.py: unknown command {command[:40]}", file=sys.stderr)
         return 1
-    top, main_root = roots(os.getcwd())
+    top, main_root, belongs = roots(os.getcwd())
     try:
+        if not belongs:
+            raise KnowledgeError("this checkout's .git points at another repository's, so its inbox isn't read")
         config = read_config(top, main_root)
         if config is None:
             print("Knowledge: no knowledge config here, so the layer is off.")

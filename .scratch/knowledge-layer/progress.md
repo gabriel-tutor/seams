@@ -2,7 +2,7 @@
 
 Status: active
 Stage: built
-Next: The parallel run is done (02, 03, 06 integrated). First the follow-ups recorded below (README's card clause; knowledge.py's three hardening points from ticket 02's security review), tests first, on seams-5.5/knowledge-layer; then ticket 04 (/seams:distill) through seams:implement, continuing here. Rules and implement have almost no byte room left (decision 20): 04's text goes in a reference.
+Next: Ticket 04 (/seams:distill) through seams:implement, continuing on seams-5.5/knowledge-layer. Rules and implement have almost no byte room left (decision 20): 04's text goes in a reference.
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -18,7 +18,7 @@ Base: seams-5.5/knowledge-layer at df502fa, 3 at once
 - 03: integrated at 8b389cc (suite 20/20 on the merge)
 - 06: integrated at d5681ef (suite 21/21 on the merge; a forged journal and a second run probed live)
 
-After the integrations: README.md's card paragraph gains a clause on the knowledge line (ticket 02's handover). From ticket 02's security review, in knowledge.py, which ticket 06 is changing now): cap the bytes read per entry file, at least under --quick; refuse a local file or index that isn't a regular file (a committed FIFO); require the main checkout to be the worktree's own (a .git file's gitdir pointing at another repository). Tests first.
+Done (after the integrations): README.md's card paragraph names the knowledge line; knowledge.py reads every file it trusts only when it is a regular file (never a pipe or a link), an entry's first megabyte at most, and refuses a checkout whose .git points at another repository's.
 
 ## Tickets
 

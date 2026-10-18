@@ -983,6 +983,52 @@ class KnowledgeTest(unittest.TestCase):
         self.assertTrue((self.repo / "mail" / "kept-empty").is_dir())
         self.assertFalse((self.repo / "mail" / "sub").exists())
 
+    # --- ticket 02's security review: knowledge.py's own boundaries --------------------------------------------------
+
+    def test_a_huge_entry_file_is_not_read_whole(self):
+        self.configure()
+        self.raw("2026-09-01-a.md")
+        self.run_script("index")
+        huge = self.repo / "docs" / "knowledge" / "entries" / "huge.md"
+        huge.parent.mkdir(parents=True)
+        with open(huge, "wb") as out:                     # sparse: 2 GiB on paper, nothing on disk
+            out.write(b"sources: src-0123456789\n")
+            out.truncate(2 << 30)
+        started = time.monotonic()
+        self.assertEqual(self.counts("--quick")["missing"], 1)
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_a_pipe_in_place_of_the_local_file_or_the_index_does_not_hang(self):
+        for name in ("docs/knowledge/raw/.knowledge-local.jsonl", "docs/knowledge/index.jsonl"):
+            with self.subTest(name=name):
+                self.configure()
+                self.raw("2026-09-01-a.md")
+                target = self.repo / name
+                if target.exists():
+                    target.unlink()
+                target.parent.mkdir(parents=True, exist_ok=True)
+                os.mkfifo(target)
+                out = self.run_script("status", "--quick", code=2, timeout=20)
+                self.assertEqual(len(out.strip().splitlines()), 1, out)
+                target.unlink()
+
+    def test_a_checkout_whose_git_file_points_at_another_repository_reads_nothing_of_it(self):
+        other = self.tmp / "other"
+        other.mkdir()
+        git(other, "init", "-q", "-b", "main")
+        (other / ".gitignore").write_text("docs/knowledge/raw/\n")
+        (other / "docs" / "agents").mkdir(parents=True)
+        (other / "docs" / "agents" / "knowledge.md").write_text(CONFIG)
+        (other / "docs" / "knowledge" / "raw").mkdir(parents=True)
+        (other / "docs" / "knowledge" / "raw" / "2026-09-01-private.md").write_text("theirs\n")
+        planted = self.tmp / "planted"
+        (planted / "docs" / "agents").mkdir(parents=True)
+        (planted / "docs" / "agents" / "knowledge.md").write_text(CONFIG)
+        (planted / ".git").write_text(f"gitdir: {other / '.git'}\n")
+        out = self.run_script("status", "--json", cwd=planted, code=2)
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+        self.assertNotIn("private", out)
+
 
 if __name__ == "__main__":
     unittest.main()
