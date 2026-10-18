@@ -2,8 +2,7 @@
 
 Status: active
 Stage: built
-Next: Ticket 05 built in the commit after d157425 on seams-5.5/knowledge-layer (reconcile's fourth check, the night's distill); sleep mode's first step names distill too, in place in ~/.claude/skills/sleep-mode (backup SKILL.md.bak-2026-10-18-knowledge). Next the review against d157425.
-Ticket: 05
+Next: Ticket 07, the release of Seams 5.5.0, through seams:release (push, main and the tag each asked; the client-detail scan of every commit first). Sleep mode's step 1 and morning list name distill, in place in ~/.claude/skills/sleep-mode (backups SKILL.md.bak-2026-10-18-knowledge and -knowledge2).
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -27,7 +26,7 @@ Done (after the integrations): README.md's card paragraph names the knowledge li
 - [x] 02 The start card's knowledge line (blocked by: 01)
 - [x] 03 The Knowledge rule, its pointers, the done row, and foundations' offer (blocked by: 01)
 - [x] 04 `/seams:distill` (blocked by: 01, 03)
-- [ ] 05 Reconcile's knowledge check, and the night's distill (blocked by: 04)
+- [x] 05 Reconcile's knowledge check, and the night's distill (blocked by: 04)
 - [x] 06 Moving existing raw material into the inbox (blocked by: 01)
 - [ ] 07 Release Seams 5.5.0 (blocked by: all)
 
@@ -65,6 +64,8 @@ The client project's own ticket (its config, `.gitignore` line, the move on Gabr
 23. The listing cap (Gabriel's choice, ticket 04): the plugin's listing may grow to 2,750 characters (about +33 tokens a session), so /seams:distill gets a real description and ticket 05 can name the knowledge check in reconcile's.
 
 24. Ticket 04 (mine, within the decisions): distill leaves its drafts and the index's changes uncommitted, for review in the team's own pull request; `knowledge.py pending` lists what waits as `<id>:<hash>`, and `distilled <id>:<hash>` refuses a source changed after it was read; pending keeps the stricter of the committed scan and a fresh one; drafts state requirements on the product, never steps for Claude; an approved entry wins over older sources, and only a newer one makes a successor draft. Live run: docs/plugin-behavior-tests.md, 5.5 ($0.53, every check held).
+
+25. Ticket 05 (mine, within the decisions): reconcile's knowledge check is mechanical (status, index, status again; Unsettled only for what the script can tell), and contradictions stay with distill, which reads the sources under its own rules; at night distill offers nothing; sleep mode's morning list names the night's reconcile and distill reports.
 
 ## Open questions
 
