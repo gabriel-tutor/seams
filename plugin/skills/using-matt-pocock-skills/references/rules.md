@@ -47,7 +47,7 @@ Evidence belongs to a candidate: the commit it ran on, with a clean tree. Eviden
 
 **Claims.** Every time, commit id, count or result ("passes", "unchanged") in a record or a message comes from a command run in the session, shown with its output, never from memory, an earlier session, a record or another agent's report; what no command showed is said as unknown, never estimated. A claim made to a person (a pull-request comment, a ticket reply, a report) cites its evidence: the command and the line of its output that shows it, or the file and line.
 
-**Learning.** What a session learns (a ruling given in chat, a preference, a correction) is written at once to its one home, by Where docs go, below, before the work goes on, with its source: who said it, where, and the date from `date +%F`. A fact already kept somewhere is updated there, never copied to a second home.
+**Learning.** What a session learns (a ruling given in chat, a preference, a correction) is written at once to its one home, by Where docs go, below, before the work goes on, with its source: who gave it (by role in a committed file: the user, a reviewer, a command's output), where, and the date from `date +%F`. A fact already kept somewhere is updated there, never copied to a second home.
 
 ## Worktrees
 

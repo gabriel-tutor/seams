@@ -614,8 +614,9 @@ STOPS += [(f"the shared rules' Evidence {what}", RULES, EVIDENCE, pattern) for w
     ("writes a lesson with its source", r"with its source"))]
 STOPS += [(f"the shared rules' Where docs go names {what} as a home", RULES, WHERE_DOCS, pattern) for what, pattern in (
     ("the progress file", r"its progress file"), ("Claude's memory of the user", r"Claude's memory of them"))]
-STOPS += [("the bootstrap sends each claim and lesson to the shared rules", BOOT, r"(?m)^4\. .*$",
-           r"each claim, each lesson\): `rules\.md`")]
+# The bug route passes through no Seams skill, so the pointer names a bug fix too (seams-revamp ticket 07, 05d756e).
+STOPS += [(f"the bootstrap sends {what} to the shared rules", BOOT, r"(?m)^4\. .*$", pattern) for what, pattern in (
+    ("a bug fix", r"\(bug fixes, "), ("each claim and lesson", r"claims, lessons\): `rules\.md`"))]
 # /seams:reconcile (ticket 02, decision 9) re-checks the records work relies on, by day or first each night: it checks
 # each active progress file against its branch and the code, the memories it reads and the card; it fixes only what a
 # command's output corrects, marks what none settles, records what it did, and never deletes what it couldn't check.
@@ -629,6 +630,9 @@ STOPS += [(f"reconcile {what}", RECONCILE, None, pattern) for what, pattern in (
     ("marks in place what no command settles", r"\*\*Unsettled\*\*[^\n]*mark it in place"),
     ("never deletes a record it couldn't check", r"Never delete a record you couldn't check"),
     ("changes nothing it can't verify", r"change nothing you can't verify"),
+    ("finds commits a file doesn't account for by ancestry, not by date", r"git rev-list --count <last>\.\.<branch>"),
+    ("never lowers a stage on a failed ancestry check", r"never un-tick a ticket or lower a stage"),
+    ("removes a memory only on the user's yes, never unattended", r"only on the user's yes, never unattended"),
     ("records what it did", r"## Record"),
     ("verifies before it claims the records reconciled", r"verification-before-completion"))]
 
