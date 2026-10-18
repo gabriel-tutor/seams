@@ -2,8 +2,8 @@
 
 Status: active
 Stage: designed
-Next: A parallel run is under way (see ## Parallel): 01 and 02 by builders in their worktrees, 03 in the main session in ~/.claude/skills/sleep-mode (not a repository; backups beside each file).
-Ticket: 01, 02, 03
+Next: A parallel run is under way (see ## Parallel): 01 by its builder in its worktree; 02 integrated; 03 and 04 built in ~/.claude/skills/sleep-mode (not a repository; backups beside each file). Then 05, through seams:implement.
+Ticket: 01
 Updated: 2026-10-18
 
 ## Spec
@@ -14,7 +14,7 @@ Updated: 2026-10-18
 
 Base: main at 23e302e, 2 at once
 - 01: building, branch senior-overnight/01-live-card, worktree .claude/worktrees/senior-overnight-01
-- 02: building, branch senior-overnight/02-claims-learning-reconcile, worktree .claude/worktrees/senior-overnight-02
+- 02: integrated at ca03bed (suite 19/19 on the merge)
 - 03: built in place in ~/.claude/skills/sleep-mode (61 guard tests pass on 3.14 and 3.9; review findings fixed; backups .bak-2026-10-18)
 
 ## Parallel note
@@ -24,7 +24,7 @@ Base: main at 23e302e, 2 at once
 ## Tickets
 
 - [ ] 01 The live card at every start (blocked by: none)
-- [ ] 02 Claims from commands, learning to its home, and /seams:reconcile (blocked by: none)
+- [x] 02 Claims from commands, learning to its home, and /seams:reconcile (blocked by: none)
 - [x] 03 The overnight guard's tool boundaries (blocked by: none)
 - [x] 04 The guard asks GitHub before a merge, and the two takeover modes (blocked by: 03)
 - [ ] 05 Sleep mode's takeover commands, nightly reconcile and independent checks (blocked by: 02, 04)
