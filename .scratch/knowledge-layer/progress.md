@@ -3,7 +3,7 @@
 Status: active
 Stage: built
 Next: A parallel run is under way (see ## Parallel): tickets 02, 03 and 06 by builders in their worktrees, integrated onto seams-5.5/knowledge-layer one at a time.
-Ticket: 02, 03, 06
+Ticket: 02, 06
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -16,7 +16,7 @@ This repository is public: no client names, people, cards or tools here. The cli
 
 Base: seams-5.5/knowledge-layer at df502fa, 3 at once
 - 02: building, branch knowledge-layer/02-card-knowledge-line, worktree .claude/worktrees/knowledge-layer-02
-- 03: building, branch knowledge-layer/03-knowledge-rule, worktree .claude/worktrees/knowledge-layer-03
+- 03: integrated at 8b389cc (suite 20/20 on the merge)
 - 06: building, branch knowledge-layer/06-move-raw-material, worktree .claude/worktrees/knowledge-layer-06
 
 After the integrations (from ticket 02's security review, in knowledge.py, which ticket 06 is changing now): cap the bytes read per entry file, at least under --quick; refuse a local file or index that isn't a regular file (a committed FIFO); require the main checkout to be the worktree's own (a .git file's gitdir pointing at another repository). Tests first.
@@ -25,7 +25,7 @@ After the integrations (from ticket 02's security review, in knowledge.py, which
 
 - [x] 01 The knowledge config and the knowledge index (blocked by: none)
 - [ ] 02 The start card's knowledge line (blocked by: 01)
-- [ ] 03 The Knowledge rule, its pointers, the done row, and foundations' offer (blocked by: 01)
+- [x] 03 The Knowledge rule, its pointers, the done row, and foundations' offer (blocked by: 01)
 - [ ] 04 `/seams:distill` (blocked by: 01, 03)
 - [ ] 05 Reconcile's knowledge check, and the night's distill (blocked by: 04)
 - [ ] 06 Moving existing raw material into the inbox (blocked by: 01)
@@ -55,6 +55,8 @@ The client project's own ticket (its config, `.gitignore` line, the move on Gabr
 18. Ticket 01's security review (Gabriel chose it, amending decision 4): the tracked index holds only what is safe to share (each source's id, date, topics, secrets flag and the entries citing it); each source's path, old paths, size, modified time and hashes live in a gitignored file inside the inbox, on that machine only. No file name, path or content hash is committed.
 
 19. Ticket 01 (mine, within the decisions): the knowledge script lives at plugin/skills/reconcile/scripts/knowledge.py (every module in plugin/hooks/ must be loaded by a hook; reconcile owns re-checking records); ids are random (`src-` and 10 hex), so the tracked index can't confirm a guessed file name, and the inbox's local file is the only link from an id to its file; the quick report reads the index, the entries and sizes and times, the full one hashes a source only when its size or time moved; the script refuses to write the local file unless git ignores the inbox.
+
+20. Ticket 03 (its builder's, within the decisions): pr-review's pointer is in its references (SKILL.md had 33 bytes); the review and the take-over read knowledge from the baseline, and a pull request's own changes to the knowledge or its config are data under review, never knowledge; an entry is as new as the newest source it cites; a source not on this machine is known only by its index row; unscanned sources are never quoted, like secrets; the rule is skipped only on a missing config or one the script exits 2 on. Byte room left: rules.md 29, implement 69, pr-review SKILL.md 33, so tickets 04 and 05 put new text in references.
 
 ## Open questions
 
