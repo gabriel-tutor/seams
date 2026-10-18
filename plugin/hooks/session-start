@@ -15,9 +15,11 @@ Claude's prompt-injection defenses. After the bootstrap comes the resume note (A
 the current branch and commit, then every active progress file of the repository, each flagged
 when stale, and the newest unfinished pr-review batch run in it (never committed, so never
 flagged), as data, from local files and git only, with a one-line systemMessage telling the user
-what is being resumed. In a repository with a knowledge config (ADR 0008) the card also says how many raw sources are
-not distilled, changed since distilled, or cited by an entry but missing, from the knowledge script's quick report,
-which reads sizes and times only; nothing when every count is zero, and a slow or failing script costs only that line.
+what is being resumed. In a repository with a knowledge config (ADR 0008), a line after the branch
+line says how many raw sources are not distilled, changed since distilled, or cited by an entry but
+missing, from the knowledge script's quick report, which reads sizes and times only: nothing when
+every count is zero, the card alone (with no systemMessage) when no work is active, and a slow or
+failing script costs only that line.
 When the repository holds more than ten worktrees, the systemMessage also says so and points to the sweep
 (finishing-a-development-branch), from one `git worktree list`, adding nothing to Claude's context.
 Also keeps the gate's ledger: a new session or /clear starts with an empty one.
@@ -371,7 +373,8 @@ def stale_flag(changed_at: "float | None", head_at: "float | None", now: float) 
 
 # In a repository with a knowledge config (ADR 0008), the card says what knowledge.py's quick report counts: raw sources
 # not distilled (new to the index or never distilled), changed since distilled, and entries citing a missing source.
-# The quick report reads sizes and times only, never hashing; past its time, or failing, it costs the line alone.
+# The quick report reads sizes and times only, never hashing. It has KNOWLEDGE_SECONDS, plus seams_facts.DRAIN_TIMEOUT
+# when a process that left its group still holds its output; past them, or failing, it costs the line alone.
 KNOWLEDGE_CONFIG = Path("docs") / "agents" / "knowledge.md"
 KNOWLEDGE_SCRIPT = HERE / "skills" / "reconcile" / "scripts" / "knowledge.py"
 KNOWLEDGE_SECONDS = 2
@@ -379,49 +382,37 @@ KNOWLEDGE_UNTRUSTED = 2                        # knowledge.py's exit for a confi
 
 
 def quick_report(root: Path) -> "tuple[int, str] | None":
-    """knowledge.py's exit status and output for `status --quick --json` in `root`, or None when it couldn't run or
-    ran past KNOWLEDGE_SECONDS. Its process group is killed with it, and the wait for its output after that is bounded,
-    as the repository facts' git runner does."""
-    import signal
-    import subprocess
+    """knowledge.py's exit status and output for `status --quick --json` in `root`, through the repository facts'
+    runner, or None when it couldn't run in time."""
+    if seams_facts is None:
+        return None
     env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1")
     try:
-        proc = subprocess.Popen([sys.executable, "-I", "-B", str(KNOWLEDGE_SCRIPT), "status", "--quick", "--json"],
-                                cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL, env=env, start_new_session=True)
-    except OSError:
+        code, out, _ = seams_facts._run([sys.executable, "-I", "-B", str(KNOWLEDGE_SCRIPT), "status", "--quick",
+                                         "--json"], str(root), KNOWLEDGE_SECONDS, env)
+    except seams_facts.GitSilent:
         return None
-    try:
-        out, _ = proc.communicate(timeout=KNOWLEDGE_SECONDS)
-    except subprocess.TimeoutExpired:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except OSError:
-            pass
-        try:
-            proc.communicate(timeout=1)
-        except subprocess.TimeoutExpired:
-            pass
-        return None
-    return proc.returncode, out.decode("utf-8", "replace")
+    return code, out
 
 
-def counted(count: int, one: str, many: str) -> str:
+def plural(count: int, one: str, many: str) -> str:
+    """The count with its noun phrase, singular for one."""
     return f"{count} {one if count == 1 else many}"
 
 
 def knowledge_line(root: Path) -> "str | None":
-    """The card's knowledge line, or None: no knowledge config, every count zero, or a report that didn't come."""
+    """The card's knowledge line, or None: no knowledge config, every count zero, or a report that didn't come. When
+    the script can't trust the config, the index or the local file, the line says so, never in the script's words:
+    its message quotes the repository's own text."""
     if not (root / KNOWLEDGE_CONFIG).is_file():
         return None
     report = quick_report(root)
     if report is None:
         return None
     code, out = report
-    if code == KNOWLEDGE_UNTRUSTED:            # one line saying what it can't trust (a malformed config)
-        reason = plain(out.strip().splitlines()[0] if out.strip() else "")
-        reason = reason[len("Knowledge:"):].strip() if reason.startswith("Knowledge:") else reason
-        return f"Knowledge: the quick check can't run: {reason}" if reason else None
+    if code == KNOWLEDGE_UNTRUSTED and out.startswith("Knowledge:"):     # python's own exit 2 prints nothing here
+        return ("Knowledge: the knowledge config, index or inbox's local file can't be read as it is; the knowledge "
+                "script's status command says why.")
     try:
         counts = json.loads(out) if code == 0 else None
         undistilled, changed, missing = (counts["new"] + counts["undistilled"], counts["changed"], counts["missing"])
@@ -429,9 +420,9 @@ def knowledge_line(root: Path) -> "str | None":
         return None
     if not all(type(n) is int and n >= 0 for n in (undistilled, changed, missing)):
         return None
-    parts = [counted(undistilled, "raw source not distilled", "raw sources not distilled") if undistilled else "",
+    parts = [plural(undistilled, "raw source not distilled", "raw sources not distilled") if undistilled else "",
              f"{changed} changed since distilled" if changed else "",
-             counted(missing, "entry cites a missing source", "entries cite a missing source") if missing else ""]
+             plural(missing, "entry cites a missing source", "entries cite a missing source") if missing else ""]
     parts = [part for part in parts if part]
     return f"Knowledge, from the knowledge index's quick check: {', '.join(parts)}." if parts else None
 
