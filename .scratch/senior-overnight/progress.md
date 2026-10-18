@@ -1,8 +1,8 @@
 # Progress: senior-quality overnight work, and a memory that stays current
 
 Status: active
-Stage: designed
-Next: Ticket 06 is a real night now (decision 22): Gabriel runs sleepclaude tonight on the 5.4.0 candidate (main, read in place); in the morning, check its morning summary and progress files against ticket 06's criteria (each builder routed through a Seams skill before changing code; Auto-answered entries; outward claims with sources; nothing merged that failed its checks), with the commands that show each. Then ticket 07, the release, through seams:release (push, main and the tag each asked).
+Stage: deployed
+Next: Ticket 06's real night (decision 22, after the release by Gabriel's call, decision 23): when Gabriel reports his first sleepclaude night on 5.4.0, check its morning summary and progress files against ticket 06's criteria (each builder routed through a Seams skill before changing code; Auto-answered entries; outward claims with sources; nothing merged that failed its checks), with the commands that show each, and fix what it shows. Then Status: done.
 Updated: 2026-10-18
 
 ## Spec
@@ -29,7 +29,7 @@ Base: main at 23e302e, 2 at once
 - [x] 04 The guard asks GitHub before a merge, and the two takeover modes (blocked by: 03)
 - [x] 05 Sleep mode's takeover commands, nightly reconcile and independent checks (blocked by: 02, 04)
 - [ ] 06 One paid eval of an unattended night (blocked by: 01, 02, 05)
-- [ ] 07 Release Seams 5.4.0 (blocked by: all)
+- [x] 07 Release Seams 5.4.0 (blocked by: all)
 
 ## Decisions
 
@@ -67,6 +67,8 @@ Base: main at 23e302e, 2 at once
 21. The second security review (mine): a merge names its pull request and never runs under xargs; develop takes merges, never a push; a fence path in a flag's value, or in git or gh (clone, worktree, --work-tree), is refused; gh, git or claude inside another program (arch, script, watch, tmux) refused, and inline code under one; git config writes refused but user, color and display settings (a setting can run a program), and -c likewise; a pull request that changes .github/ waits for Gabriel, and one whose files it can't all see is refused; the base's statuses count as expected checks, and an empty or paged set is refused; gh api paths read as GitHub reads them; sleepclaude clears the takeover state at launch; each lookup 6 s, the hook 60 s; a rebuilt pull request carries the old one's reviews (the skill; the guard can't tie them). Left: Python or a script written to a file can still write the state file (the guard reads commands, not programs: the same limit it states).
 
 22. Ticket 06 (Gabriel): no paid eval. An eval granted Bash can't start on this Mac (the sandbox and ~/.docker's links, docs/compatibility.md), and without a shell it can't test merges, so tonight's real sleepclaude night is the proof, checked against ticket 06's criteria in the morning before 5.4.0 is released.
+
+23. Release (Gabriel: "release it now ... then i will go back to you once i tested it real"): 5.4.0 released before ticket 06's real night. The unpushed history was first scrubbed of the client's name and its tool list (filter-branch over origin/main..main; backup/main-before-5.4.0-scrub holds the old main at 741db00). Release commit 08c3a44 on seams-5.4/senior-overnight; PR #20 CI green (run 39098366419); main fast-forwarded to 08c3a44 and tag v5.4.0 pushed, each on his yes; main's CI run 39098717351 success on 08c3a44; `claude plugin list` shows seams@seams 5.4.0 read from this folder.
 
 ## Open questions
 
