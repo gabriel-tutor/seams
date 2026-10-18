@@ -19,7 +19,8 @@ Base: main at 23e302e, 2 at once
 
 ## Parallel note
 
-- 04: built in place in ~/.claude/skills/sleep-mode (guard and mode-hook.py; 65 guard tests and the launch tests pass on 3.14 and 3.9), security review running.
+- 04: built in place in ~/.claude/skills/sleep-mode (guard and mode-hook.py); its security review acted on (decision 20); 80 sleep-mode tests pass on 3.14 and 3.9.
+- 05: built in place (SKILL.md, sleepclaude --chrome, tests/test_skill.py); security review of 04's fixes and 05 running.
 
 ## Tickets
 
@@ -27,7 +28,7 @@ Base: main at 23e302e, 2 at once
 - [x] 02 Claims from commands, learning to its home, and /seams:reconcile (blocked by: none)
 - [x] 03 The overnight guard's tool boundaries (blocked by: none)
 - [x] 04 The guard asks GitHub before a merge, and the two takeover modes (blocked by: 03)
-- [ ] 05 Sleep mode's takeover commands, nightly reconcile and independent checks (blocked by: 02, 04)
+- [x] 05 Sleep mode's takeover commands, nightly reconcile and independent checks (blocked by: 02, 04)
 - [ ] 06 One paid eval of an unattended night (blocked by: 01, 02, 05)
 - [ ] 07 Release Seams 5.4.0 (blocked by: all)
 
@@ -61,6 +62,8 @@ Base: main at 23e302e, 2 at once
 18. Ticket 03's review (mine): a write word in a tool's name wins over any read word; more messaging servers recognized; every environment field must say staging and a Railway change by id is refused (so MCP deploys by id go through the CLI with -e staging); Railway's CLI is closed by default (plain reads pass, everything else names staging; down and delete refused); --set=, attached flags and npx @railway/cli read; the ask check matches server-wide rules and reads the main checkout's and the user's settings. Left as is: `railway variables -e production` is a read, so production values can appear in a transcript (decision 3, every read).
 
 19. Ticket 04 (mine, within decisions 5 and 6): a merge must name its head (--match-head-commit, or sha= on the API) and match GitHub's headRefOid; at least one check, all passed; merge state CLEAN or HAS_HOOKS; no CHANGES_REQUESTED; label acceptance-checked unless the mode is hard. The mode lives in a fenced state file written only by mode-hook.py, a UserPromptSubmit hook in the sleep-mode settings, from the user's `takeover -soft` or `takeover -hard`, and cleared by `sleep mode -off`; without either, the soft rule holds.
+
+20. Ticket 04's security review (Gabriel chose the lead, with evidence): on a soft night the lead reads the card, quotes the clearing line in the progress file, then adds `acceptance-checked`; the morning summary lists each. The guard, from the review: a mode holds only in the session it was typed in (mode-hook writes the session id); CronCreate and ScheduleWakeup can't schedule a takeover; a merge names its head once, in full (40 characters), never --auto, --admin or --input, one merge per command; changes requested read from latestReviews too; up to date asked of the compare API (behind_by 0) and every check develop's tip ran must pass on the head (no branch protection, so GitHub reports neither); review dismissals refused; a write onto a folder holding the fence, or run inside it, refused; the hook's timeout 40 s (a timed-out PreToolUse hook stops the call: the docs, agent-sdk/hooks, Hook timeout).
 
 ## Open questions
 
