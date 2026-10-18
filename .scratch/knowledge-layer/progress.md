@@ -2,8 +2,7 @@
 
 Status: active
 Stage: built
-Next: Ticket 04 built in the commit after 3af7fe5 on seams-5.5/knowledge-layer (the distill skill, knowledge.py pending, the card's pointer, the listing cap at 2,750); next the review against the fixed point 3af7fe5, then the live run (asked first, with its cost).
-Ticket: 04
+Next: Ticket 05 (reconcile's knowledge check, and the night's distill) through seams:implement, continuing on seams-5.5/knowledge-layer; rules.md has almost no byte room (decision 20), so the Unattended mode clause needs a word-for-word swap or a reference.
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -26,7 +25,7 @@ Done (after the integrations): README.md's card paragraph names the knowledge li
 - [x] 01 The knowledge config and the knowledge index (blocked by: none)
 - [x] 02 The start card's knowledge line (blocked by: 01)
 - [x] 03 The Knowledge rule, its pointers, the done row, and foundations' offer (blocked by: 01)
-- [ ] 04 `/seams:distill` (blocked by: 01, 03)
+- [x] 04 `/seams:distill` (blocked by: 01, 03)
 - [ ] 05 Reconcile's knowledge check, and the night's distill (blocked by: 04)
 - [x] 06 Moving existing raw material into the inbox (blocked by: 01)
 - [ ] 07 Release Seams 5.5.0 (blocked by: all)
@@ -63,6 +62,8 @@ The client project's own ticket (its config, `.gitignore` line, the move on Gabr
 22. Ticket 06 (its builder's, within the decisions, after four review rounds): `knowledge.py move <folder>...` plans, `move --yes <code> <folder>...` moves, the code bound to the exact file list and the minute and expiring after 30 minutes; tracked files are matched by identity against git's whole index and refused; nested repositories, a case-mismatched or control-character name, and any destination git wouldn't ignore are refused; hidden files and links stay behind, counted by kind; nothing is deleted, only folders the move emptied are removed; the config is never edited (the plan prints the sources line for folders that stay); a journal in the inbox, fsynced before the first rename and validated on read, lets a later plan or index finish a stopped or killed move; index, distilled, topics and move take an exclusive lock in the git directory. The rename race (a concurrent writer at the same new path) is left as is. No undo command: the old paths in the local file let a move be reversed by hand.
 
 23. The listing cap (Gabriel's choice, ticket 04): the plugin's listing may grow to 2,750 characters (about +33 tokens a session), so /seams:distill gets a real description and ticket 05 can name the knowledge check in reconcile's.
+
+24. Ticket 04 (mine, within the decisions): distill leaves its drafts and the index's changes uncommitted, for review in the team's own pull request; `knowledge.py pending` lists what waits as `<id>:<hash>`, and `distilled <id>:<hash>` refuses a source changed after it was read; pending keeps the stricter of the committed scan and a fresh one; drafts state requirements on the product, never steps for Claude; an approved entry wins over older sources, and only a newer one makes a successor draft. Live run: docs/plugin-behavior-tests.md, 5.5 ($0.53, every check held).
 
 ## Open questions
 
