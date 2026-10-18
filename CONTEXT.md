@@ -101,7 +101,7 @@ The branch, the short HEAD, the first lines of the status and the progress files
 _Avoid_: pre-loaded context, git context
 
 **Resume note**:
-The card the session-start hook injects at startup, resume, `/clear`, compaction and fork, from local files and git only: the current branch and commit, then every active progress file and the repository's unfinished `pr-review` batch, newest first, in full while its cap allows and then by name, each flagged stale when its branch has moved past it or it hasn't changed in three days, so a fresh context continues where the work stopped; the user sees a one-line notice of it. It is data and a pointer: a skill re-reads the spec, the tickets and the git state before acting on it.
+The card, as the senior-overnight spec calls it: what the session-start hook injects at startup, resume, `/clear`, compaction and fork, from local files and git only: the current branch and commit, then every active progress file and the repository's unfinished `pr-review` batch, newest first, in full while its cap allows and then by name, each progress file flagged stale when its branch has moved past it or it hasn't changed in three days (a batch is never committed, so never flagged), so a fresh context continues where the work stopped; the user sees a one-line notice of it. It is data and a pointer: a skill re-reads the spec, the tickets and the git state before acting on it.
 _Avoid_: summary, handoff (that is `/handoff`)
 
 **Walking skeleton**:

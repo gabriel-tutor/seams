@@ -298,13 +298,15 @@ touch -t "$(python3 -c 'import time; print(time.strftime("%Y%m%d%H%M", time.loca
   || fail "a committed file's age is its last commit's, not its modification time: $(entry_of edited-old)"
 
 # The card reads only local sources (senior-overnight ticket 01): in a repository with a remote, the hook runs only local
-# git commands, starts no network tool, and its Python opens no socket.
+# git commands, none taking the index's optional lock, starts no network tool, and its Python opens no socket.
 OFFLINE="$TMP/offline-bin"; mkdir -p "$OFFLINE"; REAL_GIT=$(command -v git); NETLOG="$TMP/offline.log"; : > "$NETLOG"
 cat > "$OFFLINE/git" <<SH
 #!/usr/bin/env bash
-args=("\$@"); i=0
-while [[ "\${args[i]}" == -C || "\${args[i]}" == -c ]]; do i=\$((i + 2)); done
-echo "git \${args[i]}" >> "$NETLOG"; exec "$REAL_GIT" "\$@"
+args=("\$@"); i=0; locks=""
+while [[ "\${args[i]}" == -* ]]; do
+  case "\${args[i]}" in -C|-c) i=\$((i + 2)) ;; --no-optional-locks) locks=" nolocks"; i=\$((i + 1)) ;; *) i=\$((i + 1)) ;; esac
+done
+echo "git \${args[i]}\$locks" >> "$NETLOG"; exec "$REAL_GIT" "\$@"
 SH
 for tool in gh curl wget ssh nc; do printf '#!/bin/sh\necho "network %s" >> "%s"; exit 1\n' "$tool" "$NETLOG" > "$OFFLINE/$tool"; done
 chmod +x "$OFFLINE"/*
@@ -323,9 +325,32 @@ git -C "$TMP/offline" remote add origin https://github.com/acme/shop.git
 OUT=$(printf '{"source":"startup","cwd":"%s"}' "$TMP/offline" | PATH="$OFFLINE:$PATH" PYTHONPATH="$TMP/offline-py" HOME="$MP_HOME" "$FIX/hooks/session-start")
 [[ $(entries_of "$(out_field additionalContext <<< "$OUT")") == "$COUPONS, stale (its branch has newer commits); next: "* ]] \
   || fail "the card should come out offline: $OUT"
-grep -q '^git log$' "$NETLOG" || fail "the offline check should have seen the hook's git commands: $(cat "$NETLOG")"
-[[ -z $(grep -v -E '^git (symbolic-ref|log|diff|worktree)$' "$NETLOG") ]] \
+grep -q '^git log nolocks$' "$NETLOG" || fail "the offline check should have seen the hook's git commands: $(cat "$NETLOG")"
+[[ -z $(grep -v -E '^git (symbolic-ref|log|diff) nolocks$|^git worktree$' "$NETLOG") ]] \
   || fail "the card should run only local git commands and no network tool: $(sort -u "$NETLOG")"
+
+# The card's git work has a total time limit: with a git that takes 2 seconds a call and a dozen committed active
+# files, the session start still comes out within seconds, every file listed (each flag from what git said in time).
+SLOWBIN="$TMP/slow-bin"; mkdir -p "$SLOWBIN"
+printf '#!/bin/sh\nsleep 2\nexec "%s" "$@"\n' "$REAL_GIT" > "$SLOWBIN/git"; chmod +x "$SLOWBIN/git"
+SLOW="$TMP/slow-repo"; mkdir -p "$SLOW"; git -C "$SLOW" init -q -b main
+for n in 01 02 03 04 05 06 07 08 09 10 11 12; do progress "$SLOW" "s$n" active built "2026-09-$n" "Go."; done
+git -C "$SLOW" add .scratch; gitc "$SLOW" commit -q -m records
+python3 - "$FIX/hooks/session-start" "$SLOW" "$MP_HOME" "$SLOWBIN" <<'PY2' || fail "a slow git should not hold up the session start"
+import json, os, subprocess, sys, time
+hook, cwd, home, slow = sys.argv[1:]
+event = json.dumps({"hook_event_name": "SessionStart", "source": "startup", "cwd": cwd})
+start = time.monotonic()
+out = subprocess.run([hook], input=event, capture_output=True, text=True, timeout=60,
+                     env=dict(os.environ, HOME=home, PATH=slow + os.pathsep + os.environ["PATH"])).stdout
+took = time.monotonic() - start
+context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+listed = [l.split(":")[0][2:] for l in context.splitlines() if l.startswith("- s")]
+listed += [n for l in context.splitlines() if l.startswith("Also active, by name only: ") for n in l[27:-1].split(", ")]
+assert listed == [f"s{n:02d}" for n in range(12, 0, -1)], listed
+assert took < 10, f"the session start took {took:.1f} s with a slow git"
+print(f"  a git of 2 s a call: the session start took {took:.1f} s")
+PY2
 
 # A ticket in progress (lean-and-durable ticket 05): its entry names the ticket after the stage, and the note says that a
 # ticket in progress continues through implement, as a grill in progress does through the grill. The

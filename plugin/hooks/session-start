@@ -12,9 +12,10 @@ to install them, and nudges toward the foundations skill when the working repo h
 docs/agents/issue-tracker.md. All of it is written as the project's facts, with no wrapper or
 preamble: Claude Code's hooks docs say text framed as out-of-band system commands can trip
 Claude's prompt-injection defenses. After the bootstrap comes the resume note (ADR 0003), the card:
-the current branch and commit, then every active progress file of the repository and the newest
-unfinished pr-review batch run in it, each flagged when stale, as data, from local files and git
-only, with a one-line systemMessage telling the user what is being resumed.
+the current branch and commit, then every active progress file of the repository, each flagged
+when stale, and the newest unfinished pr-review batch run in it (never committed, so never
+flagged), as data, from local files and git only, with a one-line systemMessage telling the user
+what is being resumed.
 When the repository holds more than ten worktrees, the systemMessage also says so and points to the sweep
 (finishing-a-development-branch), from one `git worktree list`, adding nothing to Claude's context.
 Also keeps the gate's ledger: a new session or /clear starts with an empty one.
@@ -280,26 +281,35 @@ def unfinished_batch(repo: Path) -> "dict | None":
     return best
 
 
-GIT_TIMEOUT = 3                                # seconds for each git call; a slow one only drops its line or flag
+GIT_TIMEOUT = 3                                # seconds for each git call
+CARD_SECONDS = 3                               # seconds for all the card's git calls; past them, a line or flag drops
 
 
-def git(root: Path, *args: str) -> "str | None":
-    """git's output for a local command in `root`, or None when it fails or runs past GIT_TIMEOUT. The card reads only
-    the repository on disk: no command here reaches a remote, and no fsmonitor a repository configures is started."""
+def git(root: Path, deadline: float, *args: str) -> "str | None":
+    """git's output for a local command in `root`, "" when git ran and failed (no commit yet, not a repository), or
+    None when it couldn't run or ran past GIT_TIMEOUT or the card's deadline (a time.monotonic() value). The card
+    reads only the repository on disk: no command here reaches a remote, starts an fsmonitor or writes the index."""
     import subprocess
+    import time
+    timeout = min(GIT_TIMEOUT, deadline - time.monotonic())
+    if timeout <= 0:
+        return None
     try:
-        out = subprocess.run(["git", "-C", str(root), "-c", "core.fsmonitor=false", *args],
-                             capture_output=True, text=True, timeout=GIT_TIMEOUT)
+        out = subprocess.run(["git", "--no-optional-locks", "-C", str(root), "-c", "core.fsmonitor=false", *args],
+                             capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return out.stdout.strip() if out.returncode == 0 else None
+    return out.stdout.strip() if out.returncode == 0 else ""
 
 
-def head_of(root: Path) -> "tuple[str | None, float | None]":
-    """The card's first line (the current branch and commit) and the commit's time, each None when git can't say:
-    outside a repository, no line."""
-    branch = git(root, "symbolic-ref", "--short", "-q", "HEAD")
-    commit = (git(root, "log", "-1", "--format=%h %ct") or "").split()
+def head_of(root: Path, deadline: float) -> "tuple[str | None, float | None]":
+    """The card's first line (the current branch and commit) and the commit's time, each None when git can't say in
+    time: outside a repository, no line."""
+    branch = git(root, deadline, "symbolic-ref", "--short", "-q", "HEAD")
+    commit = git(root, deadline, "log", "-1", "--format=%h %ct")
+    if branch is None or commit is None:
+        return None, None
+    commit = commit.split()
     when = float(commit[1]) if len(commit) == 2 and commit[1].isdigit() else None
     if branch and commit:
         return f"Branch {plain(branch)} at {plain(commit[0])}.", when
@@ -313,11 +323,11 @@ def head_of(root: Path) -> "tuple[str | None, float | None]":
 STALE_DAYS = 3                                 # a file unchanged this long is flagged stale (senior-overnight decision 14)
 
 
-def last_change(root: Path, path: str, changed: "set | None") -> float:
+def last_change(root: Path, path: str, changed: "set | None", deadline: float) -> float:
     """When a progress file last changed: the last commit that changed it on this branch (a merge that brought the
     change counts), or its own edit (its modification time) when it differs from HEAD, has no commit, or git can't say."""
     if changed is not None and path not in changed:
-        when = git(root, "log", "-1", "--first-parent", "--format=%ct", "--", path)
+        when = git(root, deadline, "log", "-1", "--first-parent", "--format=%ct", "--", path)
         if when and when.isdigit():
             return float(when)
     return modified(root / path)
@@ -363,8 +373,10 @@ def resume_note(root: Path) -> "tuple[str, str] | None":
         entries = sorted(entries + [batch], key=lambda e: e["order"], reverse=True)
     if not entries:
         return None
-    head, head_at = head_of(root)
-    diff = git(root, "diff", "--name-only", "-z", "HEAD", "--", ".scratch")
+    import time
+    deadline = time.monotonic() + CARD_SECONDS
+    head, head_at = head_of(root, deadline)
+    diff = git(root, deadline, "diff", "--name-only", "-z", "HEAD", "--", ".scratch")
     changed, now = (set(diff.split("\0")) if diff is not None else None), datetime.now().timestamp()
     lines = ["", "", NOTE_HEADING] + ([head] if head else []) + [
              f"The progress files of this repository ({plain(str(root))}) record unfinished work, newest "
@@ -378,7 +390,7 @@ def resume_note(root: Path) -> "tuple[str, str] | None":
     shown = 0
     for f in entries:
         ticket = f", ticket {f['ticket']} in progress" if f["ticket"] else ""
-        stale = "" if f.get("batch") else stale_flag(last_change(root, f["path"], changed), head_at, now)
+        stale = "" if f.get("batch") else stale_flag(last_change(root, f["path"], changed, deadline), head_at, now)
         entry = f"- {f['feature']}: stage {f['stage']}{ticket}, updated {f['updated']}{stale}; next: {f['next']}" + \
                 (f" File: {f['path']}" if f["path"] else "")
         room = NAMES_ROOM if shown + 1 < len(entries) else 0
