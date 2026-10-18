@@ -364,7 +364,11 @@ class KnowledgeTest(unittest.TestCase):
                  "jwt.md": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
                  "twilio.md": "AC" + "0123456789abcdef0123456789abcdef",
                  "url.md": "postgres://admin:s3cretpass@db.example.com/x",
-                 "bearer.md": "Authorization: Bearer abcdefghijklmnop1234"}
+                 "bearer.md": "Authorization: Bearer abcdefghijklmnop1234",
+                 "aligned.env": "DB_PASSWORD" + " " * 24 + "= hunter2hunter2",
+                 "nextline.yml": "client_secret:\n    8f3a9c2e1b7d4f60a1b2",
+                 "bearer-wide.md": "Authorization: Bearer" + " " * 12 + "abcdefghijklmnop1234",
+                 "longjwt.md": "eyJhbGciOiJIUzI1NiJ9.eyJ" + "a" * 6000 + ".sig_sig_sig"}
         prose = {"rules.md": "The password requirements are long, and the secret of success is patience.",
                  "secretary.md": "secretary: Mary\nThe token budget is generous."}
         for name, text in {**found, **prose}.items():

@@ -66,13 +66,13 @@ CREDENTIALS = re.compile("|".join((
     r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}",
     r"\bAIza[0-9A-Za-z_-]{35}",
     r"\bxox[abeprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}|hooks\.slack\.com/services/\S",
-    r"\beyJ[A-Za-z0-9_-]{8,2048}\.eyJ[A-Za-z0-9_-]{8,4096}\.[A-Za-z0-9_-]{8}",
+    r"\beyJ[A-Za-z0-9_-]{8,2048}\.eyJ[A-Za-z0-9_-]{8}",             # a JWT's header, then its payload's start
     r"\b(?:AC|SK)[0-9a-f]{32}\b",
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
     r"(?<![a-z0-9+.-])[a-z][a-z0-9+.-]{0,30}://[^\s/:@]{1,256}:[^\s/@]{1,256}@",
-    r"(?i:\bbearer[ \t]{1,8}[A-Za-z0-9._~+/=-]{16})",
+    r"(?i:\bbearer\s{1,40}[A-Za-z0-9._~+/=-]{16})",
     r"(?i:(?:api[ _-]?key|secret|token|passw(?:or)?d|pwd|access[ _-]?key|private[ _-]?key|auth)[A-Za-z0-9_-]{0,40}"
-    r"[\"']?[ \t]{0,8}[:=][ \t]{0,8}[\"']?[^\s\"']{8})",
+    r"[\"']?\s{0,40}[:=]\s{0,40}[\"']?[^\s\"']{8})",              # aligned, or the value on the next line
 )))
 BINARY = (".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".tif", ".tiff", ".zip", ".gz", ".mp3", ".m4a",
           ".mp4", ".mov", ".wav", ".docx", ".docm", ".doc", ".xlsx", ".xlsm", ".xls", ".pptx", ".ppt", ".odt", ".ods",
