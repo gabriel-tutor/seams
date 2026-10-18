@@ -7,12 +7,11 @@ Updated: 2026-10-18
 
 ## Decisions
 
-(none yet)
+1. Memory (Gabriel's choice, 2026-10-18): a live project card and re-checking, no second store. Each project gets one short card (status, next step, links to where each fact lives, the commit it was checked against), shown at every session start and resume; a check flags any fact older than the code it describes; every record lists all active work, not only the newest three. ICM's one home per fact, on Seams' existing homes.
+2. Learning (Gabriel's choice): whatever a session learns (a ruling given in chat, a preference, a correction) is written at once to its one home (the ticket's progress file, the glossary, an ADR, or Claude's memory of the user), with its source; a weekly reconcile pass re-checks old memories against the code and removes what is no longer true.
 
 ## Open questions
 
-- The memory layer's shape (a thin pointer layer on Seams' homes, a vault and graph, or Graphify for code only).
-- How it learns about the user.
 - Overnight tool policy: which MCP and CLI actions may run unattended.
 - Whether merges are gated by evidence in code, not only by the heartbeat's text.
 
