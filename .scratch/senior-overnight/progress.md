@@ -2,12 +2,22 @@
 
 Status: active
 Stage: designed
-Next: seams:to-tickets: split the spec into tickets (Gabriel approves the breakdown), then seams:implement per ticket in .worktrees/senior-overnight.
+Next: seams:implement: tickets 01, 02 and 03 have no blockers (the parallel offer); then 04, 05, 06 and the 5.4.0 release.
 Updated: 2026-10-18
 
 ## Spec
 
 .scratch/senior-overnight/spec.md (ready-for-agent)
+
+## Tickets
+
+- [ ] 01 The live card at every start (blocked by: none)
+- [ ] 02 Claims from commands, learning to its home, and /seams:reconcile (blocked by: none)
+- [ ] 03 The overnight guard's tool boundaries (blocked by: none)
+- [ ] 04 The guard asks GitHub before a merge, and the two takeover modes (blocked by: 03)
+- [ ] 05 Sleep mode's takeover commands, nightly reconcile and independent checks (blocked by: 02, 04)
+- [ ] 06 One paid eval of an unattended night (blocked by: 01, 02, 05)
+- [ ] 07 Release Seams 5.4.0 (blocked by: all)
 
 ## Decisions
 
@@ -31,6 +41,8 @@ Updated: 2026-10-18
 14. Mine: a progress file is flagged stale when its branch has commits newer than its last update, or it hasn't changed in three days; the guard refuses whenever it can't check (a GitHub lookup that fails refuses the merge).
 
 15. Gabriel confirmed on 2026-10-18: spec it (seams:to-spec), then the tickets (he approves the breakdown), then each ticket built in .worktrees/senior-overnight from main.
+
+16. The breakdown (Gabriel approved it, 2026-10-18): seven tickets under .scratch/senior-overnight/issues/, as listed above.
 
 ## Open questions
 
