@@ -15,7 +15,9 @@ Claude's prompt-injection defenses. After the bootstrap comes the resume note (A
 the current branch and commit, then every active progress file of the repository, each flagged
 when stale, and the newest unfinished pr-review batch run in it (never committed, so never
 flagged), as data, from local files and git only, with a one-line systemMessage telling the user
-what is being resumed.
+what is being resumed. In a repository with a knowledge config (ADR 0008) the card also says how many raw sources are
+not distilled, changed since distilled, or cited by an entry but missing, from the knowledge script's quick report,
+which reads sizes and times only; nothing when every count is zero, and a slow or failing script costs only that line.
 When the repository holds more than ten worktrees, the systemMessage also says so and points to the sweep
 (finishing-a-development-branch), from one `git worktree list`, adding nothing to Claude's context.
 Also keeps the gate's ledger: a new session or /clear starts with an empty one.
@@ -367,6 +369,73 @@ def stale_flag(changed_at: "float | None", head_at: "float | None", now: float) 
     return f", stale ({', '.join(reasons)})" if reasons else ""
 
 
+# In a repository with a knowledge config (ADR 0008), the card says what knowledge.py's quick report counts: raw sources
+# not distilled (new to the index or never distilled), changed since distilled, and entries citing a missing source.
+# The quick report reads sizes and times only, never hashing; past its time, or failing, it costs the line alone.
+KNOWLEDGE_CONFIG = Path("docs") / "agents" / "knowledge.md"
+KNOWLEDGE_SCRIPT = HERE / "skills" / "reconcile" / "scripts" / "knowledge.py"
+KNOWLEDGE_SECONDS = 2
+KNOWLEDGE_UNTRUSTED = 2                        # knowledge.py's exit for a config, index or local file it can't trust
+
+
+def quick_report(root: Path) -> "tuple[int, str] | None":
+    """knowledge.py's exit status and output for `status --quick --json` in `root`, or None when it couldn't run or
+    ran past KNOWLEDGE_SECONDS. Its process group is killed with it, and the wait for its output after that is bounded,
+    as the repository facts' git runner does."""
+    import signal
+    import subprocess
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1")
+    try:
+        proc = subprocess.Popen([sys.executable, "-I", "-B", str(KNOWLEDGE_SCRIPT), "status", "--quick", "--json"],
+                                cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+    except OSError:
+        return None
+    try:
+        out, _ = proc.communicate(timeout=KNOWLEDGE_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        try:
+            proc.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
+        return None
+    return proc.returncode, out.decode("utf-8", "replace")
+
+
+def counted(count: int, one: str, many: str) -> str:
+    return f"{count} {one if count == 1 else many}"
+
+
+def knowledge_line(root: Path) -> "str | None":
+    """The card's knowledge line, or None: no knowledge config, every count zero, or a report that didn't come."""
+    if not (root / KNOWLEDGE_CONFIG).is_file():
+        return None
+    report = quick_report(root)
+    if report is None:
+        return None
+    code, out = report
+    if code == KNOWLEDGE_UNTRUSTED:            # one line saying what it can't trust (a malformed config)
+        reason = plain(out.strip().splitlines()[0] if out.strip() else "")
+        reason = reason[len("Knowledge:"):].strip() if reason.startswith("Knowledge:") else reason
+        return f"Knowledge: the quick check can't run: {reason}" if reason else None
+    try:
+        counts = json.loads(out) if code == 0 else None
+        undistilled, changed, missing = (counts["new"] + counts["undistilled"], counts["changed"], counts["missing"])
+    except (ValueError, TypeError, KeyError):  # no config after all (its one line), or not the report
+        return None
+    if not all(type(n) is int and n >= 0 for n in (undistilled, changed, missing)):
+        return None
+    parts = [counted(undistilled, "raw source not distilled", "raw sources not distilled") if undistilled else "",
+             f"{changed} changed since distilled" if changed else "",
+             counted(missing, "entry cites a missing source", "entries cite a missing source") if missing else ""]
+    parts = [part for part in parts if part]
+    return f"Knowledge, from the knowledge index's quick check: {', '.join(parts)}." if parts else None
+
+
 NAMES_ROOM = 40                                # kept free for the files past the budget: room for their count at least
 
 
@@ -382,10 +451,11 @@ def by_name(features: list, room: int) -> str:
     return f"Also active: {len(names)} more."
 
 
-def resume_note(root: Path) -> "tuple[str, str] | None":
+def resume_note(root: Path) -> "tuple[str, str | None] | None":
     """The card to append to the bootstrap (the blank line before it included) and the one-line notice for the user,
-    or None when nothing is active. Every active file is on it, newest first: in full while the card stays under
-    NOTE_CAP characters (an entry whole or not at all), the rest by name only."""
+    or None when nothing is active and there is no knowledge line. Every active file is on it, newest first: in full
+    while the card stays under NOTE_CAP characters (an entry whole or not at all), the rest by name only. The knowledge
+    line comes before them, within the cap; with no active file it is the card alone, and there is no notice."""
     entries = active_features(root)
     try:
         batch = unfinished_batch(root)
@@ -395,8 +465,14 @@ def resume_note(root: Path) -> "tuple[str, str] | None":
         batch = None
     if batch:
         entries = sorted(entries + [batch], key=lambda e: e["order"], reverse=True)
+    try:
+        knowledge = knowledge_line(root)
+    except Exception:                          # noqa: BLE001  the knowledge line is never a reason to lose the card
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        knowledge = None
     if not entries:
-        return None
+        return ("\n".join(["", "", NOTE_HEADING, knowledge]), None) if knowledge else None
     import time
     deadline = time.monotonic() + CARD_SECONDS
     head, head_at = head_of(root, deadline)
@@ -409,7 +485,8 @@ def resume_note(root: Path) -> "tuple[str, str] | None":
              f"than the file, or it hasn't changed in {STALE_DAYS} days. A feature at stage designing is a "
              "grill in progress, which continues through `seams:grill`; a ticket in "
              "progress continues through `seams:implement`."
-             + (BATCH_NOTE if any(e.get("batch") for e in entries) else "")] + ([head] if head else [])
+             + (BATCH_NOTE if any(e.get("batch") for e in entries) else "")] + ([head] if head else []) + \
+            ([knowledge] if knowledge else [])
     shown = 0
     for f in entries:
         ticket = f", ticket {f['ticket']} in progress" if f["ticket"] else ""
@@ -478,7 +555,8 @@ def handle(event: dict) -> dict:
     if note:
         text, notice = note
         output["hookSpecificOutput"]["additionalContext"] += text
-        output["systemMessage"] = notice
+        if notice:
+            output["systemMessage"] = notice
     try:
         sweep = worktree_notice(repo_root(cwd) or cwd)
     except Exception:                          # a count is never a reason to lose the session start
