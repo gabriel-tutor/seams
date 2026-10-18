@@ -19,6 +19,8 @@ Base: seams-5.5/knowledge-layer at df502fa, 3 at once
 - 03: building, branch knowledge-layer/03-knowledge-rule, worktree .claude/worktrees/knowledge-layer-03
 - 06: building, branch knowledge-layer/06-move-raw-material, worktree .claude/worktrees/knowledge-layer-06
 
+After the integrations (from ticket 02's security review, in knowledge.py, which ticket 06 is changing now): cap the bytes read per entry file, at least under --quick; refuse a local file or index that isn't a regular file (a committed FIFO); require the main checkout to be the worktree's own (a .git file's gitdir pointing at another repository). Tests first.
+
 ## Tickets
 
 - [x] 01 The knowledge config and the knowledge index (blocked by: none)
