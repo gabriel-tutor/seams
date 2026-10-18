@@ -20,7 +20,7 @@ Base: main at 23e302e, 2 at once
 ## Parallel note
 
 - 04: built in place in ~/.claude/skills/sleep-mode (guard and mode-hook.py); its security review acted on (decision 20); 80 sleep-mode tests pass on 3.14 and 3.9.
-- 05: built in place (SKILL.md, sleepclaude --chrome, tests/test_skill.py); security review of 04's fixes and 05 running.
+- 05: built in place (SKILL.md, sleepclaude --chrome, tests/test_skill.py); the second security review acted on (decision 21); 89 sleep-mode tests pass on 3.14 and 3.9.
 
 ## Tickets
 
@@ -64,6 +64,8 @@ Base: main at 23e302e, 2 at once
 19. Ticket 04 (mine, within decisions 5 and 6): a merge must name its head (--match-head-commit, or sha= on the API) and match GitHub's headRefOid; at least one check, all passed; merge state CLEAN or HAS_HOOKS; no CHANGES_REQUESTED; label acceptance-checked unless the mode is hard. The mode lives in a fenced state file written only by mode-hook.py, a UserPromptSubmit hook in the sleep-mode settings, from the user's `takeover -soft` or `takeover -hard`, and cleared by `sleep mode -off`; without either, the soft rule holds.
 
 20. Ticket 04's security review (Gabriel chose the lead, with evidence): on a soft night the lead reads the card, quotes the clearing line in the progress file, then adds `acceptance-checked`; the morning summary lists each. The guard, from the review: a mode holds only in the session it was typed in (mode-hook writes the session id); CronCreate and ScheduleWakeup can't schedule a takeover; a merge names its head once, in full (40 characters), never --auto, --admin or --input, one merge per command; changes requested read from latestReviews too; up to date asked of the compare API (behind_by 0) and every check develop's tip ran must pass on the head (no branch protection, so GitHub reports neither); review dismissals refused; a write onto a folder holding the fence, or run inside it, refused; the hook's timeout 40 s (a timed-out PreToolUse hook stops the call: the docs, agent-sdk/hooks, Hook timeout).
+
+21. The second security review (mine): a merge names its pull request and never runs under xargs; develop takes merges, never a push; a fence path in a flag's value, or in git or gh (clone, worktree, --work-tree), is refused; gh, git or claude inside another program (arch, script, watch, tmux) refused, and inline code under one; git config writes refused but user, color and display settings (a setting can run a program), and -c likewise; a pull request that changes .github/ waits for Gabriel, and one whose files it can't all see is refused; the base's statuses count as expected checks, and an empty or paged set is refused; gh api paths read as GitHub reads them; sleepclaude clears the takeover state at launch; each lookup 6 s, the hook 60 s; a rebuilt pull request carries the old one's reviews (the skill; the guard can't tie them). Left: Python or a script written to a file can still write the state file (the guard reads commands, not programs: the same limit it states).
 
 ## Open questions
 
