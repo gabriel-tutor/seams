@@ -14,7 +14,8 @@ Two files, so nothing personal is committed (knowledge-layer decision 18):
                                              source whose size or time moved is hashed to settle it)
     knowledge.py index                       add and update the rows
     knowledge.py pending [--json]            what waits to be distilled on this machine (id, path, date, scan, why)
-    knowledge.py distilled <id>...           mark sources distilled at their current content (and rescan them)
+    knowledge.py distilled <id>[:<hash>]...  mark sources distilled (and rescan them); with the hash pending showed,
+                                             a source changed since it was read is refused
     knowledge.py topics <id> <a,b,...>       set a source's topics, as written (what an action searches by)
     knowledge.py move <folder>...            the plan to move folders of raw sources (from the repository's root)
                                              into the inbox: each to <inbox>/<date>-<name>/ with its size, and what
@@ -315,6 +316,25 @@ SHAPES = {"id": str, "date": str, "topics": list, "scan": str, "cited_by": list,
           "mtime": int, "hash": str, "distilled": str}
 
 
+SCANS = ("clean", "unscanned", "secrets")         # in rising strictness
+HEX64 = re.compile(r"[0-9a-f]{64}")
+
+
+def row_values_valid(row: dict, fields: "tuple[str, ...]") -> bool:
+    """A committed row's values are what the script itself writes: its scan one of SCANS, its date a real date,
+    its id a source id, its hashes 64 hex digits (an empty distilled hash: never distilled)."""
+    if not re.fullmatch(r"src-[0-9a-f]{10}", row["id"]):
+        return False
+    if "scan" in fields and row["scan"] not in SCANS:
+        return False
+    if "date" in fields and not (re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["date"])
+                                 and 1 <= int(row["date"][5:7]) <= 12 and 1 <= int(row["date"][8:]) <= 31):
+        return False
+    if "hash" in fields and not HEX64.fullmatch(row["hash"]):
+        return False
+    return "distilled" not in fields or row["distilled"] == "" or bool(HEX64.fullmatch(row["distilled"]))
+
+
 def read_rows(path: str, fields: "tuple[str, ...]", what: str) -> "dict[str, dict]":
     try:
         lines = read_text(path, what).splitlines()
@@ -331,6 +351,8 @@ def read_rows(path: str, fields: "tuple[str, ...]", what: str) -> "dict[str, dic
         if not isinstance(row, dict) or not all(isinstance(row.get(k), SHAPES[k]) and not isinstance(row.get(k), bool)
                                                 for k in fields) \
                 or not all(isinstance(v, str) for k in fields if SHAPES[k] is list for v in row[k]):
+            raise KnowledgeError(f"{what} has a line it can't read (line {number})")
+        if not row_values_valid(row, fields):
             raise KnowledgeError(f"{what} has a line it can't read (line {number})")
         rows[row["id"]] = {k: row[k] for k in fields}   # an older version's extra keys are dropped
     return rows
@@ -431,6 +453,8 @@ def index(store: Store) -> None:
                     continue
                 row.update(size=now.st_size, mtime=now.st_mtime_ns, hash=digest)
                 store.tracked[source]["scan"] = scan(full)
+                if not any(real_day(month, day) for _, month, day in DATE.findall(path)):   # dated by its time
+                    store.tracked[source]["date"] = date_of(path, now)
             continue
         digest = hash_of(full)
         if digest is None:
@@ -452,6 +476,26 @@ def index(store: Store) -> None:
     store.save()
 
 
+def state_of(store: Store, source: str, found: dict, quick: bool) -> "tuple[str, str]":
+    """(absent, undistilled, changed or current, the source's hash now): absent when its file isn't on this machine;
+    quick reads sizes and times only, never hashing, so its hash is the index's; otherwise a file whose size or time
+    moved is hashed to settle it."""
+    row = store.local.get(source)
+    now = found.get(row["path"]) if row else None
+    if now is None:
+        return "absent", ""
+    moved = (now.st_size, now.st_mtime_ns) != (row["size"], row["mtime"])
+    if quick:
+        digest = row["hash"]
+        changed = moved or digest != row["distilled"]
+    else:
+        digest = (hash_of(os.path.join(store.main, row["path"])) or "") if moved else row["hash"]
+        changed = digest != row["distilled"]
+    if not row["distilled"]:
+        return "undistilled", digest
+    return ("changed" if changed else "current"), digest
+
+
 def status(store: Store, quick: bool) -> dict:
     """The counts: files on this machine the index lacks (new); sources never distilled; sources whose content moved
     on since they were distilled; entries citing an id the index lacks; sources not on this machine (a teammate's
@@ -462,19 +506,9 @@ def status(store: Store, quick: bool) -> dict:
     counts = {"new": sum(1 for path in found if path not in known), "undistilled": 0, "changed": 0, "missing": 0,
               "absent": 0}
     for source in store.tracked:
-        row = store.local.get(source)
-        now = found.get(row["path"]) if row else None
-        if now is None:
-            counts["absent"] += 1
-        elif not row["distilled"]:
-            counts["undistilled"] += 1
-        else:
-            moved = (now.st_size, now.st_mtime_ns) != (row["size"], row["mtime"])
-            if quick:
-                counts["changed"] += moved or row["hash"] != row["distilled"]
-            else:
-                digest = hash_of(os.path.join(store.main, row["path"])) if moved else row["hash"]
-                counts["changed"] += digest != row["distilled"]
+        state, _ = state_of(store, source, found, quick)
+        if state != "current":
+            counts[state] += 1
     counts["missing"] = sum(1 for ids in entry_citations(store.config, store.top).values() if ids - set(store.tracked))
     return counts
 
@@ -488,18 +522,14 @@ def pending(store: Store) -> "tuple[list[dict], int]":
     known = {row["path"] for row in rows} | {a for row in rows for a in row["aka"]}
     waiting = []
     for source in sorted(store.tracked):
-        row = store.local.get(source)
-        now = found.get(row["path"]) if row else None
-        if now is None:
+        state, digest = state_of(store, source, found, quick=False)
+        if state not in ("undistilled", "changed"):
             continue
-        if row["distilled"]:
-            moved = (now.st_size, now.st_mtime_ns) != (row["size"], row["mtime"])
-            digest = hash_of(os.path.join(store.main, row["path"])) if moved else row["hash"]
-            if digest == row["distilled"]:
-                continue
-        waiting.append({"id": source, "path": row["path"], "date": store.tracked[source]["date"],
-                        "scan": store.tracked[source]["scan"],
-                        "why": "changed since distilled" if row["distilled"] else "not distilled"})
+        path = store.local[source]["path"]
+        fresh = scan(os.path.join(store.main, path))    # the committed flag could be forged: the stricter one stands
+        flagged = max(store.tracked[source]["scan"], fresh, key=SCANS.index)
+        waiting.append({"id": source, "path": path, "date": store.tracked[source]["date"], "scan": flagged,
+                        "hash": digest, "why": "changed since distilled" if state == "changed" else "not distilled"})
     return waiting, sum(1 for path in found if path not in known)
 
 
@@ -514,13 +544,18 @@ def mark_distilled(store: Store, sources: "list[str]") -> int:
         print("usage: knowledge.py distilled <id>...", file=sys.stderr)
         return 1
     found = present(store.config, store.main)
-    for source in sources:
+    for given in sources:
+        source, _, read_at = given.partition(":")      # <id>:<hash> as pending showed it: what was actually read
         row = store.local.get(source)
         now = found.get(row["path"]) if row and source in store.tracked else None
         full = os.path.join(store.main, row["path"]) if now else ""
         digest = hash_of(full) if now else None
         if digest is None:
             print(f"Knowledge: {source[:40]} is not an indexed source on this machine", file=sys.stderr)
+            return 1
+        if read_at and read_at != digest:
+            print(f"Knowledge: {source[:40]} changed after it was read: read it again; nothing was marked",
+                  file=sys.stderr)
             return 1
         row.update(size=now.st_size, mtime=now.st_mtime_ns, hash=digest, distilled=digest)
         store.tracked[source]["scan"] = scan(full)
@@ -1001,7 +1036,7 @@ def main(argv: "list[str]") -> int:
                 print(json.dumps(waiting, sort_keys=True))
             else:
                 for row in waiting:
-                    print(f"{row['id']}  {row['date']}  {row['why']}, {row['scan']}: {ascii(row['path'])[1:-1]}")
+                    print(f"{row['id']}:{row['hash']}  {row['date']}  {row['why']}, {row['scan']}: {shown(row['path'])}")
                 if new:
                     print(f"Knowledge: {new} file{'s' if new != 1 else ''} the index doesn't know yet: run knowledge.py "
                           "index first.")

@@ -1065,6 +1065,63 @@ class KnowledgeTest(unittest.TestCase):
     def test_pending_without_a_config_is_off(self):
         self.assertIn("no knowledge config", self.run_script("pending"))
 
+    # --- ticket 04's review ------------------------------------------------------------------------------------------
+
+    def test_pending_trusts_a_fresh_scan_over_a_committed_flag(self):
+        self.configure()
+        self.raw("2026-09-03-keys.md", "api_key: 0123456789abcdef\n")
+        self.run_script("index")
+        index = self.repo / "docs" / "knowledge" / "index.jsonl"
+        index.write_text(index.read_text().replace('"secrets"', '"clean"'))
+        (row,) = self.pending()
+        self.assertEqual(row["scan"], "secrets")
+
+    def test_a_scan_or_date_of_the_wrong_shape_is_refused(self):
+        self.configure()
+        self.raw("2026-09-01-a.md")
+        self.run_script("index")
+        index = self.repo / "docs" / "knowledge" / "index.jsonl"
+        good = index.read_text()
+        for bad in (good.replace('"clean"', '"fine"'), good.replace('"2026-09-01"', '"2026-09-01\\nforged"'),
+                    good.replace('"2026-09-01"', '"soon"')):
+            index.write_text(bad)
+            with self.subTest(bad=bad):
+                out = self.run_script("pending", code=2)
+                self.assertEqual(len(out.strip().splitlines()), 1, out)
+
+    def test_distilled_refuses_a_source_that_changed_after_it_was_read(self):
+        self.configure()
+        a = self.raw("2026-09-01-a.md", "aaaa\n")
+        self.run_script("index")
+        (row,) = self.pending()
+        a.write_text("aaaa, changed while drafting\n")
+        out = self.run_script("distilled", f"{row['id']}:{row['hash']}", code=1)
+        self.assertIn("changed", out)
+        self.assertEqual(len(self.pending()), 1)
+        (row,) = self.pending()
+        self.run_script("distilled", f"{row['id']}:{row['hash']}")
+        self.assertEqual(self.pending(), [])
+
+    def test_pending_prints_a_name_as_it_is_unless_it_hides_a_line(self):
+        self.configure()
+        self.raw("2026-09-01-café.md", "x\n")
+        self.raw("2026-09-02-a\nb.md", "y\n")
+        self.run_script("index")
+        out = self.run_script("pending")
+        self.assertIn("docs/knowledge/raw/2026-09-01-café.md", out)
+        self.assertNotIn("a\nb.md", out)
+        self.assertIn("a\\nb.md", out)
+
+    def test_a_changed_source_dated_by_its_time_is_dated_again(self):
+        self.configure()
+        a = self.raw("notes.md", "first\n")
+        os.utime(a, (1_700_000_000, 1_700_000_000))                 # 2023-11-14
+        self.run_script("index")
+        self.assertEqual(self.rows()[0]["date"], "2023-11-14")
+        a.write_text("revised\n")
+        self.run_script("index")
+        self.assertEqual(self.rows()[0]["date"], time.strftime("%Y-%m-%d", time.gmtime()))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -99,13 +99,17 @@ class KnowledgeCard(unittest.TestCase):
         self.assertEqual(self.knowledge_lines(), ["Knowledge, from the knowledge index's quick check: "
                                                   "1 raw source not distilled; /seams:distill drafts entries from them."])
 
-    def test_the_line_names_distill_when_raw_sources_wait(self):
+    def test_the_line_names_distill_only_when_raw_sources_wait(self):
         self.configure()
         self.raw("2026-09-01-call.md")
         self.knowledge("index")
+        self.knowledge("distilled", *self.ids())
+        entries = self.repo / "docs" / "knowledge" / "entries"
+        entries.mkdir(parents=True)
+        (entries / "orphan.md").write_text("sources: src-0123456789\n")
         self.active()
         (line,) = self.knowledge_lines()
-        self.assertTrue(line.endswith("; /seams:distill drafts entries from them."), line)
+        self.assertEqual(line, "Knowledge, from the knowledge index's quick check: 1 entry cites a missing source.")
 
     def test_each_count_is_on_the_card(self):
         self.configure()
