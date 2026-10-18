@@ -139,15 +139,19 @@ class KnowledgeCard(unittest.TestCase):
                                                 "not distilled.")
         self.assertNotIn("systemMessage", output)
 
-    def test_the_line_stays_within_the_card_cap(self):
+    def test_the_line_stays_within_the_card_cap_and_the_injection_bound(self):
         self.configure()
         self.raw("2026-09-01-call.md")
         for n in range(30):
             path = self.repo / ".scratch" / f"feature-{n:02d}-{'f' * 40}" / "progress.md"
             path.parent.mkdir(parents=True)
             path.write_text(f"Status: active\nStage: built\nNext: {'word ' * 60}\nUpdated: 2026-09-{n % 28 + 1:02d}\n")
-        card = self.card()
-        self.assertLess(len("\n\n" + card), 1500)
+        context = self.start()["hookSpecificOutput"]["additionalContext"]
+        at = context.index("\n\n" + HEADING)
+        bootstrap, card = context[:at], context[at + 2:]
+        self.assertLessEqual(len(bootstrap.encode()), 2900)          # test_plugin_hook.sh's bound, untouched
+        self.assertLess(len("\n\n" + card), 1500)                    # the card's cap, the line within it
+        self.assertLessEqual(len(context), 2900 + 1500)
         self.assertIn("\nKnowledge, from the knowledge index's quick check: 1 raw source not distilled.\n", card)
         self.assertIn("Also active", card)
 
