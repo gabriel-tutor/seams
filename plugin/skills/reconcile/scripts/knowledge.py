@@ -15,8 +15,9 @@ Two files, so nothing personal is committed (knowledge-layer decision 18):
     knowledge.py index                       add and update the rows
     knowledge.py distilled <id>...           mark sources distilled at their current content (and rescan them)
     knowledge.py topics <id> <a,b,...>       set a source's topics, as written (what an action searches by)
-    knowledge.py move <folder>...            the plan to move raw folders (from the repository's root) into the
-                                             inbox: each to <inbox>/<date>-<name>/ with its size, and what stays
+    knowledge.py move <folder>...            the plan to move folders of raw sources (from the repository's root)
+                                             into the inbox: each to <inbox>/<date>-<name>/ with its size, and what
+                                             stays
     knowledge.py move --yes <code> <folder>...   that plan carried out, only with the code the plan printed, within
                                              30 minutes, and while every file in it is as planned (the user's yes to
                                              the list shown)
@@ -27,7 +28,9 @@ file is listed and refused, so nothing leaves git silently. A folder that someth
 skill's instructions, a build file), or a folder holding it, stays where it is; the plan prints the sources line that
 would index it in place, and the config is left to the user. A folder in another case than on disk, or holding or
 inside another git repository, is refused. A moved file keeps the date it had where it was, and a move that stops
-half-way is finished by the next plan. Only the plan names files; the move itself reports counts.
+half-way is finished by the next plan. Only the plan names files, escaped; the move itself reports counts. The code
+is not a secret, and the script can't tell who typed it: the user's yes is the consent, so a session runs --yes only
+after the user agrees to the plan it showed them, and never unattended (a move is destructive).
 
 The config's block, one `key: value` per line (paths from the repository's root, inside it; lists comma-separated):
 
@@ -102,10 +105,10 @@ class KnowledgeError(Exception):
 
 # --- where things are ----------------------------------------------------------------------------------------------
 
-def git(cwd: str, *args: str) -> "subprocess.CompletedProcess | None":
+def git(cwd: str, *args: str, input: "str | None" = None) -> "subprocess.CompletedProcess | None":
     try:
-        return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=5,
-                              stdin=subprocess.DEVNULL)
+        return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=5, input=input,
+                              stdin=None if input is not None else subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired):
         return None
 
@@ -237,9 +240,13 @@ def scan(path: str) -> str:
     return "clean" if complete else "unscanned"
 
 
+def real_day(month: str, day: str) -> bool:
+    return 1 <= int(month) <= 12 and 1 <= int(day) <= 31
+
+
 def date_of(path: str, found: os.stat_result) -> str:
     for year, month, day in reversed(DATE.findall(path)):
-        if 1 <= int(month) <= 12 and 1 <= int(day) <= 31:
+        if real_day(month, day):
             return f"{year}-{month}-{day}"
     return time.strftime("%Y-%m-%d", time.gmtime(found.st_mtime))
 
@@ -434,7 +441,7 @@ def set_topics(store: Store, source: str, topics: str) -> int:
     return 0
 
 
-# --- moving existing raw material in (ticket 06) ------------------------------------------------------------------
+# --- moving existing raw sources in (ticket 06) -------------------------------------------------------------------
 
 def size_of(total: float) -> str:
     for unit in ("B", "KB", "MB"):
@@ -446,10 +453,16 @@ def size_of(total: float) -> str:
 
 def dated(name: str) -> bool:
     found = DATE.match(name)
-    return bool(found) and 1 <= int(found.group(2)) <= 12 and 1 <= int(found.group(3)) <= 31
+    return bool(found) and real_day(found.group(2), found.group(3))
 
 
-# Ignore rules name raw folders without reading them; anything else that names a folder (code, a skill's
+def shown(text: str) -> str:
+    """A name as the plan prints it: a name holding a line break or a terminal escape (an attachment's name comes
+    from whoever sent it) is printed quoted and escaped, so it can't hide or forge a line of the plan."""
+    return text if text.isprintable() else ascii(text)
+
+
+# Ignore rules name folders without reading them; anything else that names a folder (code, a skill's
 # instructions, a build file, an untracked script) may read it, so the folder stays: erring towards staying is safe.
 NOT_READERS = (":(exclude)*ignore",)
 CODE_MINUTES = 30                                   # how long a plan's yes stays good
@@ -510,12 +523,16 @@ def reader_of(main: str, rel: str, inbox: str) -> str:
     holding it as a path (quoted, or with a slash beside it), or "": a script that reads data/ reads data/owner/."""
     parts = rel.split(os.sep)
     folders = [os.sep.join(parts[:end]) for end in range(len(parts), 0, -1)]
-    done = git(main, "grep", "--untracked", "-z", "-l", "-I", "-F", *(arg for f in folders for arg in ("-e", f)),
+    setting = git(main, "config", "--bool", "core.ignorecase")
+    caseless = bool(setting) and setting.stdout.strip() == "true"     # a disk that ignores case reads Feeds/ as feeds/
+    done = git(main, "grep", "--untracked", "-z", "-l", "-I", "-F", *(["-i"] if caseless else []),
+               *(arg for f in folders for arg in ("-e", f)),
                "--", ".", *NOT_READERS, f":(exclude,literal){rel}", f":(exclude,literal){inbox}")
     if done is None or done.returncode not in (0, 1):
         raise KnowledgeError("git can't say which files name a folder, so nothing can move")
     name = "(?:" + "|".join(re.escape(f) for f in folders) + ")"
-    named = re.compile(rf"(?<![\w.-])(?:(?<=[/'\"`]){name}(?![\w.-])|{name}(?=[/'\"`]))")
+    named = re.compile(rf"(?<![\w.-])(?:(?<=[/'\"`]){name}(?![\w.-])|{name}(?=[/'\"`]))",
+                       re.IGNORECASE if caseless else 0)
     for path in sorted(p for p in done.stdout.split("\0") if p):
         try:
             if named.search(open(os.path.join(main, path), encoding="utf-8", errors="replace").read()):
@@ -569,7 +586,9 @@ def plan_move(store: Store, folders: "list[str]") -> "list[dict]":
             is_folder = stat_kind.S_ISDIR(os.lstat(os.path.join(main, given)).st_mode)
         except OSError:
             is_folder = False
-        if not inside(real, main) or ".git" in rel.lower().split(os.sep):
+        if not given.isprintable():                 # the yes's command line couldn't carry it safely
+            item["why"] = ": refused: its name holds a control character; rename it first"
+        elif not inside(real, main) or ".git" in rel.lower().split(os.sep):
             item["why"] = ": refused: it is not inside the repository, or it is git's own"
         elif not is_folder:
             item["why"] = ": refused: not a folder here"
@@ -590,7 +609,7 @@ def plan_move(store: Store, folders: "list[str]") -> "list[dict]":
         chosen.append(real)
         reader = reader_of(main, rel, inbox_rel)
         if reader:
-            item["why"] = f" stays where it is, named in {reader}"
+            item["why"] = f" stays where it is, named in {shown(reader)}"
             item["stays"] = True
             continue
         tracked = tracked_in(main, rel)
@@ -605,7 +624,7 @@ def plan_move(store: Store, folders: "list[str]") -> "list[dict]":
             inbox_rel, name if dated(name) else time.strftime("%Y-%m-%d-", time.gmtime(newest)) + name)
         if item["dest"].casefold() in destinations or (os.path.lexists(os.path.join(main, item["dest"]))
                                                        and not resumed):
-            item["why"] = f": refused: {item['dest']}/ already exists"
+            item["why"] = f": refused: {shown(item['dest'])}/ already exists"
             continue
         destinations.add(item["dest"].casefold())
         for path, now in files:
@@ -622,20 +641,27 @@ def plan_move(store: Store, folders: "list[str]") -> "list[dict]":
             kept[digest] = os.path.join(item["dest"], os.path.relpath(path, real))
             item["moves"].append({"src": src, "dest": kept[digest], "size": now.st_size, "mtime": now.st_mtime_ns,
                                   "hash": digest, "stat": now})
+    planned = [step["dest"] for item in items for step in item["moves"]]
+    if planned:
+        done = git(main, "check-ignore", "-z", "--stdin", input="\0".join(planned) + "\0")
+        if done is None or done.returncode not in (0, 1) or not set(planned) <= set(done.stdout.split("\0")):
+            raise KnowledgeError(f"git would not ignore every file the move would put in the inbox "
+                                 f"({store.config['inbox']}): check its .gitignore rules first")
     return items
 
 
 def render_plan(items: "list[dict]", sources: str) -> "list[str]":
-    lines = ["Knowledge: the plan to move raw material into the inbox (nothing has moved yet)."]
+    lines = ["Knowledge: the plan to move raw sources into the inbox (nothing has moved yet)."]
     for item in items:
         if item["why"]:
-            lines.append(f"- {item['folder']}{item['why']}")
+            lines.append(f"- {shown(item['folder'])}{item['why']}")
             continue
         count, total = len(item["moves"]), sum(m["size"] for m in item["moves"])
-        lines.append(f"- {item['folder']} -> {item['dest']}/ ({count} file{'' if count == 1 else 's'}, "
-                     f"{size_of(total)})" if count else f"- {item['folder']}: nothing moves")
-        lines += [f"    duplicate, kept once: {d['src']} (the same as {d['kept']})" for d in item["dups"]]
-        lines += [f"    tracked by git, refused: {path} (it stays; untrack it to move it)" for path in item["tracked"]]
+        lines.append(f"- {shown(item['folder'])} -> {shown(item['dest'])}/ ({count} file{'' if count == 1 else 's'}, "
+                     f"{size_of(total)})" if count else f"- {shown(item['folder'])}: nothing moves")
+        lines += [f"    duplicate, kept once: {shown(d['src'])} (the same as {shown(d['kept'])})" for d in item["dups"]]
+        lines += [f"    tracked by git, refused: {shown(path)} (it stays; untrack it to move it)"
+                  for path in item["tracked"]]
     lines.append("Nothing is deleted: duplicates, tracked files, hidden files and links stay where they are, outside "
                  "the inbox.")
     staying = [item["path"] for item in items if item["stays"]]
@@ -643,7 +669,7 @@ def render_plan(items: "list[dict]", sources: str) -> "list[str]":
         listable = [path for path in staying if "," not in path and "\n" not in path]
         lines.append(f"The folders that stay are not indexed until the config ({CONFIG}) lists them; this script "
                      "never edits it. Its sources line would read:")
-        lines.append("    sources: " + ", ".join(listed(sources) + listable))
+        lines.append("    sources: " + ", ".join(shown(path) for path in listed(sources) + listable))
         if len(listable) < len(staying):
             lines.append("    (a folder with a comma in its name can't be listed: rename it first)")
     return lines
@@ -670,8 +696,8 @@ def move(store: Store, argv: "list[str]") -> int:
     if agreed is None:
         print("\n".join(render_plan(items, store.config.get("sources", ""))))
         if any(item["moves"] or item["dups"] for item in items):
-            print("To move exactly this, run: knowledge.py move --yes " + code + " "
-                  + " ".join(shlex.quote(f) for f in folders))
+            print("To move exactly this, only after the user agrees to this plan, run: knowledge.py move --yes "
+                  + code + " " + " ".join(shlex.quote(f) for f in folders))
         return 0
     minute, _, digest = agreed.partition("-")
     try:

@@ -530,7 +530,7 @@ class KnowledgeTest(unittest.TestCase):
         self.run_script("index", timeout=60)
         self.assertLess(time.monotonic() - started, 15)
 
-    # --- moving existing raw material in (ticket 06) ---------------------------------------------------------------
+    # --- moving existing raw sources in (ticket 06) -----------------------------------------------------------------
 
     def scattered(self, rel, text="the owner's email\n", day="2026-08-20"):
         """A raw file outside the inbox, where an owner's material was dropped, last modified on day."""
@@ -796,6 +796,39 @@ class KnowledgeTest(unittest.TestCase):
         self.assertTrue((self.repo / "mail" / "asked.md").exists())
         self.run_script("move", "--yes", code, "mail")
         self.assertFalse((self.repo / "mail").exists())
+
+    def test_the_move_is_refused_where_git_would_not_ignore_a_moved_file(self):
+        self.configure(ignored=False)
+        (self.repo / ".gitignore").write_text("docs/knowledge/raw/*\n!docs/knowledge/raw/2026-08-20-mail/\n")
+        self.scattered("mail/ask.md")
+        before = self.files()
+        out = self.plan("mail", code=2)
+        self.assertIn("ignore", out)
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+        self.assertEqual(self.files(), before)
+
+    def test_names_are_printed_escaped_so_none_can_forge_a_plan_line(self):
+        self.configure()
+        self.scattered("mail/ask.md", "same\n")
+        self.scattered("mail/x\n- other -> docs/knowledge/raw/fake/ (0 files, 0 B)\x1b[2K.md", "same\n")
+        (self.repo / "bad\nname").mkdir()
+        out = self.plan("mail", "bad\nname")
+        self.assertNotIn("\x1b", out)
+        self.assertFalse([line for line in out.splitlines() if line.startswith("- other")], out)
+        self.assertIn("\\n- other", out)
+        self.assertIn("- 'bad\\nname': refused: its name holds a control character", out)
+
+    def test_a_script_naming_a_folder_in_another_case_keeps_it_where_git_ignores_case(self):
+        self.configure()
+        git(self.repo, "config", "core.ignorecase", "true")
+        self.scattered("feeds/prices.csv", "sku,price\n")
+        (self.repo / "load.py").write_text('ROWS = open("Feeds/prices.csv").read()\n')
+        self.assertIn("- feeds stays where it is, named in load.py", self.plan("feeds"))
+
+    def test_the_plan_asks_for_the_users_yes_before_its_command(self):
+        self.configure()
+        self.scattered("mail/ask.md")
+        self.assertIn("only after the user agrees to this plan", self.plan("mail").strip().splitlines()[-1])
 
     def test_only_the_folders_the_move_emptied_are_removed(self):
         self.configure()
