@@ -5,8 +5,10 @@ machine. The tracked index holds only what is safe to share (decision 18); each 
 stay in a gitignored file inside the inbox. No config means the layer is off."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import time
 import subprocess
 import sys
 import tempfile
@@ -435,6 +437,94 @@ class KnowledgeTest(unittest.TestCase):
         self.assertIn("gitignore", out)
         self.assertFalse((self.repo / "docs" / "knowledge" / "raw" / ".knowledge-local.jsonl").exists())
         self.assertFalse((self.repo / "docs" / "knowledge" / "index.jsonl").exists())
+
+    # --- the re-review of 5a6a53a ----------------------------------------------------------------------------------
+
+    def test_a_source_whose_tracked_row_went_missing_gets_it_back(self):
+        self.configure()
+        self.raw("2026-09-01-a.md")
+        self.run_script("index")
+        (before,) = self.rows()
+        (self.repo / "docs" / "knowledge" / "index.jsonl").unlink()
+        self.assertEqual(self.counts("--quick")["new"], 1)
+        self.run_script("index")
+        self.assertEqual([r["id"] for r in self.rows()], [before["id"]])
+
+    def test_old_keys_are_dropped_from_the_tracked_index(self):
+        self.configure()
+        self.raw("2026-09-01-jane-doe.md")
+        self.run_script("index")
+        index = self.repo / "docs" / "knowledge" / "index.jsonl"
+        row = self.rows()[0]
+        index.write_text(json.dumps({**row, "path": "docs/knowledge/raw/2026-09-01-jane-doe.md", "hash": "f" * 64}) + "\n")
+        self.run_script("index")
+        self.assertNotIn("jane-doe", index.read_text())
+        self.assertEqual(set(self.rows()[0]), {"id", "date", "topics", "scan", "cited_by"})
+
+    def test_an_id_reveals_nothing_about_its_file(self):
+        self.configure()
+        self.raw("2026-09-01-a.md")
+        self.run_script("index")
+        guess = "src-" + hashlib.sha1(b"docs/knowledge/raw/2026-09-01-a.md").hexdigest()[:10]
+        self.assertNotEqual(self.rows()[0]["id"], guess)
+
+    def test_every_message_in_a_mailbox_is_scanned(self):
+        self.configure()
+        self.raw("2026-07-01-takeout.mbox", "From a@x Mon Jul  1 00:00:00 2026\nSubject: hi\n\nhello\n\n"
+                 "From b@x Mon Jul  1 00:00:01 2026\nSubject: keys\nMIME-Version: 1.0\nContent-Type: text/plain\n"
+                 "Content-Transfer-Encoding: base64\n\ncGFzc3dvcmQ6IGh1bnRlcjItYnV0LWxvbmdlcgo=\n")
+        part = "password: hunter2-but-longer\n".encode("utf-16")
+        import base64
+        self.raw("2026-07-02-utf16.eml", "From: owner\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-16\n"
+                 "Content-Transfer-Encoding: base64\n\n" + base64.b64encode(part).decode() + "\n")
+        self.run_script("index")
+        self.assertEqual(set(self.scans().values()), {"secrets"})
+
+    def test_a_deeply_nested_or_broken_email_is_unscanned_not_a_traceback(self):
+        self.configure()
+        nested = "".join(f'Content-Type: multipart/mixed; boundary="b{i}"\n\n--b{i}\n' for i in range(3000))
+        self.raw("2026-07-03-deep.eml", "From: x\nMIME-Version: 1.0\n" + nested)
+        out = self.run_script("index")
+        self.assertNotIn("Traceback", out)
+        self.assertEqual(self.scans()["2026-07-03-deep.eml"], "unscanned")
+
+    def test_a_git_folder_is_refused_whatever_its_case(self):
+        self.configure("```knowledge\ninbox: raw\nindex: .GIT/x.jsonl\nentries: e\n```\n")
+        out = self.run_script("index", code=2)
+        self.assertIn("index", out)
+
+    def test_rows_of_the_wrong_shape_are_reported_in_one_line(self):
+        self.configure()
+        self.raw("a.md")
+        self.run_script("index")
+        index = self.repo / "docs" / "knowledge" / "index.jsonl"
+        row = self.rows()[0]
+        for bad in ({**row, "id": []}, {**row, "id": 7}, {**row, "topics": "pricing"}):
+            index.write_text(json.dumps(bad) + "\n")
+            with self.subTest(bad=bad):
+                out = self.run_script("status", code=2)
+                self.assertEqual(len(out.strip().splitlines()), 1, out)
+
+    def test_distilled_reads_only_a_regular_file_and_never_names_it(self):
+        self.configure()
+        a = self.raw("2026-09-01-jane-doe.md")
+        self.run_script("index")
+        source = self.rows()[0]["id"]
+        a.unlink()
+        a.symlink_to(self.tmp / "elsewhere")
+        (self.tmp / "elsewhere").write_text("api_key: 0123456789abcdef\n")
+        out = self.run_script("distilled", source, code=1)
+        self.assertNotIn("jane-doe", out)
+        self.assertNotIn("Traceback", out)
+
+    def test_crafted_text_scans_in_linear_time(self):
+        self.configure()
+        for name, text in (("dots.txt", "a." * 500_000), ("secrets.txt", "secret" * 200_000),
+                           ("jwt.txt", "eyJ" * 300_000), ("scheme.txt", "a+" * 500_000 + "://")):
+            self.raw(name, text)
+        started = time.monotonic()
+        self.run_script("index", timeout=60)
+        self.assertLess(time.monotonic() - started, 15)
 
 
 if __name__ == "__main__":

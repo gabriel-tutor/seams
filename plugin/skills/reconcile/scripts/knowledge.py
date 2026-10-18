@@ -27,6 +27,9 @@ The config's block, one `key: value` per line (paths from the repository's root,
     approval-record  the file the owner's approvals live in, if the project keeps one
     escalation       the tag for a question only the owner can answer (NEEDS-OWNER)
 
+An id is random, so the tracked index reveals nothing about a file: the local file is the only link from an id to
+its source, and a machine without it (a teammate's, or one that lost it) sees every row as not on this machine.
+
 No config: the layer is off, and every command says so and writes nothing. A malformed config, index or local file
 is reported in one line (exit 2). Standard library only; it writes no bytecode."""
 from __future__ import annotations
@@ -40,6 +43,7 @@ import hashlib                                      # noqa: E402
 import json                                         # noqa: E402
 import os                                           # noqa: E402
 import re                                           # noqa: E402
+import secrets                                      # noqa: E402
 import stat as stat_kind                            # noqa: E402
 import subprocess                                   # noqa: E402
 import tempfile                                     # noqa: E402
@@ -61,20 +65,21 @@ CREDENTIALS = re.compile("|".join((
     r"\bsk-[A-Za-z0-9_-]{20,}",
     r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}",
     r"\bAIza[0-9A-Za-z_-]{35}",
-    r"\bxox[abeprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}|hooks\.slack\.com/services/\S+",
-    r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
+    r"\bxox[abeprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}|hooks\.slack\.com/services/\S",
+    r"\beyJ[A-Za-z0-9_-]{8,2048}\.eyJ[A-Za-z0-9_-]{8,4096}\.[A-Za-z0-9_-]{8}",
     r"\b(?:AC|SK)[0-9a-f]{32}\b",
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
-    r"\b[a-z][a-z0-9+.-]*://[^\s/:@]+:[^\s/@]+@",
-    r"(?i:\bbearer\s+[A-Za-z0-9._~+/=-]{16,})",
-    r"(?i:(?:api[ _-]?key|secret|token|passw(?:or)?d|pwd|access[ _-]?key|private[ _-]?key|auth)[A-Za-z0-9_-]*"
-    r"[\"']?\s*[:=]\s*[\"']?[^\s\"']{8,})",
+    r"(?<![a-z0-9+.-])[a-z][a-z0-9+.-]{0,30}://[^\s/:@]{1,256}:[^\s/@]{1,256}@",
+    r"(?i:\bbearer[ \t]{1,8}[A-Za-z0-9._~+/=-]{16})",
+    r"(?i:(?:api[ _-]?key|secret|token|passw(?:or)?d|pwd|access[ _-]?key|private[ _-]?key|auth)[A-Za-z0-9_-]{0,40}"
+    r"[\"']?[ \t]{0,8}[:=][ \t]{0,8}[\"']?[^\s\"']{8})",
 )))
 BINARY = (".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".tif", ".tiff", ".zip", ".gz", ".mp3", ".m4a",
           ".mp4", ".mov", ".wav", ".docx", ".docm", ".doc", ".xlsx", ".xlsm", ".xls", ".pptx", ".ppt", ".odt", ".ods",
           ".odp", ".pages", ".numbers", ".key", ".epub", ".rtfd")
 SCAN_BYTES = 8 << 20                                # ceiling: a longer text file is "unscanned", never "clean"
-MAIL = re.compile(rb"(?im)^(?:mime-version:|content-transfer-encoding:\s*(?:base64|quoted-printable))")
+MAIL = re.compile(rb"(?im)^(?:mime-version:|content-transfer-encoding:[ \t]*(?:base64|quoted-printable))")
+MBOX_SPLIT = re.compile(rb"(?m)^(?=From )")         # a mailbox (a Gmail export): each message on its own
 
 
 class KnowledgeError(Exception):
@@ -137,7 +142,7 @@ def read_config(top: str, main: str) -> "dict | None":
                               ("index", top, [config["index"]]), ("entries", top, listed(config["entries"]))):
         for value in values:
             real = os.path.realpath(os.path.join(root, value))
-            if not inside(real, root) or ".git" in os.path.relpath(real, root).split(os.sep):
+            if not inside(real, root) or ".git" in os.path.relpath(real, root).lower().split(os.sep):
                 raise KnowledgeError(f"{CONFIG}: its {key} must stay inside the repository ({value[:60]})")
     return config
 
@@ -196,17 +201,24 @@ def scan(path: str) -> str:
         return "unscanned"
     if b"\x00" in data[:8192]:
         return "unscanned"
-    complete, texts = len(data) <= SCAN_BYTES, [data[:SCAN_BYTES]]
+    complete, texts = len(data) <= SCAN_BYTES, [data[:SCAN_BYTES].decode("utf-8", errors="replace")]
     if MAIL.search(data[:SCAN_BYTES]):               # an email's encoded bodies are read decoded
-        for part in email.message_from_bytes(data[:SCAN_BYTES]).walk():
-            if part.is_multipart():
-                continue
-            payload = part.get_payload(decode=True) or b""
-            if part.get_content_maintype() == "text":
-                texts.append(payload)
-            elif payload:
-                complete = False                    # an attachment it can't read
-    if any(CREDENTIALS.search(text.decode("utf-8", errors="replace")) for text in texts):
+        try:
+            for message in MBOX_SPLIT.split(data[:SCAN_BYTES]):
+                for part in email.message_from_bytes(message).walk():
+                    if part.is_multipart():
+                        continue
+                    payload = part.get_payload(decode=True) or b""
+                    if part.get_content_maintype() != "text":
+                        complete = complete and not payload     # an attachment it can't read
+                        continue
+                    try:
+                        texts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
+                    except LookupError:                       # a charset it doesn't know
+                        complete = False
+        except Exception:                            # noqa: BLE001  a message the email module can't take apart
+            complete = False
+    if any(CREDENTIALS.search(text) for text in texts):
         return "secrets"
     return "clean" if complete else "unscanned"
 
@@ -232,6 +244,10 @@ def entry_citations(config: dict, top: str) -> "dict[str, set]":
 
 # --- the two files -------------------------------------------------------------------------------------------------
 
+SHAPES = {"id": str, "date": str, "topics": list, "scan": str, "cited_by": list, "path": str, "aka": list, "size": int,
+          "mtime": int, "hash": str, "distilled": str}
+
+
 def read_rows(path: str, fields: "tuple[str, ...]", what: str) -> "dict[str, dict]":
     try:
         lines = open(path, encoding="utf-8").read().splitlines()
@@ -247,9 +263,11 @@ def read_rows(path: str, fields: "tuple[str, ...]", what: str) -> "dict[str, dic
             row = json.loads(line)
         except ValueError:
             row = None
-        if not isinstance(row, dict) or not all(k in row for k in fields):
+        if not isinstance(row, dict) or not all(isinstance(row.get(k), SHAPES[k]) and not isinstance(row.get(k), bool)
+                                                for k in fields) \
+                or not all(isinstance(v, str) for k in fields if SHAPES[k] is list for v in row[k]):
             raise KnowledgeError(f"{what} has a line it can't read (line {number})")
-        rows[row["id"]] = row
+        rows[row["id"]] = {k: row[k] for k in fields}   # an older version's extra keys are dropped
     return rows
 
 
@@ -287,13 +305,11 @@ class Store:
         write_rows(self.index_path, self.tracked)
 
 
-def new_id(path: str, digest: str, taken: set) -> str:
-    seed = path
+def new_id(taken: set) -> str:
     while True:
-        source = "src-" + hashlib.sha1(seed.encode()).hexdigest()[:10]
+        source = "src-" + secrets.token_hex(5)
         if source not in taken:
             return source
-        seed += digest                                # a new file at an old path gets an id of its own
 
 
 def index(store: Store) -> None:
@@ -304,13 +320,15 @@ def index(store: Store) -> None:
         source = by_path.get(path)
         if source is not None:
             row = store.local[source]
+            if source not in store.tracked:          # its tracked row went missing (another checkout, a lost write)
+                store.tracked[source] = {"id": source, "date": date_of(path, now), "topics": [], "scan": scan(full),
+                                         "cited_by": []}
             if (row["size"], row["mtime"]) != (now.st_size, now.st_mtime_ns):
                 digest = hash_of(full)
                 if digest is None:
                     continue
                 row.update(size=now.st_size, mtime=now.st_mtime_ns, hash=digest)
-                store.tracked.setdefault(source, {"id": source, "date": date_of(path, now), "topics": [],
-                                                  "scan": "", "cited_by": []})["scan"] = scan(full)
+                store.tracked[source]["scan"] = scan(full)
             continue
         digest = hash_of(full)
         if digest is None:
@@ -327,7 +345,7 @@ def index(store: Store) -> None:
             row.update(path=path, size=now.st_size, mtime=now.st_mtime_ns)
             by_path[path] = moved
             continue
-        source = new_id(path, digest, set(store.tracked) | set(store.local))
+        source = new_id(set(store.tracked) | set(store.local))
         store.local[source] = {"id": source, "path": path, "aka": [], "size": now.st_size, "mtime": now.st_mtime_ns,
                                "hash": digest, "distilled": ""}
         store.tracked[source] = {"id": source, "date": date_of(path, now), "topics": [], "scan": scan(full),
@@ -344,7 +362,8 @@ def status(store: Store, quick: bool) -> dict:
     on since they were distilled; entries citing an id the index lacks; sources not on this machine (a teammate's
     checkout, or a file removed), which are never counted as changed."""
     found = present(store.config, store.main)
-    known = {row["path"] for row in store.local.values()} | {a for row in store.local.values() for a in row["aka"]}
+    rows = [row for source, row in store.local.items() if source in store.tracked]
+    known = {row["path"] for row in rows} | {a for row in rows for a in row["aka"]}
     counts = {"new": sum(1 for path in found if path not in known), "undistilled": 0, "changed": 0, "missing": 0,
               "absent": 0}
     for source in store.tracked:
@@ -375,14 +394,15 @@ def mark_distilled(store: Store, sources: "list[str]") -> int:
     if not sources:
         print("usage: knowledge.py distilled <id>...", file=sys.stderr)
         return 1
+    found = present(store.config, store.main)
     for source in sources:
         row = store.local.get(source)
-        full = os.path.join(store.main, row["path"]) if row else ""
-        digest = hash_of(full) if row and source in store.tracked else None
+        now = found.get(row["path"]) if row and source in store.tracked else None
+        full = os.path.join(store.main, row["path"]) if now else ""
+        digest = hash_of(full) if now else None
         if digest is None:
             print(f"Knowledge: {source[:40]} is not an indexed source on this machine", file=sys.stderr)
             return 1
-        now = os.lstat(full)
         row.update(size=now.st_size, mtime=now.st_mtime_ns, hash=digest, distilled=digest)
         store.tracked[source]["scan"] = scan(full)
     store.save()
