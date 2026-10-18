@@ -10,9 +10,12 @@ Updated: 2026-10-18
 1. Memory (Gabriel's choice, 2026-10-18): a live project card and re-checking, no second store. Each project gets one short card (status, next step, links to where each fact lives, the commit it was checked against), shown at every session start and resume; a check flags any fact older than the code it describes; every record lists all active work, not only the newest three. ICM's one home per fact, on Seams' existing homes.
 2. Learning (Gabriel's choice): whatever a session learns (a ruling given in chat, a preference, a correction) is written at once to its one home (the ticket's progress file, the glossary, an ADR, or Claude's memory of the user), with its source; a weekly reconcile pass re-checks old memories against the code and removes what is no longer true.
 
+3. Overnight tools (Gabriel's choice, 2026-10-18): everything but production may run unattended: every read; the CLIs; browsers; Railway deploys and variable changes on non-production environments; n8n on non-production; CRM test records. Production is refused: the production Railway environment, main or master, live n8n workflows.
+4. Messages (Gabriel's choice): real contacts are production. Overnight WhatsApp, email and CRM sends go only to an allowlist Gabriel sets (his own number and email, the team's test numbers, a test inbox); a send to anyone else is refused and drafted for the morning. A tool that would stall on an ask prompt is refused cleanly instead.
+
 ## Open questions
 
-- Overnight tool policy: which MCP and CLI actions may run unattended.
+- How the guard tells production from non-production in Railway and n8n (facts to find).
 - Whether merges are gated by evidence in code, not only by the heartbeat's text.
 
 ## Facts
