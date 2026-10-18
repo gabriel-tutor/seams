@@ -1,10 +1,8 @@
 # Progress: a knowledge layer, raw notes to approved knowledge
 
 Status: active
-Stage: designed
-Next: Ticket 01's review fixes committed after 01af08d on seams-5.5/knowledge-layer (knowledge.py reworked to decision 18; the glossary, ADR 0008, the spec and the ticket brought in line); next a security and correctness re-review of the fix commit, then the record and the definition of done.
-Ticket: 01
-Candidate: 01af08d
+Stage: built
+Next: Tickets 02 (the start card's knowledge line), 03 (the Knowledge rule) and 06 (moving existing raw material) are unblocked on seams-5.5/knowledge-layer: seams:implement's parallel offer, continuing here (they build on 01's script, plugin/skills/reconcile/scripts/knowledge.py).
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -15,7 +13,7 @@ This repository is public: no client names, people, cards or tools here. The cli
 
 ## Tickets
 
-- [ ] 01 The knowledge config and the knowledge index (blocked by: none)
+- [x] 01 The knowledge config and the knowledge index (blocked by: none)
 - [ ] 02 The start card's knowledge line (blocked by: 01)
 - [ ] 03 The Knowledge rule, its pointers, the done row, and foundations' offer (blocked by: 01)
 - [ ] 04 `/seams:distill` (blocked by: 01, 03)
@@ -24,12 +22,6 @@ This repository is public: no client names, people, cards or tools here. The cli
 - [ ] 07 Release Seams 5.5.0 (blocked by: all)
 
 The client project's own ticket (its config, `.gitignore` line, the move on Gabriel's yes, the index, a pull request into its develop) follows 07, in its own record.
-
-## Review
-
-Findings acted on (fixed in the uncommitted rework of plugin/skills/reconcile/scripts/knowledge.py):
-- quick report missed a change after index; a new file at an old path took the moved row's id; config paths could escape the repository; symlinks, pipes and devices in the inbox were read; credential formats missed and prose over-flagged; "clean" for files read in part and base64 email bodies; distilled left a stale scan; unreadable files and non-UTF-8 config or index crashed with a traceback; citations matched by substring; git before 2.31; identical files as one source; the full report hashing only what moved; topics kept as written; missing counted by entry; no bytecode; file names and hashes kept out of the tracked index (decision 18); the local file refused unless git ignores the inbox.
-Not acted on: argparse, naming and layout (style); the distilled and topics commands and the new count stay (the spec's Implementation Decisions name them; tickets 04 and 05 use them).
 
 ## Decisions
 
@@ -51,6 +43,8 @@ Not acted on: argparse, naming and layout (style); the distilled and topics comm
 16. Gabriel confirmed the shared understanding on 2026-10-18: spec it (seams:to-spec), then the tickets for his approval. Seams 5.5 is built in a new worktree `.worktrees/knowledge-layer` on branch `seams-5.5/knowledge-layer` from main; the client project's part is its own ticket, on a branch from its develop.
 17. The breakdown (Gabriel approved it, 2026-10-18): seven tickets under .scratch/knowledge-layer/issues/, as listed above.
 18. Ticket 01's security review (Gabriel chose it, amending decision 4): the tracked index holds only what is safe to share (each source's id, date, topics, secrets flag and the entries citing it); each source's path, old paths, size, modified time and hashes live in a gitignored file inside the inbox, on that machine only. No file name, path or content hash is committed.
+
+19. Ticket 01 (mine, within the decisions): the knowledge script lives at plugin/skills/reconcile/scripts/knowledge.py (every module in plugin/hooks/ must be loaded by a hook; reconcile owns re-checking records); ids are random (`src-` and 10 hex), so the tracked index can't confirm a guessed file name, and the inbox's local file is the only link from an id to its file; the quick report reads the index, the entries and sizes and times, the full one hashes a source only when its size or time moved; the script refuses to write the local file unless git ignores the inbox.
 
 ## Open questions
 
