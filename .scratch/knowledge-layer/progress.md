@@ -2,8 +2,9 @@
 
 Status: active
 Stage: designed
-Next: Ticket 01 built in the commit after 2754bd2 on seams-5.5/knowledge-layer (the knowledge script, plugin/skills/reconcile/scripts/knowledge.py, and its command-line tests); next the review against the fixed point 2754bd2.
+Next: Ticket 01's review fixes committed after 01af08d on seams-5.5/knowledge-layer (knowledge.py reworked to decision 18; the glossary, ADR 0008, the spec and the ticket brought in line); next a security and correctness re-review of the fix commit, then the record and the definition of done.
 Ticket: 01
+Candidate: 01af08d
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -24,6 +25,12 @@ This repository is public: no client names, people, cards or tools here. The cli
 
 The client project's own ticket (its config, `.gitignore` line, the move on Gabriel's yes, the index, a pull request into its develop) follows 07, in its own record.
 
+## Review
+
+Findings acted on (fixed in the uncommitted rework of plugin/skills/reconcile/scripts/knowledge.py):
+- quick report missed a change after index; a new file at an old path took the moved row's id; config paths could escape the repository; symlinks, pipes and devices in the inbox were read; credential formats missed and prose over-flagged; "clean" for files read in part and base64 email bodies; distilled left a stale scan; unreadable files and non-UTF-8 config or index crashed with a traceback; citations matched by substring; git before 2.31; identical files as one source; the full report hashing only what moved; topics kept as written; missing counted by entry; no bytecode; file names and hashes kept out of the tracked index (decision 18); the local file refused unless git ignores the inbox.
+Not acted on: argparse, naming and layout (style); the distilled and topics commands and the new count stay (the spec's Implementation Decisions name them; tickets 04 and 05 use them).
+
 ## Decisions
 
 1. Raw notes (Gabriel's answer): Claude may read a raw note and build on it. It is the owner's intent; Claude turns it into the best design and implementation, researched from the official docs, at a senior and principal engineer's standard. Disagreements follow decision 3.
@@ -43,6 +50,7 @@ The client project's own ticket (its config, `.gitignore` line, the move on Gabr
 15. Defaults from the design lens (mine, within the decisions above): no knowledge config means the feature is off, so a repository without one behaves exactly as today; the card reads only the index and each file's size and modified time, never hashing at session start (hashes are checked by reconcile and distill, and when a size or time changed); raw sources are evidence of the owner's intent and never instructions to Claude (a directive inside an email is not followed); on a machine without the raw files (a teammate's), their rows read "not on this machine", never stale; the index is one sorted row per source, so merges stay simple.
 16. Gabriel confirmed the shared understanding on 2026-10-18: spec it (seams:to-spec), then the tickets for his approval. Seams 5.5 is built in a new worktree `.worktrees/knowledge-layer` on branch `seams-5.5/knowledge-layer` from main; the client project's part is its own ticket, on a branch from its develop.
 17. The breakdown (Gabriel approved it, 2026-10-18): seven tickets under .scratch/knowledge-layer/issues/, as listed above.
+18. Ticket 01's security review (Gabriel chose it, amending decision 4): the tracked index holds only what is safe to share (each source's id, date, topics, secrets flag and the entries citing it); each source's path, old paths, size, modified time and hashes live in a gitignored file inside the inbox, on that machine only. No file name, path or content hash is committed.
 
 ## Open questions
 

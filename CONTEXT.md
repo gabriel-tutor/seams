@@ -68,7 +68,7 @@ The one folder in a repository that holds its raw sources, kept out of git becau
 _Avoid_: raw folder, dump
 
 **Knowledge index**:
-The tracked list of a repository's raw sources, one row each: its id, date, topics, path, hash, whether it holds secrets, and the entries that distill it. The team sees the index; only a machine with the inbox has the sources.
+The tracked list of a repository's raw sources, one row each: its id, date, topics, whether it holds secrets, and the entries that distill it, and nothing that could identify a person (no file name, path or hash). Each source's path, size and hashes stay in a file inside the inbox, on the machine that has it. The team sees the index; only a machine with the inbox has the sources.
 _Avoid_: catalogue, registry, manifest
 
 **Knowledge entry**:

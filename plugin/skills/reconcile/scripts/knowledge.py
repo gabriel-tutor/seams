@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 """Seams' knowledge index (ADR 0008): a repository opts in with a knowledge config, `docs/agents/knowledge.md`, whose
 fenced `knowledge` block names its inbox (raw sources, gitignored), its tracked index, its entries and its other
-source homes. This keeps the index current and reports what is undistilled, changed, missing or not on this machine.
-It reads only local files and runs no network call; it never writes a source's content anywhere.
+source homes. This keeps the index current and reports what is new, undistilled, changed, missing or not on this
+machine. It reads only local files and runs only local git reads; it never writes a source's content anywhere.
 
-    knowledge.py status [--quick] [--json]   counts (--quick: sizes and times only, never hashing; without
-                                                   it, every source on this machine is hashed)
-    knowledge.py index                       add and update the index's rows
-    knowledge.py distilled <id>...           mark sources distilled at their current content
-    knowledge.py topics <id> <a,b,...>       set a source's topics (what an action searches by)
+Two files, so nothing personal is committed (knowledge-layer decision 18):
+- the tracked index (the config's `index`): one JSON row per source, sorted by id, holding only its id, date,
+  topics, secrets scan (clean, secrets or unscanned) and the entries that cite it;
+- the machine's own file, `<inbox>/.knowledge-local.jsonl` (gitignored with the inbox; refused when git would track
+  it): each source's path, old paths, size, modified time, hash and the hash it was distilled at.
 
-The config's block, one `key: value` per line (paths from the repository's root; lists comma-separated):
+    knowledge.py status [--quick] [--json]   counts (--quick: sizes and times only, never hashing; without it, a
+                                             source whose size or time moved is hashed to settle it)
+    knowledge.py index                       add and update the rows
+    knowledge.py distilled <id>...           mark sources distilled at their current content (and rescan them)
+    knowledge.py topics <id> <a,b,...>       set a source's topics, as written (what an action searches by)
+
+The config's block, one `key: value` per line (paths from the repository's root, inside it; lists comma-separated):
 
     inbox            the raw sources' folder (gitignored; read from the main checkout, so worktrees see it)
-    index            the tracked index, one JSON row per source, sorted by id
+    index            the tracked index
     entries          the folder(s) of knowledge entries; an entry cites a source by its id (src-<10 hex>)
     sources          other homes holding the owner's word outside the approval process, indexed in place
     format           the entry format: markdown (the default), or the project's own (a schema's path)
@@ -21,54 +27,100 @@ The config's block, one `key: value` per line (paths from the repository's root;
     approval-record  the file the owner's approvals live in, if the project keeps one
     escalation       the tag for a question only the owner can answer (NEEDS-OWNER)
 
-No config: the layer is off, and every command says so and writes nothing. A malformed config or index is reported
-in one line (exit 2)."""
+No config: the layer is off, and every command says so and writes nothing. A malformed config, index or local file
+is reported in one line (exit 2). Standard library only; it writes no bytecode."""
 from __future__ import annotations
 
-import hashlib
-import json
-import os
-import re
-import subprocess
 import sys
-import time
+
+sys.dont_write_bytecode = True
+
+import email                                        # noqa: E402
+import hashlib                                      # noqa: E402
+import json                                         # noqa: E402
+import os                                           # noqa: E402
+import re                                           # noqa: E402
+import stat as stat_kind                            # noqa: E402
+import subprocess                                   # noqa: E402
+import tempfile                                     # noqa: E402
+import time                                         # noqa: E402
 
 CONFIG = os.path.join("docs", "agents", "knowledge.md")
 KEYS = {"inbox", "index", "entries", "format", "escalation", "sources", "approved", "approval-record"}
 REQUIRED = ("inbox", "index", "entries")
+LOCAL = ".knowledge-local.jsonl"
+TRACKED_FIELDS = ("id", "date", "topics", "scan", "cited_by")
+LOCAL_FIELDS = ("id", "path", "aka", "size", "mtime", "hash", "distilled")
+SOURCE_ID = re.compile(r"(?<![0-9A-Za-z_-])src-[0-9a-f]{10}(?![0-9A-Za-z_])")
+DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
+# A credential in a raw source (a chat export's API key): the source's row says "secrets", and nothing from the file
+# is ever written. "clean" means every byte was read as text and nothing matched; anything else is "unscanned".
+CREDENTIALS = re.compile("|".join((
+    r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b",
+    r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{20,})",
+    r"\bsk-[A-Za-z0-9_-]{20,}",
+    r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}",
+    r"\bAIza[0-9A-Za-z_-]{35}",
+    r"\bxox[abeprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}|hooks\.slack\.com/services/\S+",
+    r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
+    r"\b(?:AC|SK)[0-9a-f]{32}\b",
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
+    r"\b[a-z][a-z0-9+.-]*://[^\s/:@]+:[^\s/@]+@",
+    r"(?i:\bbearer\s+[A-Za-z0-9._~+/=-]{16,})",
+    r"(?i:(?:api[ _-]?key|secret|token|passw(?:or)?d|pwd|access[ _-]?key|private[ _-]?key|auth)[A-Za-z0-9_-]*"
+    r"[\"']?\s*[:=]\s*[\"']?[^\s\"']{8,})",
+)))
+BINARY = (".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".tif", ".tiff", ".zip", ".gz", ".mp3", ".m4a",
+          ".mp4", ".mov", ".wav", ".docx", ".docm", ".doc", ".xlsx", ".xlsm", ".xls", ".pptx", ".ppt", ".odt", ".ods",
+          ".odp", ".pages", ".numbers", ".key", ".epub", ".rtfd")
+SCAN_BYTES = 8 << 20                                # ceiling: a longer text file is "unscanned", never "clean"
+MAIL = re.compile(rb"(?im)^(?:mime-version:|content-transfer-encoding:\s*(?:base64|quoted-printable))")
 
 
-class ConfigError(Exception):
-    pass
+class KnowledgeError(Exception):
+    """A config, index or local file the script can't trust: reported in one line, exit 2."""
 
 
-def git(cwd: str, *args: str) -> "str | None":
+# --- where things are ----------------------------------------------------------------------------------------------
+
+def git(cwd: str, *args: str) -> "subprocess.CompletedProcess | None":
     try:
-        done = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=5,
+        return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=5,
                               stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return done.stdout.strip() if done.returncode == 0 else None
 
 
 def roots(cwd: str) -> "tuple[str, str]":
     """(the worktree's root, the main checkout's root): the index and the entries are tracked, so they are read
     where the session works; the inbox is gitignored, so it exists only in the main checkout."""
-    top = git(cwd, "rev-parse", "--show-toplevel") or cwd
-    common = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    main = os.path.dirname(common) if common and os.path.basename(common) == ".git" else top
-    return top, main
+    done = git(cwd, "rev-parse", "--show-toplevel", "--git-common-dir")
+    lines = done.stdout.splitlines() if done and done.returncode == 0 else []
+    top = os.path.realpath(lines[0]) if lines else os.path.realpath(cwd)
+    common = os.path.abspath(os.path.join(cwd, lines[1])) if len(lines) > 1 else ""
+    main = os.path.dirname(common) if os.path.basename(common) == ".git" else top
+    return top, os.path.realpath(main)
 
 
-def read_config(top: str) -> "dict | None":
+def inside(path: str, root: str) -> bool:
+    return path != root and os.path.commonpath([path, root]) == root
+
+
+def listed(value: str) -> "list[str]":
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def read_config(top: str, main: str) -> "dict | None":
     path = os.path.join(top, CONFIG)
     try:
         text = open(path, encoding="utf-8").read()
-    except OSError:
+    except FileNotFoundError:
         return None
+    except (OSError, ValueError):
+        raise KnowledgeError(f"{CONFIG} can't be read as UTF-8 text")
     block = re.search(r"^```knowledge\s*\n(.*?)^```", text, re.S | re.M)
     if not block:
-        raise ConfigError(f"{CONFIG} has no ```knowledge block")
+        raise KnowledgeError(f"{CONFIG} has no ```knowledge block")
     config = {}
     for line in block.group(1).splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
@@ -76,69 +128,118 @@ def read_config(top: str) -> "dict | None":
         key, sep, value = line.partition(":")
         key = key.strip().lower()
         if not sep or key not in KEYS:
-            raise ConfigError(f"{CONFIG}: unknown line in the knowledge block: {line.strip()[:60]}")
+            raise KnowledgeError(f"{CONFIG}: unknown line in the knowledge block: {line.strip()[:60]}")
         config[key] = value.strip()
     missing = [k for k in REQUIRED if not config.get(k)]
     if missing:
-        raise ConfigError(f"{CONFIG}: the knowledge block needs {', '.join(missing)}")
+        raise KnowledgeError(f"{CONFIG}: the knowledge block needs {', '.join(missing)}")
+    for key, root, values in (("inbox", main, [config["inbox"]]), ("sources", main, listed(config.get("sources", ""))),
+                              ("index", top, [config["index"]]), ("entries", top, listed(config["entries"]))):
+        for value in values:
+            real = os.path.realpath(os.path.join(root, value))
+            if not inside(real, root) or ".git" in os.path.relpath(real, root).split(os.sep):
+                raise KnowledgeError(f"{CONFIG}: its {key} must stay inside the repository ({value[:60]})")
     return config
 
 
-DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
-# A credential in a raw source (a chat export's API key): the row says "secrets" and nothing from the file is ever
-# written. A file it can't read as text (a PDF, an image, a document) is "unscanned", never "clean".
-CREDENTIALS = re.compile(
-    r"AKIA[0-9A-Z]{16}|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[\w-]{10,})"
-    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----"
-    r"|(?i:\b(?:api[ _-]?key|secret|token|password|passwd|bearer|authorization)\b[\"']?\s*[:=]?\s*[\"']?[^\s\"']{8,})")
-BINARY = (".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".docx", ".doc", ".xlsx", ".xls", ".pptx",
-          ".zip", ".mp3", ".m4a", ".mp4", ".mov")
-SCAN_BYTES = 8 << 20
+# --- reading sources -----------------------------------------------------------------------------------------------
+
+def files_under(base: str):
+    """(path, lstat) of every regular, readable file under base, in order: a symlink, a pipe or a device is never
+    read, and hidden names (.DS_Store, the local file) are not sources."""
+    try:
+        top = os.lstat(base)
+    except OSError:
+        return
+    if stat_kind.S_ISREG(top.st_mode):
+        if os.access(base, os.R_OK):
+            yield base, top
+        return
+    for folder, dirs, names in os.walk(base):
+        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        for name in sorted(names):
+            if name.startswith("."):
+                continue
+            path = os.path.join(folder, name)
+            try:
+                found = os.lstat(path)
+            except OSError:
+                continue
+            if stat_kind.S_ISREG(found.st_mode) and os.access(path, os.R_OK):
+                yield path, found
+
+
+def present(config: dict, main: str) -> "dict[str, os.stat_result]":
+    """Every source file on this machine, by its path from the main checkout."""
+    homes = [config["inbox"]] + listed(config.get("sources", ""))
+    return {os.path.relpath(path, main): found for home in homes for path, found in files_under(os.path.join(main, home))}
+
+
+def hash_of(path: str) -> "str | None":
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest()
 
 
 def scan(path: str) -> str:
     if path.lower().endswith(BINARY):
         return "unscanned"
-    with open(path, "rb") as handle:
-        data = handle.read(SCAN_BYTES)
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read(SCAN_BYTES + 1)
+    except OSError:
+        return "unscanned"
     if b"\x00" in data[:8192]:
         return "unscanned"
-    return "secrets" if CREDENTIALS.search(data.decode("utf-8", errors="replace")) else "clean"
+    complete, texts = len(data) <= SCAN_BYTES, [data[:SCAN_BYTES]]
+    if MAIL.search(data[:SCAN_BYTES]):               # an email's encoded bodies are read decoded
+        for part in email.message_from_bytes(data[:SCAN_BYTES]).walk():
+            if part.is_multipart():
+                continue
+            payload = part.get_payload(decode=True) or b""
+            if part.get_content_maintype() == "text":
+                texts.append(payload)
+            elif payload:
+                complete = False                    # an attachment it can't read
+    if any(CREDENTIALS.search(text.decode("utf-8", errors="replace")) for text in texts):
+        return "secrets"
+    return "clean" if complete else "unscanned"
 
 
-def hash_of(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def date_of(path: str, found: os.stat_result) -> str:
+    for year, month, day in reversed(DATE.findall(path)):
+        if 1 <= int(month) <= 12 and 1 <= int(day) <= 31:
+            return f"{year}-{month}-{day}"
+    return time.strftime("%Y-%m-%d", time.gmtime(found.st_mtime))
 
 
-def present(config: dict, main_root: str) -> "dict[str, os.stat_result]":
-    """Every source file on this machine, by its path from the main checkout: the inbox's files and the other source
-    homes (a file, or a folder's files). Hidden files (.DS_Store) are not sources."""
-    homes = [config["inbox"]] + [s.strip() for s in config.get("sources", "").split(",") if s.strip()]
-    found = {}
-    for home in homes:
-        base = os.path.join(main_root, home)
-        if os.path.isfile(base):
-            found[os.path.relpath(base, main_root)] = os.stat(base)
-            continue
-        for folder, dirs, files in os.walk(base):
-            dirs[:] = sorted(d for d in dirs if not d.startswith("."))
-            for name in sorted(files):
-                if not name.startswith("."):
-                    path = os.path.join(folder, name)
-                    found[os.path.relpath(path, main_root)] = os.stat(path)
-    return found
+def entry_citations(config: dict, top: str) -> "dict[str, set]":
+    cites = {}
+    for home in listed(config["entries"]):
+        for path, _ in files_under(os.path.join(top, home)):
+            try:
+                text = open(path, encoding="utf-8", errors="replace").read()
+            except OSError:
+                continue
+            cites[os.path.relpath(path, top)] = set(SOURCE_ID.findall(text))
+    return cites
 
 
-def read_index(path: str) -> "list[dict]":
+# --- the two files -------------------------------------------------------------------------------------------------
+
+def read_rows(path: str, fields: "tuple[str, ...]", what: str) -> "dict[str, dict]":
     try:
         lines = open(path, encoding="utf-8").read().splitlines()
-    except OSError:
-        return []
-    rows = []
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        raise KnowledgeError(f"{what} can't be read as UTF-8 text")
+    rows = {}
     for number, line in enumerate(lines, 1):
         if not line.strip():
             continue
@@ -146,160 +247,183 @@ def read_index(path: str) -> "list[dict]":
             row = json.loads(line)
         except ValueError:
             row = None
-        if not isinstance(row, dict) or not all(k in row for k in ("id", "path", "size", "mtime", "hash")):
-            raise ConfigError(f"the knowledge index {os.path.basename(path)} has a line it can't read (line {number})")
-        rows.append(row)
+        if not isinstance(row, dict) or not all(k in row for k in fields):
+            raise KnowledgeError(f"{what} has a line it can't read (line {number})")
+        rows[row["id"]] = row
     return rows
 
 
-def entry_texts(config: dict, top: str) -> "dict[str, str]":
-    texts = {}
-    for home in (s.strip() for s in config["entries"].split(",") if s.strip()):
-        for folder, dirs, files in os.walk(os.path.join(top, home)):
-            dirs[:] = sorted(d for d in dirs if not d.startswith("."))
-            for name in sorted(files):
-                path = os.path.join(folder, name)
-                try:
-                    texts[os.path.relpath(path, top)] = open(path, encoding="utf-8", errors="replace").read()
-                except OSError:
-                    pass
-    return texts
+def write_rows(path: str, rows: "dict[str, dict]") -> None:
+    folder = os.path.dirname(path) or "."
+    os.makedirs(folder, exist_ok=True)
+    handle, temp = tempfile.mkstemp(dir=folder, prefix="." + os.path.basename(path) + ".")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            for key in sorted(rows):
+                out.write(json.dumps(rows[key], sort_keys=True, ensure_ascii=False) + "\n")
+        os.replace(temp, path)
+    except BaseException:
+        os.unlink(temp)
+        raise
 
 
-def new_row(path: str, stat: os.stat_result, digest: str) -> dict:
-    dated = DATE.findall(path)
-    return {"id": "src-" + hashlib.sha1(path.encode()).hexdigest()[:10], "path": path, "aka": [],
-            "date": dated[-1] if dated else time.strftime("%Y-%m-%d", time.gmtime(stat.st_mtime)),
-            "size": stat.st_size, "mtime": stat.st_mtime_ns, "hash": digest, "scan": "", "topics": [],
-            "distilled": "", "cited_by": []}
+class Store:
+    """The tracked index and the machine's own file, read and written together."""
+
+    def __init__(self, config: dict, top: str, main: str):
+        self.config, self.top, self.main = config, top, main
+        self.index_path = os.path.join(top, config["index"])
+        self.local_path = os.path.join(main, config["inbox"], LOCAL)
+        self.tracked = read_rows(self.index_path, TRACKED_FIELDS, "the knowledge index")
+        self.local = read_rows(self.local_path, LOCAL_FIELDS, "the inbox's local file")
+
+    def save(self) -> None:
+        inbox = os.path.join(self.main, self.config["inbox"])
+        check = git(self.main, "check-ignore", "-q", os.path.relpath(self.local_path, self.main))
+        if not check or check.returncode != 0:
+            raise KnowledgeError(f"git would track the inbox ({self.config['inbox']}): add it to .gitignore first")
+        os.makedirs(inbox, exist_ok=True)
+        write_rows(self.local_path, self.local)
+        write_rows(self.index_path, self.tracked)
 
 
-def index(config: dict, top: str, main_root: str) -> None:
-    index_path = os.path.join(top, config["index"])
-    rows = {r["path"]: r for r in read_index(index_path)}
-    found = present(config, main_root)
-    for path, stat in found.items():
-        row = rows.get(path)
-        if row and (row["size"], row["mtime"]) == (stat.st_size, stat.st_mtime_ns):
+def new_id(path: str, digest: str, taken: set) -> str:
+    seed = path
+    while True:
+        source = "src-" + hashlib.sha1(seed.encode()).hexdigest()[:10]
+        if source not in taken:
+            return source
+        seed += digest                                # a new file at an old path gets an id of its own
+
+
+def index(store: Store) -> None:
+    found = present(store.config, store.main)
+    by_path = {row["path"]: source for source, row in store.local.items()}
+    for path, now in found.items():
+        full = os.path.join(store.main, path)
+        source = by_path.get(path)
+        if source is not None:
+            row = store.local[source]
+            if (row["size"], row["mtime"]) != (now.st_size, now.st_mtime_ns):
+                digest = hash_of(full)
+                if digest is None:
+                    continue
+                row.update(size=now.st_size, mtime=now.st_mtime_ns, hash=digest)
+                store.tracked.setdefault(source, {"id": source, "date": date_of(path, now), "topics": [],
+                                                  "scan": "", "cited_by": []})["scan"] = scan(full)
             continue
-        digest = hash_of(os.path.join(main_root, path))
-        moved = None if row else next((r for p, r in rows.items() if p not in found and r["hash"] == digest), None)
-        if moved:                                   # the same content at a new path: the same source, its id kept
-            del rows[moved["path"]]
-            moved["aka"] = sorted(set(moved.get("aka", [])) | {moved["path"]})
-            moved["path"] = path
-            row = rows[path] = moved
-            row.update(size=stat.st_size, mtime=stat.st_mtime_ns)
-        elif row:
-            row.update(size=stat.st_size, mtime=stat.st_mtime_ns, hash=digest)
-        else:
-            row = rows[path] = new_row(path, stat, digest)
-        row["scan"] = scan(os.path.join(main_root, path))
-    texts = entry_texts(config, top)
-    for row in rows.values():
-        row["cited_by"] = sorted(entry for entry, text in texts.items() if row["id"] in text)
-    write_index(index_path, rows.values())
+        digest = hash_of(full)
+        if digest is None:
+            continue
+        same = [s for s, row in store.local.items() if row["hash"] == digest]
+        owner = next((s for s in same if store.local[s]["path"] in found), None)
+        if owner:                                    # an identical file elsewhere: the same source, seen twice
+            store.local[owner]["aka"] = sorted(set(store.local[owner]["aka"]) | {path})
+            continue
+        moved = next((s for s in same if store.local[s]["path"] not in found), None)
+        if moved:                                    # the same content at a new path: its id kept, its old path too
+            row = store.local[moved]
+            row["aka"] = sorted(set(row["aka"]) | {row["path"]})
+            row.update(path=path, size=now.st_size, mtime=now.st_mtime_ns)
+            by_path[path] = moved
+            continue
+        source = new_id(path, digest, set(store.tracked) | set(store.local))
+        store.local[source] = {"id": source, "path": path, "aka": [], "size": now.st_size, "mtime": now.st_mtime_ns,
+                               "hash": digest, "distilled": ""}
+        store.tracked[source] = {"id": source, "date": date_of(path, now), "topics": [], "scan": scan(full),
+                                 "cited_by": []}
+        by_path[path] = source
+    cites = entry_citations(store.config, store.top)
+    for source, row in store.tracked.items():
+        row["cited_by"] = sorted(entry for entry, ids in cites.items() if source in ids)
+    store.save()
 
 
-def write_index(index_path: str, rows) -> None:
-    os.makedirs(os.path.dirname(index_path) or ".", exist_ok=True)
-    temp = index_path + ".tmp"
-    with open(temp, "w", encoding="utf-8") as out:
-        for row in sorted(rows, key=lambda r: r["id"]):
-            out.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n")
-    os.replace(temp, index_path)
-
-
-SOURCE_ID = re.compile(r"\bsrc-[0-9a-f]{10}\b")
-
-
-def status(config: dict, top: str, main_root: str, quick: bool) -> dict:
-    """The counts: sources on this machine the index lacks (new), present sources never distilled, present sources
-    whose content moved on since they were distilled, ids entries cite that the index lacks, and rows whose file is
-    not on this machine (a teammate's checkout, or a source removed): those are never counted as changed."""
-    rows = read_index(os.path.join(top, config["index"]))
-    found = present(config, main_root)
-    known = {r["path"] for r in rows} | {a for r in rows for a in r.get("aka", [])}
+def status(store: Store, quick: bool) -> dict:
+    """The counts: files on this machine the index lacks (new); sources never distilled; sources whose content moved
+    on since they were distilled; entries citing an id the index lacks; sources not on this machine (a teammate's
+    checkout, or a file removed), which are never counted as changed."""
+    found = present(store.config, store.main)
+    known = {row["path"] for row in store.local.values()} | {a for row in store.local.values() for a in row["aka"]}
     counts = {"new": sum(1 for path in found if path not in known), "undistilled": 0, "changed": 0, "missing": 0,
               "absent": 0}
-    for row in rows:
-        stat = found.get(row["path"])
-        if stat is None:
+    for source in store.tracked:
+        row = store.local.get(source)
+        now = found.get(row["path"]) if row else None
+        if now is None:
             counts["absent"] += 1
-        elif not row.get("distilled"):
+        elif not row["distilled"]:
             counts["undistilled"] += 1
-        elif quick:
-            counts["changed"] += (stat.st_size, stat.st_mtime_ns) != (row["size"], row["mtime"])
         else:
-            counts["changed"] += hash_of(os.path.join(main_root, row["path"])) != row["distilled"]
-    ids = {r["id"] for r in rows}
-    cited = {i for text in entry_texts(config, top).values() for i in SOURCE_ID.findall(text)}
-    counts["missing"] = len(cited - ids)
+            moved = (now.st_size, now.st_mtime_ns) != (row["size"], row["mtime"])
+            if quick:
+                counts["changed"] += moved or row["hash"] != row["distilled"]
+            else:
+                digest = hash_of(os.path.join(store.main, row["path"])) if moved else row["hash"]
+                counts["changed"] += digest != row["distilled"]
+    counts["missing"] = sum(1 for ids in entry_citations(store.config, store.top).values() if ids - set(store.tracked))
     return counts
 
 
 def report(counts: dict) -> str:
-    parts = [f"{counts['undistilled']} not distilled", f"{counts['changed']} changed since distilled",
-             f"{counts['missing']} cited but missing", f"{counts['new']} new", f"{counts['absent']} not on this machine"]
-    return "Knowledge: " + ", ".join(parts) + "."
+    return (f"Knowledge: {counts['undistilled']} not distilled, {counts['changed']} changed since distilled, "
+            f"{counts['missing']} entries cite a missing source, {counts['new']} new, "
+            f"{counts['absent']} not on this machine.")
 
 
-def set_topics(config: dict, top: str, source: str, topics: str) -> int:
-    index_path = os.path.join(top, config["index"])
-    rows = {r["id"]: r for r in read_index(index_path)}
-    if source not in rows:
-        print(f"Knowledge: {source} is not an indexed source", file=sys.stderr)
+def mark_distilled(store: Store, sources: "list[str]") -> int:
+    if not sources:
+        print("usage: knowledge.py distilled <id>...", file=sys.stderr)
         return 1
-    rows[source]["topics"] = sorted({t.strip().lower() for t in topics.split(",") if t.strip()})
-    write_index(index_path, rows.values())
+    for source in sources:
+        row = store.local.get(source)
+        full = os.path.join(store.main, row["path"]) if row else ""
+        digest = hash_of(full) if row and source in store.tracked else None
+        if digest is None:
+            print(f"Knowledge: {source[:40]} is not an indexed source on this machine", file=sys.stderr)
+            return 1
+        now = os.lstat(full)
+        row.update(size=now.st_size, mtime=now.st_mtime_ns, hash=digest, distilled=digest)
+        store.tracked[source]["scan"] = scan(full)
+    store.save()
     return 0
 
 
-def mark_distilled(config: dict, top: str, main_root: str, ids: "list[str]") -> int:
-    index_path = os.path.join(top, config["index"])
-    rows = {r["id"]: r for r in read_index(index_path)}
-    for source in ids:
-        row = rows.get(source)
-        path = os.path.join(main_root, row["path"]) if row else ""
-        if not row or not os.path.isfile(path):
-            print(f"Knowledge: {source} is not an indexed source on this machine", file=sys.stderr)
-            return 1
-        stat = os.stat(path)
-        digest = hash_of(path)
-        row.update(size=stat.st_size, mtime=stat.st_mtime_ns, hash=digest, distilled=digest)
-    write_index(index_path, rows.values())
+def set_topics(store: Store, source: str, topics: str) -> int:
+    if source not in store.tracked:
+        print(f"Knowledge: {source[:40]} is not an indexed source", file=sys.stderr)
+        return 1
+    store.tracked[source]["topics"] = list(dict.fromkeys(listed(topics)))
+    store.save()
     return 0
 
 
 def main(argv: "list[str]") -> int:
     command = argv[0] if argv else "status"
     if command not in ("status", "index", "distilled", "topics"):
-        print(f"knowledge.py: unknown command {command}", file=sys.stderr)
+        print(f"knowledge.py: unknown command {command[:40]}", file=sys.stderr)
         return 1
     top, main_root = roots(os.getcwd())
     try:
-        config = read_config(top)
-    except ConfigError as error:
-        print(f"Knowledge config error: {error}")
-        return 2
-    if config is None:
-        print("Knowledge: no knowledge config here, so the layer is off.")
-        return 0
-    try:
+        config = read_config(top, main_root)
+        if config is None:
+            print("Knowledge: no knowledge config here, so the layer is off.")
+            return 0
+        store = Store(config, top, main_root)
         if command == "index":
-            index(config, top, main_root)
+            index(store)
+        elif command == "distilled":
+            return mark_distilled(store, argv[1:])
         elif command == "topics":
             if len(argv) != 3:
                 print("usage: knowledge.py topics <id> <a,b,...>", file=sys.stderr)
                 return 1
-            return set_topics(config, top, argv[1], argv[2])
-        elif command == "distilled":
-            return mark_distilled(config, top, main_root, argv[1:])
+            return set_topics(store, argv[1], argv[2])
         else:
-            counts = status(config, top, main_root, quick="--quick" in argv)
+            counts = status(store, quick="--quick" in argv)
             print(json.dumps(counts, sort_keys=True) if "--json" in argv else report(counts))
-    except ConfigError as error:
-        print(f"Knowledge index error: {error}")
+    except KnowledgeError as error:
+        print(f"Knowledge: {error}")
         return 2
     return 0
 

@@ -1,7 +1,8 @@
 """The knowledge index (knowledge-layer ticket 01), through knowledge.py's command line, against temporary
 repositories: a repository opts in with a knowledge config; the script keeps a tracked index of every raw source in
-its inbox and its configured source homes, and reports what is undistilled, changed, missing or not on this machine.
-No config means the layer is off."""
+its inbox and its configured source homes, and reports what is new, undistilled, changed, missing or not on this
+machine. The tracked index holds only what is safe to share (decision 18); each source's path, size, time and hashes
+stay in a gitignored file inside the inbox. No config means the layer is off."""
 from __future__ import annotations
 
 import json
@@ -28,6 +29,7 @@ escalation: NEEDS-OWNER
 sources: docs/rulings.md
 ```
 """
+ZERO = {"new": 0, "undistilled": 0, "changed": 0, "missing": 0, "absent": 0}
 
 
 def git(cwd, *args):
@@ -40,6 +42,7 @@ class KnowledgeTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(subprocess.run, ["rm", "-rf", str(self.tmp)])
+        self.addCleanup(subprocess.run, ["chmod", "-R", "u+rwx", str(self.tmp)])
         self.repo = self.tmp / "repo"
         self.repo.mkdir()
         git(self.repo, "init", "-q", "-b", "main")
@@ -47,35 +50,22 @@ class KnowledgeTest(unittest.TestCase):
         git(self.repo, "add", "README.md")
         git(self.repo, "commit", "-qm", "base")
 
-    def run_script(self, *args, cwd=None, code=0):
+    # --- helpers ---------------------------------------------------------------------------------------------------
+
+    def run_script(self, *args, cwd=None, code=0, timeout=60):
         done = subprocess.run([sys.executable, "-B", str(SCRIPT), *args], cwd=cwd or self.repo, capture_output=True,
-                              text=True, timeout=60, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+                              text=True, timeout=timeout, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
         self.assertEqual(done.returncode, code, done.stdout + done.stderr)
         return done.stdout + done.stderr
 
-    def configure(self, text=CONFIG):
+    def configure(self, text=CONFIG, ignored=True):
         (self.repo / "docs" / "agents").mkdir(parents=True, exist_ok=True)
         (self.repo / "docs" / "agents" / "knowledge.md").write_text(text)
+        if ignored:                                  # a configured repository keeps its inbox out of git
+            (self.repo / ".gitignore").write_text("docs/knowledge/raw/\n")
 
     def files(self):
         return sorted(str(p.relative_to(self.repo)) for p in self.repo.rglob("*") if p.is_file() and ".git" not in p.parts)
-
-    def test_without_a_config_the_layer_is_off_and_writes_nothing(self):
-        before = self.files()
-        for args in (("status",), ("status", "--quick"), ("index",)):
-            with self.subTest(args=args):
-                self.assertIn("no knowledge config", self.run_script(*args))
-        self.assertEqual(self.files(), before)
-
-    def test_a_malformed_config_is_reported_in_one_line(self):
-        for text, why in (("# Knowledge\n\nno block here\n", "knowledge block"),
-                          ("```knowledge\ninbox: raw\n```\n", "index"),
-                          ("```knowledge\ninbox: raw\nindex: i.jsonl\nentries: e\ncolour: blue\n```\n", "colour")):
-            with self.subTest(why=why):
-                self.configure(text)
-                out = self.run_script("status", code=2)
-                self.assertEqual(len(out.strip().splitlines()), 1, out)
-                self.assertIn(why, out)
 
     def raw(self, rel, text="the owner wants one price per deal\n"):
         path = self.repo / "docs" / "knowledge" / "raw" / rel
@@ -87,35 +77,16 @@ class KnowledgeTest(unittest.TestCase):
         index = (root or self.repo) / "docs" / "knowledge" / "index.jsonl"
         return [json.loads(line) for line in index.read_text().splitlines()]
 
-    def test_the_index_has_one_sorted_row_per_source_and_a_second_run_changes_nothing(self):
-        self.configure()
-        self.raw("2026-09-08-pricing/email.md")
-        self.raw("notes.txt", "call notes\n")
-        (self.repo / "docs" / "rulings.md").write_text("RULED 8 October: one price\n")
-        self.run_script("index")
-        rows = self.rows()
-        self.assertEqual(sorted(r["path"] for r in rows),
-                         ["docs/knowledge/raw/2026-09-08-pricing/email.md", "docs/knowledge/raw/notes.txt",
-                          "docs/rulings.md"])
-        self.assertEqual([r["id"] for r in rows], sorted(r["id"] for r in rows))
-        email = next(r for r in rows if r["path"].endswith("email.md"))
-        self.assertTrue(email["id"].startswith("src-"))
-        self.assertEqual(email["date"], "2026-09-08")
-        self.assertEqual((email["scan"], email["topics"], email["distilled"], email["cited_by"]), ("clean", [], "", []))
-        self.assertEqual(len(email["hash"]), 64)
-        first = (self.repo / "docs" / "knowledge" / "index.jsonl").read_bytes()
-        self.run_script("index")
-        self.assertEqual((self.repo / "docs" / "knowledge" / "index.jsonl").read_bytes(), first)
+    def local(self):
+        """The machine's own file: id -> its path, old paths, size, time and hashes."""
+        path = self.repo / "docs" / "knowledge" / "raw" / ".knowledge-local.jsonl"
+        return {r["id"]: r for r in (json.loads(line) for line in path.read_text().splitlines())}
 
-    def test_a_worktree_reads_the_main_checkouts_inbox(self):
-        self.configure()
-        git(self.repo, "add", "docs/agents/knowledge.md")
-        git(self.repo, "commit", "-qm", "config")
-        self.raw("2026-10-01-ask.md")
-        tree = self.tmp / "tree"
-        git(self.repo, "worktree", "add", "-q", str(tree), "-b", "feat")
-        self.run_script("index", cwd=tree)
-        self.assertEqual([r["path"] for r in self.rows(tree)], ["docs/knowledge/raw/2026-10-01-ask.md"])
+    def ids(self):
+        return {r["path"]: i for i, r in self.local().items()}
+
+    def scans(self):
+        return {Path(self.local()[r["id"]]["path"]).name: r["scan"] for r in self.rows()}
 
     def counts(self, *flags):
         return json.loads(self.run_script("status", "--json", *flags))
@@ -125,44 +96,244 @@ class KnowledgeTest(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
 
+    # --- the switch ------------------------------------------------------------------------------------------------
+
+    def test_without_a_config_the_layer_is_off_and_writes_nothing(self):
+        before = self.files()
+        for args in (("status",), ("status", "--quick"), ("index",)):
+            with self.subTest(args=args):
+                self.assertIn("no knowledge config", self.run_script(*args))
+        self.assertEqual(self.files(), before)
+
+    def test_a_malformed_config_is_reported_in_one_line(self):
+        for text, why in (("# Knowledge\n\nno block here\n", "knowledge block"),
+                          ("```knowledge\ninbox: raw\n```\n", "index"),
+                          ("```knowledge\ninbox: raw\nindex: i.jsonl\nentries: e\ncolour: blue\n```\n", "colour"),
+                          ("```knowledge\ninbox: ../..\nindex: i.jsonl\nentries: e\n```\n", "inbox"),
+                          ("```knowledge\ninbox: /\nindex: i.jsonl\nentries: e\n```\n", "inbox"),
+                          ("```knowledge\ninbox: raw\nindex: ../outside.jsonl\nentries: e\n```\n", "index"),
+                          ("```knowledge\ninbox: raw\nindex: i.jsonl\nentries: e\nsources: ../../etc\n```\n", "sources")):
+            with self.subTest(text=text):
+                self.configure(text)
+                out = self.run_script("index", code=2)
+                self.assertEqual(len(out.strip().splitlines()), 1, out)
+                self.assertIn(why, out)
+        self.assertFalse((self.tmp / "outside.jsonl").exists())
+
+    def test_a_config_that_isnt_utf8_is_reported_in_one_line(self):
+        (self.repo / "docs" / "agents").mkdir(parents=True)
+        (self.repo / "docs" / "agents" / "knowledge.md").write_bytes(CONFIG.encode() + b"\xff\xfe caf\xe9\n")
+        out = self.run_script("status", code=2)
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+
+    # --- the index -------------------------------------------------------------------------------------------------
+
+    def test_the_index_has_one_sorted_row_per_source_and_a_second_run_changes_nothing(self):
+        self.configure()
+        self.raw("2026-09-08-pricing/email.md")
+        self.raw("notes.txt", "call notes\n")
+        (self.repo / "docs" / "rulings.md").write_text("RULED 8 October: one price\n")
+        self.run_script("index")
+        rows = self.rows()
+        self.assertEqual(sorted(self.ids()), ["docs/knowledge/raw/2026-09-08-pricing/email.md",
+                                              "docs/knowledge/raw/notes.txt", "docs/rulings.md"])
+        self.assertEqual([r["id"] for r in rows], sorted(self.local()))
+        email = next(r for r in rows if r["id"] == self.ids()["docs/knowledge/raw/2026-09-08-pricing/email.md"])
+        self.assertTrue(email["id"].startswith("src-"))
+        self.assertEqual(email, {"id": email["id"], "date": "2026-09-08", "topics": [], "scan": "clean",
+                                 "cited_by": []})
+        self.assertEqual(len(self.local()[email["id"]]["hash"]), 64)
+        first = (self.repo / "docs" / "knowledge" / "index.jsonl").read_bytes()
+        self.run_script("index")
+        self.assertEqual((self.repo / "docs" / "knowledge" / "index.jsonl").read_bytes(), first)
+
+    def test_the_tracked_index_holds_no_name_path_or_hash(self):
+        self.configure()
+        self.raw("ACME Team - jane.doe@acme.com +44 7700 900123/2026-09-15 chat.md", "hello\n")
+        self.run_script("index")
+        tracked = (self.repo / "docs" / "knowledge" / "index.jsonl").read_text()
+        digest = self.local()[self.rows()[0]["id"]]["hash"]
+        for word in ("jane.doe", "acme", "7700", "chat.md", "docs/knowledge/raw", digest):
+            with self.subTest(word=word):
+                self.assertNotIn(word, tracked)
+        self.assertEqual(self.rows()[0]["date"], "2026-09-15")
+
+    def test_a_date_must_be_a_real_date(self):
+        self.configure()
+        self.raw("2026-13-45-odd/notes-2026-07-02.md")
+        self.run_script("index")
+        self.assertEqual(self.rows()[0]["date"], "2026-07-02")
+
+    def test_a_worktree_reads_the_main_checkouts_inbox(self):
+        self.configure()
+        git(self.repo, "add", "docs/agents/knowledge.md")
+        git(self.repo, "commit", "-qm", "config")
+        self.raw("2026-10-01-ask.md")
+        tree = self.tmp / "tree"
+        git(self.repo, "worktree", "add", "-q", str(tree), "-b", "feat")
+        (tree / "sub").mkdir()
+        self.run_script("index", cwd=tree / "sub")
+        self.assertEqual(len(self.rows(tree)), 1)
+        self.assertEqual(list(self.ids()), ["docs/knowledge/raw/2026-10-01-ask.md"])
+
+    def test_identical_files_are_one_source(self):
+        self.configure()
+        self.raw("a/2026-06-01-final.md", "the same email\n")
+        self.raw("b/2026-06-01-final copy.md", "the same email\n")
+        self.run_script("index")
+        (only,) = self.local().values()
+        self.assertEqual(len(self.rows()), 1)
+        self.assertEqual(only["aka"], ["docs/knowledge/raw/b/2026-06-01-final copy.md"])
+        self.assertEqual(self.counts()["new"], 0)
+
+    def test_a_moved_source_keeps_its_id_and_its_old_path(self):
+        self.configure()
+        old = self.raw("july-plan/2026-07-02-plan.md", "the plan\n")
+        self.run_script("index")
+        (before,) = self.rows()
+        self.run_script("topics", before["id"], "Pricing, deals,Pricing")
+        new = self.repo / "docs" / "knowledge" / "raw" / "2026-07-02-july-plan" / "2026-07-02-plan.md"
+        new.parent.mkdir(parents=True)
+        old.rename(new)
+        self.run_script("index")
+        (after,) = self.rows()
+        local = self.local()[after["id"]]
+        self.assertEqual((after["id"], after["topics"], local["path"], local["aka"]),
+                         (before["id"], ["Pricing", "deals"], "docs/knowledge/raw/2026-07-02-july-plan/2026-07-02-plan.md",
+                          ["docs/knowledge/raw/july-plan/2026-07-02-plan.md"]))
+        self.assertEqual(self.counts()["absent"], 0)
+
+    def test_a_new_file_at_an_old_path_is_a_new_source_with_its_own_id(self):
+        self.configure()
+        old = self.raw("2026-07-02-plan.md", "the plan\n")
+        self.run_script("index")
+        moved = self.repo / "docs" / "knowledge" / "raw" / "kept" / "2026-07-02-plan.md"
+        moved.parent.mkdir()
+        old.rename(moved)
+        self.run_script("index")
+        self.raw("2026-07-02-plan.md", "a different plan\n")
+        self.run_script("index")
+        ids = [r["id"] for r in self.rows()]
+        self.assertEqual(len(ids), 2)
+        self.assertEqual(len(set(ids)), 2)
+        self.assertEqual(len(self.local()), 2)
+
+    def test_a_source_not_on_this_machine_keeps_its_row(self):
+        self.configure()
+        gone = self.raw("2026-08-01-a.md")
+        self.run_script("index")
+        gone.unlink()
+        self.run_script("index")
+        self.assertEqual(len(self.rows()), 1)
+        self.assertEqual(self.counts()["absent"], 1)
+
+    def test_a_teammate_without_the_inbox_sees_every_row_as_not_on_this_machine(self):
+        self.configure()
+        self.raw("2026-08-01-a.md")
+        self.run_script("index")
+        (self.repo / "docs" / "knowledge" / "raw" / ".knowledge-local.jsonl").unlink()
+        (self.repo / "docs" / "knowledge" / "raw" / "2026-08-01-a.md").unlink()
+        self.assertEqual(self.counts("--quick"), {**ZERO, "absent": 1})
+
+    def test_symlinks_and_special_files_in_the_inbox_are_not_read(self):
+        self.configure()
+        secret = self.tmp / "id_rsa"
+        secret.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
+        inbox = self.repo / "docs" / "knowledge" / "raw"
+        inbox.mkdir(parents=True)
+        (inbox / "notes.txt").symlink_to(secret)
+        (inbox / "outside").symlink_to(self.tmp, target_is_directory=True)
+        os.mkfifo(inbox / "pipe")
+        self.raw("real.md")
+        self.run_script("index", timeout=20)
+        self.assertEqual(list(self.ids()), ["docs/knowledge/raw/real.md"])
+
+    def test_an_unreadable_source_is_skipped_without_a_traceback_or_its_name(self):
+        self.configure()
+        hidden = self.raw("jane-doe-private.md", "x\n")
+        hidden.chmod(0)
+        self.raw("ok.md")
+        out = self.run_script("index") + self.run_script("status")
+        self.assertNotIn("Traceback", out)
+        self.assertNotIn("jane-doe", out)
+        self.assertEqual(list(self.ids()), ["docs/knowledge/raw/ok.md"])
+
+    def test_a_corrupt_index_is_reported_in_one_line(self):
+        self.configure()
+        self.raw("a.md")
+        self.run_script("index")
+        index = self.repo / "docs" / "knowledge" / "index.jsonl"
+        good = index.read_bytes()
+        for bad in (b"{not json\n", b"\xff\xfe\n"):
+            index.write_bytes(good + bad)
+            for args in (("status",), ("status", "--quick"), ("index",)):
+                with self.subTest(bad=bad, args=args):
+                    out = self.run_script(*args, code=2)
+                    self.assertEqual(len(out.strip().splitlines()), 1, out)
+                    self.assertIn("index", out)
+
+    # --- the report ------------------------------------------------------------------------------------------------
+
     def test_the_report_counts_what_needs_attention(self):
         self.configure()
         a = self.raw("2026-09-01-a.md", "aaaa\n")
         self.raw("2026-09-02-b.md", "bbbb\n")
         self.run_script("index")
-        zero = {"new": 0, "undistilled": 0, "changed": 0, "missing": 0, "absent": 0}
-        self.assertEqual(self.counts(), {**zero, "undistilled": 2})
-        ids = {r["path"]: r["id"] for r in self.rows()}
+        self.assertEqual(self.counts(), {**ZERO, "undistilled": 2})
+        ids = self.ids()
         self.run_script("distilled", ids["docs/knowledge/raw/2026-09-01-a.md"])
-        self.assertEqual(self.counts("--quick"), {**zero, "undistilled": 1})
+        self.assertEqual(self.counts("--quick"), {**ZERO, "undistilled": 1})
         self.raw("2026-09-03-c.md", "cccc\n")
         self.entry("price.md", f"sources: {ids['docs/knowledge/raw/2026-09-01-a.md']}, src-0123456789\n")
+        self.entry("terms.md", "sources: src-0123456789, src-abcdefabcd\n")
         a.write_text("aaaa, revised\n")
         (self.repo / "docs" / "knowledge" / "raw" / "2026-09-02-b.md").unlink()
-        expected = {"new": 1, "undistilled": 0, "changed": 1, "missing": 1, "absent": 1}
+        expected = {"new": 1, "undistilled": 0, "changed": 1, "missing": 2, "absent": 1}
         self.assertEqual(self.counts("--quick"), expected)
         self.assertEqual(self.counts(), expected)
         line = self.run_script("status")
-        for words in ("1 new", "1 changed since distilled", "1 cited but missing", "1 not on this machine"):
+        for words in ("1 new", "1 changed since distilled", "2 entries cite a missing source", "1 not on this machine"):
             with self.subTest(words=words):
                 self.assertIn(words, line)
 
-    def test_the_quick_report_never_hashes(self):
+    def test_a_change_stays_counted_after_index_runs(self):
+        self.configure()
+        a = self.raw("2026-09-01-a.md", "aaaa\n")
+        self.run_script("index")
+        self.run_script("distilled", self.rows()[0]["id"])
+        a.write_text("aaaa, revised\n")
+        self.run_script("index")
+        self.assertEqual(self.counts("--quick")["changed"], 1)
+        self.assertEqual(self.counts()["changed"], 1)
+
+    def test_the_quick_report_never_hashes_and_the_full_one_hashes_only_what_moved(self):
         self.configure()
         a = self.raw("2026-09-01-a.md", "aaaa\n")
         self.run_script("index")
         self.run_script("distilled", self.rows()[0]["id"])
         stat = a.stat()
-        a.write_text("bbbb\n")                      # the same size; its time put back
-        os.utime(a, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        self.assertEqual(self.counts("--quick")["changed"], 0)
-        self.assertEqual(self.counts()["changed"], 1)
+        os.utime(a, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))   # touched, the same content
+        self.assertEqual(self.counts("--quick")["changed"], 1)                 # sizes and times only
+        self.assertEqual(self.counts()["changed"], 0)                          # the hash settles it
 
-    def test_distilled_needs_an_indexed_source(self):
+    def test_cited_by_lists_the_entries_that_cite_a_source_by_its_exact_id(self):
+        self.configure()
+        self.raw("2026-09-01-a.md")
+        self.run_script("index")
+        source = self.rows()[0]["id"]
+        self.entry("price.md", f"sources: {source}\n")
+        self.entry("other.md", f"sources: {source}f\n")
+        self.run_script("index")
+        self.assertEqual(self.rows()[0]["cited_by"], ["docs/knowledge/entries/price.md"])
+
+    def test_distilled_needs_indexed_sources(self):
         self.configure()
         self.raw("a.md")
         self.run_script("index")
         self.assertIn("src-nothere", self.run_script("distilled", "src-nothere", code=1))
+        self.run_script("distilled", code=1)
+
+    # --- secrets ---------------------------------------------------------------------------------------------------
 
     def test_a_source_holding_a_credential_is_flagged_and_its_value_never_written(self):
         self.configure()
@@ -173,44 +344,73 @@ class KnowledgeTest(unittest.TestCase):
         self.raw("plain.md", "the owner wants a single price\n")
         (self.repo / "docs" / "knowledge" / "raw" / "scan.pdf").write_bytes(b"%PDF-1.7\n\x00\x01binary")
         out = self.run_script("index") + self.run_script("status") + self.run_script("status", "--json")
-        rows = {Path(r["path"]).name: r for r in self.rows()}
-        self.assertEqual((rows["2026-09-15-chat.md"]["scan"], rows["plain.md"]["scan"], rows["scan.pdf"]["scan"]),
+        scans = self.scans()
+        self.assertEqual((scans["2026-09-15-chat.md"], scans["plain.md"], scans["scan.pdf"]),
                          ("secrets", "clean", "unscanned"))
         written = out + (self.repo / "docs" / "knowledge" / "index.jsonl").read_text()
         for value in secrets + ["7700 900123"]:
             with self.subTest(value=value):
                 self.assertNotIn(value, written)
 
-    def test_an_email_is_scanned_as_text(self):
+    def test_common_credential_formats_are_found_and_plain_prose_is_not(self):
         self.configure()
-        self.raw("2026-07-01-thread.eml", "From: owner\nSubject: keys\n\npassword: hunter2-but-longer\n")
+        found = {"client.md": "client_secret=8f3a9c2e1b7d4f60", "db.env": "DB_PASSWORD=hunter2hunter2",
+                 "aws.txt": "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG",
+                 "stripe.md": "sk_live_" + "4eC39HqLyjWDarjtT1zdp7dc",
+                 "google.md": "AIza" + "SyA1234567890abcdefghijklmnopqrstuv",
+                 "slack.md": "https://hooks.slack.com/services/T0/B0/XYZ",
+                 "jwt.md": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+                 "twilio.md": "AC" + "0123456789abcdef0123456789abcdef",
+                 "url.md": "postgres://admin:s3cretpass@db.example.com/x",
+                 "bearer.md": "Authorization: Bearer abcdefghijklmnop1234"}
+        prose = {"rules.md": "The password requirements are long, and the secret of success is patience.",
+                 "secretary.md": "secretary: Mary\nThe token budget is generous."}
+        for name, text in {**found, **prose}.items():
+            self.raw(name, text + "\n")
         self.run_script("index")
+        scans = self.scans()
+        for name in found:
+            with self.subTest(name=name):
+                self.assertEqual(scans[name], "secrets")
+        for name in prose:
+            with self.subTest(name=name):
+                self.assertEqual(scans[name], "clean")
+
+    def test_clean_means_every_byte_was_read(self):
+        self.configure()
+        big = self.repo / "docs" / "knowledge" / "raw" / "export.txt"
+        big.parent.mkdir(parents=True)
+        big.write_text("a" * (9 << 20))
+        self.raw("2026-07-01-thread.eml", "From: owner\nSubject: keys\nMIME-Version: 1.0\nContent-Type: text/plain\n"
+                 "Content-Transfer-Encoding: base64\n\ncGFzc3dvcmQ6IGh1bnRlcjItYnV0LWxvbmdlcgo=\n")
+        self.raw("2026-07-02-plain.eml", "From: owner\nSubject: hi\n\nplease keep one price\n")
+        for name in ("brief.odt", "deck.pages"):
+            (self.repo / "docs" / "knowledge" / "raw" / name).write_bytes(b"PK\x03\x04 zipped " + name.encode())
+        self.run_script("index")
+        scans = self.scans()
+        self.assertEqual(scans["export.txt"], "unscanned")
+        self.assertEqual(scans["2026-07-01-thread.eml"], "secrets")
+        self.assertEqual(scans["2026-07-02-plain.eml"], "clean")
+        self.assertEqual((scans["brief.odt"], scans["deck.pages"]), ("unscanned", "unscanned"))
+
+    def test_distilled_rescans_a_source(self):
+        self.configure()
+        a = self.raw("2026-09-01-a.md", "no keys here\n")
+        self.run_script("index")
+        a.write_text("api_key: 0123456789abcdef\n")
+        self.run_script("distilled", self.rows()[0]["id"])
         self.assertEqual(self.rows()[0]["scan"], "secrets")
 
-    def test_a_moved_source_keeps_its_id_and_its_old_path(self):
-        self.configure()
-        old = self.raw("july-plan/2026-07-02-plan.md", "the plan\n")
-        self.run_script("index")
-        before = self.rows()[0]
-        self.run_script("topics", before["id"], "pricing, deals,pricing")
-        new = self.repo / "docs" / "knowledge" / "raw" / "2026-07-02-july-plan" / "2026-07-02-plan.md"
-        new.parent.mkdir(parents=True)
-        old.rename(new)
-        self.run_script("index")
-        (after,) = self.rows()
-        self.assertEqual((after["id"], after["path"], after["aka"], after["topics"]),
-                         (before["id"], "docs/knowledge/raw/2026-07-02-july-plan/2026-07-02-plan.md",
-                          ["docs/knowledge/raw/july-plan/2026-07-02-plan.md"], ["deals", "pricing"]))
-        self.assertEqual(self.counts()["absent"], 0)
+    # --- boundaries ------------------------------------------------------------------------------------------------
 
-    def test_a_source_not_on_this_machine_keeps_its_row(self):
+    def test_topics_are_kept_as_written(self):
         self.configure()
-        gone = self.raw("2026-08-01-a.md")
+        self.raw("a.md")
         self.run_script("index")
-        gone.unlink()
-        self.run_script("index")
-        self.assertEqual(len(self.rows()), 1)
-        self.assertEqual(self.counts()["absent"], 1)
+        source = self.rows()[0]["id"]
+        self.run_script("topics", source, "Pricing, HMO licensing,Pricing")
+        self.assertEqual(self.rows()[0]["topics"], ["Pricing", "HMO licensing"])
+        self.run_script("topics", source, code=1)
 
     def test_only_local_git_reads_run(self):
         self.configure()
@@ -226,19 +426,15 @@ class KnowledgeTest(unittest.TestCase):
                                   text=True, env={**os.environ, "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}"})
             self.assertEqual(done.returncode, 0, done.stderr)
         verbs = {line.split()[0] for line in log.read_text().splitlines()}
-        self.assertEqual(verbs, {"rev-parse"})
+        self.assertEqual(verbs, {"rev-parse", "check-ignore"})
 
-    def test_a_corrupt_index_is_reported_in_one_line(self):
-        self.configure()
-        self.raw("a.md")
-        self.run_script("index")
-        index = self.repo / "docs" / "knowledge" / "index.jsonl"
-        index.write_text(index.read_text() + "{not json\n")
-        for args in (("status",), ("status", "--quick"), ("index",)):
-            with self.subTest(args=args):
-                out = self.run_script(*args, code=2)
-                self.assertEqual(len(out.strip().splitlines()), 1, out)
-                self.assertIn("index", out)
+    def test_an_inbox_git_would_track_is_refused_before_anything_is_written(self):
+        self.configure(ignored=False)
+        self.raw("2026-09-01-a.md")
+        out = self.run_script("index", code=2)
+        self.assertIn("gitignore", out)
+        self.assertFalse((self.repo / "docs" / "knowledge" / "raw" / ".knowledge-local.jsonl").exists())
+        self.assertFalse((self.repo / "docs" / "knowledge" / "index.jsonl").exists())
 
 
 if __name__ == "__main__":
