@@ -2,7 +2,8 @@
 
 Status: active
 Stage: built
-Next: Tickets 02 (the start card's knowledge line), 03 (the Knowledge rule) and 06 (moving existing raw material) are unblocked on seams-5.5/knowledge-layer: seams:implement's parallel offer, continuing here (they build on 01's script, plugin/skills/reconcile/scripts/knowledge.py).
+Next: A parallel run is under way (see ## Parallel): tickets 02, 03 and 06 by builders in their worktrees, integrated onto seams-5.5/knowledge-layer one at a time.
+Ticket: 02, 03, 06
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -10,6 +11,13 @@ This repository is public: no client names, people, cards or tools here. The cli
 ## Spec
 
 .scratch/knowledge-layer/spec.md (ready-for-agent)
+
+## Parallel
+
+Base: seams-5.5/knowledge-layer at df502fa, 3 at once
+- 02: building, branch knowledge-layer/02-card-knowledge-line, worktree .claude/worktrees/knowledge-layer-02
+- 03: building, branch knowledge-layer/03-knowledge-rule, worktree .claude/worktrees/knowledge-layer-03
+- 06: building, branch knowledge-layer/06-move-raw-material, worktree .claude/worktrees/knowledge-layer-06
 
 ## Tickets
 
