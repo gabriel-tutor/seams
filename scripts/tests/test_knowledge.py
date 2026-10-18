@@ -1,4 +1,5 @@
-"""The knowledge index (knowledge-layer ticket 01), through knowledge.py's command line, against temporary
+"""The knowledge index (knowledge-layer ticket 01) and moving existing raw sources into the inbox (ticket 06),
+through knowledge.py's command line, against temporary
 repositories: a repository opts in with a knowledge config; the script keeps a tracked index of every raw source in
 its inbox and its configured source homes, and reports what is new, undistilled, changed, missing or not on this
 machine. The tracked index holds only what is safe to share (decision 18); each source's path, size, time and hashes
@@ -97,6 +98,43 @@ class KnowledgeTest(unittest.TestCase):
         path = self.repo / "docs" / "knowledge" / "entries" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
+
+    def scattered(self, rel, text="the owner's email\n", day="2026-08-20"):
+        """A raw file outside the inbox, where an owner's material was dropped, last modified on day."""
+        path = self.repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        moment = time.mktime(time.strptime(day + " 12:00", "%Y-%m-%d %H:%M"))
+        os.utime(path, (moment, moment))
+        return path
+
+    def contents(self):
+        """Every file's bytes under the repository, git's own aside: a move changes where, never what."""
+        return sorted(p.read_bytes() for p in self.repo.rglob("*") if p.is_file() and ".git" not in p.parts
+                      and p.name not in (".knowledge-local.jsonl", ".knowledge-move.json", "index.jsonl"))
+
+    def plan(self, *folders, code=0):
+        return self.run_script("move", *folders, code=code)
+
+    def code_of(self, *folders):
+        """The yes code the plan's last line carries."""
+        line = self.plan(*folders).strip().splitlines()[-1]
+        self.assertIn("--yes ", line)
+        return line.split("--yes ")[1].split()[0]
+
+    def agree(self, *folders):
+        """The plan, then the yes it ends with, as the user's command would carry it."""
+        return self.run_script("move", "--yes", self.code_of(*folders), *folders)
+
+    def run_patched(self, prelude, *args, code=0):
+        """The script run in-process after prelude (a later clock, a process killed half-way): the stdlib patched,
+        never the script."""
+        runner = (f"import os, runpy, sys, time\n{prelude}\nsys.argv = [{str(SCRIPT)!r}, *{list(args)!r}]\n"
+                  f"runpy.run_path({str(SCRIPT)!r}, run_name='__main__')\n")
+        done = subprocess.run([sys.executable, "-B", "-c", runner], cwd=self.repo, capture_output=True, text=True,
+                              timeout=60, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(done.returncode, code, done.stdout + done.stderr)
+        return done.stdout + done.stderr
 
     # --- the switch ------------------------------------------------------------------------------------------------
 
@@ -532,29 +570,6 @@ class KnowledgeTest(unittest.TestCase):
 
     # --- moving existing raw sources in (ticket 06) -----------------------------------------------------------------
 
-    def scattered(self, rel, text="the owner's email\n", day="2026-08-20"):
-        """A raw file outside the inbox, where an owner's material was dropped, last modified on day."""
-        path = self.repo / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-        moment = time.mktime(time.strptime(day + " 12:00", "%Y-%m-%d %H:%M"))
-        os.utime(path, (moment, moment))
-        return path
-
-    def contents(self):
-        """Every file's bytes under the repository, git's own aside: a move changes where, never what."""
-        return sorted(p.read_bytes() for p in self.repo.rglob("*") if p.is_file() and ".git" not in p.parts
-                      and p.name != ".knowledge-local.jsonl" and p.name != "index.jsonl")
-
-    def plan(self, *folders, code=0):
-        return self.run_script("move", *folders, code=code)
-
-    def agree(self, *folders):
-        """The plan, then the yes it ends with, as the user's command would carry it."""
-        line = self.plan(*folders).strip().splitlines()[-1]
-        self.assertIn("--yes ", line)
-        return self.run_script("move", "--yes", line.split("--yes ")[1].split()[0], *folders)
-
     def test_the_plan_lists_each_folder_its_destination_and_size_and_moves_nothing(self):
         self.configure()
         self.scattered("owner mail/ask.md", "12345\n", day="2026-08-03")
@@ -592,7 +607,7 @@ class KnowledgeTest(unittest.TestCase):
         self.configure()
         self.scattered("mail/ask.md")
         before = self.files()
-        code = self.plan("mail").strip().splitlines()[-1].split("--yes ")[1].split()[0]
+        code = self.code_of("mail")
         self.run_script("move", "--yes", "0123456789ab", "mail", code=1)
         self.run_script("move", "--yes", code=1)
         self.scattered("mail/late.md", "added after the plan was shown\n")
@@ -722,9 +737,9 @@ class KnowledgeTest(unittest.TestCase):
         self.scattered("mail/a.md", "a\n")
         self.scattered("mail/sub/jane-doe.md", "b\n")
         before = self.contents()
-        line = self.plan("mail").strip().splitlines()[-1]
+        code = self.code_of("mail")
         (self.repo / "mail" / "sub").chmod(0o555)                        # its file can't leave it
-        out = self.run_script("move", "--yes", line.split("--yes ")[1].split()[0], "mail", code=2)
+        out = self.run_script("move", "--yes", code, "mail", code=2)
         self.assertIn("stopped after 1 of 2 files", out)
         self.assertNotIn("jane-doe", out)
         self.assertEqual(self.contents(), before)
@@ -786,16 +801,69 @@ class KnowledgeTest(unittest.TestCase):
     def test_the_yes_is_for_the_whole_list_and_only_for_a_while(self):
         self.configure()
         self.scattered("mail/ask.md", "12345\n")
-        code = self.plan("mail").strip().splitlines()[-1].split("--yes ")[1].split()[0]
+        code = self.code_of("mail")
         (self.repo / "mail" / "ask.md").rename(self.repo / "mail" / "asked.md")    # the same size and folder
         self.assertIn("changed", self.run_script("move", "--yes", code, "mail", code=1))
-        code = self.plan("mail").strip().splitlines()[-1].split("--yes ")[1].split()[0]
+        code = self.code_of("mail")
         minute, digest = code.split("-")
-        late = f"{int(minute, 16) - 31:x}-{digest}"
-        self.assertIn("expired", self.run_script("move", "--yes", late, "mail", code=1))
+        revived = f"{int(minute, 16) + 31:x}-{digest}"                   # a later minute can't renew it
+        self.assertIn("changed", self.run_script("move", "--yes", revived, "mail", code=1))
+        later = "real = time.time\ntime.time = lambda: real() + 31 * 60"
+        self.assertIn("expired", self.run_patched(later, "move", "--yes", code, "mail", code=1))
         self.assertTrue((self.repo / "mail" / "asked.md").exists())
         self.run_script("move", "--yes", code, "mail")
         self.assertFalse((self.repo / "mail").exists())
+
+    def test_a_move_killed_half_way_keeps_every_old_path_and_the_next_plan_finishes_it(self):
+        self.configure()
+        self.scattered("mail/a.md", "a\n")
+        self.scattered("mail/b.md", "b\n")
+        before = self.contents()
+        killed = ("real = os.rename\ndef rename(src, dst):\n    real(src, dst)\n    os._exit(9)\n"
+                  "os.rename = rename")                                   # no finally runs, as with SIGKILL
+        self.run_patched(killed, "move", "--yes", self.code_of("mail"), "mail", code=9)
+        self.assertEqual(self.contents(), before)
+        out = self.plan("mail")
+        self.assertIn("mail -> docs/knowledge/raw/2026-08-20-mail/ (1 file, 2 B)", out)
+        self.assertEqual([r["aka"] for r in self.local().values()], [["mail/a.md"]])
+        self.agree("mail")
+        self.assertEqual(sorted(r["path"] for r in self.local().values()),
+                         ["docs/knowledge/raw/2026-08-20-mail/a.md", "docs/knowledge/raw/2026-08-20-mail/b.md"])
+        self.assertEqual(self.contents(), before)
+        inbox = self.repo / "docs" / "knowledge" / "raw"
+        self.assertEqual(sorted(p.name for p in inbox.iterdir() if p.name.startswith(".")), [".knowledge-local.jsonl"])
+
+    def test_a_tracked_file_whose_folder_was_renamed_in_case_is_still_refused(self):
+        self.configure()
+        self.scattered("Owner/a.md", "tracked\n")
+        git(self.repo, "add", "Owner/a.md")
+        git(self.repo, "commit", "-qm", "a tracked note")
+        (self.repo / "Owner").rename(self.repo / "t")
+        (self.repo / "t").rename(self.repo / "owner")
+        if not (self.repo / "Owner").exists():
+            self.skipTest("this disk tells cases apart, so git sees the rename as a deletion")
+        self.scattered("owner/b.md", "loose\n")
+        out = self.plan("owner")
+        self.assertIn("tracked by git, refused: owner/a.md", out)
+        self.agree("owner")
+        self.assertTrue((self.repo / "owner" / "a.md").exists())
+        self.assertEqual(git(self.repo, "status", "--porcelain", "--untracked-files=no"), "")
+
+    def test_files_left_behind_are_counted_by_kind(self):
+        self.configure()
+        self.scattered("export/a.md")
+        self.scattered("export/.env", "API_KEY=x\n")
+        (self.repo / "export" / "latest").symlink_to(self.repo / "export" / "a.md")
+        out = self.plan("export")
+        self.assertIn("left where they are, outside the inbox, where git may see them: 1 hidden file, 1 link", out)
+        self.assertIn("2 files left where they were", self.agree("export"))
+        self.assertTrue((self.repo / "export" / ".env").exists())
+
+    def test_a_script_naming_a_folder_from_beside_it_keeps_it(self):
+        self.configure()
+        self.scattered("data/owner/x.md")
+        (self.repo / "data" / "load.py").write_text('ROWS = open("owner/x.md").read()\n')
+        self.assertIn("- data/owner stays where it is, named in data/load.py", self.plan("data/owner"))
 
     def test_the_move_is_refused_where_git_would_not_ignore_a_moved_file(self):
         self.configure(ignored=False)
