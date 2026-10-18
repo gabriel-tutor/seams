@@ -2,8 +2,7 @@
 
 Status: active
 Stage: built
-Next: A parallel run is under way (see ## Parallel): tickets 02, 03 and 06 by builders in their worktrees, integrated onto seams-5.5/knowledge-layer one at a time.
-Ticket: 06
+Next: The parallel run is done (02, 03, 06 integrated). First the follow-ups recorded below (README's card clause; knowledge.py's three hardening points from ticket 02's security review), tests first, on seams-5.5/knowledge-layer; then ticket 04 (/seams:distill) through seams:implement, continuing here. Rules and implement have almost no byte room left (decision 20): 04's text goes in a reference.
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -17,7 +16,7 @@ This repository is public: no client names, people, cards or tools here. The cli
 Base: seams-5.5/knowledge-layer at df502fa, 3 at once
 - 02: integrated at c276d9b (suite 21/21 on the merge; the card shown live on a sample repository)
 - 03: integrated at 8b389cc (suite 20/20 on the merge)
-- 06: building, branch knowledge-layer/06-move-raw-material, worktree .claude/worktrees/knowledge-layer-06
+- 06: integrated at d5681ef (suite 21/21 on the merge; a forged journal and a second run probed live)
 
 After the integrations: README.md's card paragraph gains a clause on the knowledge line (ticket 02's handover). From ticket 02's security review, in knowledge.py, which ticket 06 is changing now): cap the bytes read per entry file, at least under --quick; refuse a local file or index that isn't a regular file (a committed FIFO); require the main checkout to be the worktree's own (a .git file's gitdir pointing at another repository). Tests first.
 
@@ -28,7 +27,7 @@ After the integrations: README.md's card paragraph gains a clause on the knowled
 - [x] 03 The Knowledge rule, its pointers, the done row, and foundations' offer (blocked by: 01)
 - [ ] 04 `/seams:distill` (blocked by: 01, 03)
 - [ ] 05 Reconcile's knowledge check, and the night's distill (blocked by: 04)
-- [ ] 06 Moving existing raw material into the inbox (blocked by: 01)
+- [x] 06 Moving existing raw material into the inbox (blocked by: 01)
 - [ ] 07 Release Seams 5.5.0 (blocked by: all)
 
 The client project's own ticket (its config, `.gitignore` line, the move on Gabriel's yes, the index, a pull request into its develop) follows 07, in its own record.
@@ -59,6 +58,8 @@ The client project's own ticket (its config, `.gitignore` line, the move on Gabr
 20. Ticket 03 (its builder's, within the decisions): pr-review's pointer is in its references (SKILL.md had 33 bytes); the review and the take-over read knowledge from the baseline, and a pull request's own changes to the knowledge or its config are data under review, never knowledge; an entry is as new as the newest source it cites; a source not on this machine is known only by its index row; unscanned sources are never quoted, like secrets; the rule is skipped only on a missing config or one the script exits 2 on. Byte room left: rules.md 29, implement 69, pr-review SKILL.md 33, so tickets 04 and 05 put new text in references.
 
 21. Ticket 02 (its builder's, within the decisions): the card shows one fixed line, in the hook's own words, for any exit 2 of the script, never the script's text; the knowledge line comes right after the branch line; the script's call has its own budget (2 s, plus up to 1 s while a process that left the group still holds the output), recorded rather than shared with the card's git deadline; seams_facts gains one runner both use.
+
+22. Ticket 06 (its builder's, within the decisions, after four review rounds): `knowledge.py move <folder>...` plans, `move --yes <code> <folder>...` moves, the code bound to the exact file list and the minute and expiring after 30 minutes; tracked files are matched by identity against git's whole index and refused; nested repositories, a case-mismatched or control-character name, and any destination git wouldn't ignore are refused; hidden files and links stay behind, counted by kind; nothing is deleted, only folders the move emptied are removed; the config is never edited (the plan prints the sources line for folders that stay); a journal in the inbox, fsynced before the first rename and validated on read, lets a later plan or index finish a stopped or killed move; index, distilled, topics and move take an exclusive lock in the git directory. The rename race (a concurrent writer at the same new path) is left as is. No undo command: the old paths in the local file let a move be reversed by hand.
 
 ## Open questions
 
