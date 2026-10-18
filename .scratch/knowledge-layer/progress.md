@@ -1,8 +1,8 @@
 # Progress: a knowledge layer, raw notes to approved knowledge
 
 Status: active
-Stage: built
-Next: Ticket 07, the release of Seams 5.5.0, through seams:release (push, main and the tag each asked; the client-detail scan of every commit first). Sleep mode's step 1 and morning list name distill, in place in ~/.claude/skills/sleep-mode (backups SKILL.md.bak-2026-10-18-knowledge and -knowledge2).
+Stage: integrated
+Next: Ticket 07, the release of Seams 5.5.0, through seams:release (push, main and the tag each asked; the client-detail scan of every commit first). Integrated on local main at 304c3e5 (a fast-forward, nothing pushed); the worktree .worktrees/knowledge-layer and its branch are kept until the suite runs green here. Local suite on the merge: 20 of 21, the one failure PostReviewsTest.test_a_later_call_waits_for_the_budget_an_earlier_call_spent, which fails the same way on released 5.4.0 (08c3a44) at this machine's load (35-41 from other sessions): a timing test, not the merge; the release's CI settles it.
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
