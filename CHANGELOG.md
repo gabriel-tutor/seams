@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.4.0 — 2026-10-18
+
+Sessions forgot what a project already knew, and overnight work built on stale records and unchecked claims. Seams keeps one home per fact, and now keeps those homes current:
+
+- **The start card.** The session start's resume note listed the newest three active progress files, so older active work dropped out of sight. It is now a card of every active progress file, newest first, each with its feature, stage and next step, flagged stale when its branch has commits newer than the file or the file hasn't changed in three days, after the branch and commit it was built at. It reads only local files and git (no network, no optional locks, no lazy fetch), runs at start, resume, `/clear` and compaction, and past its budget lists the rest by name. A pr-review batch is never flagged: its file is never committed.
+- **Claims come from commands.** The shared rules' Evidence section gains two rules. Every time, commit id, count and result in a record or a message comes from a command run in the session, and a claim made to a person cites its evidence. What a session learns (a ruling, a preference, a correction) is written at once to its one home, with its source given by role.
+- **`/seams:reconcile`.** A new skill re-checks the records a piece of work relies on: the active progress files against their branches and the code, the memories it reads, and the card. Each finding is Confirmed, Corrected (fixed at its home, with the command that settled it) or Unsettled (marked, never guessed); it never deletes a record it couldn't check, never removes a memory without your yes, and never moves git to match a record.
+- **Unattended nights start by reconciling.** In Unattended mode the night opens with `seams:reconcile` before any builder starts, and each claim made to a person goes under `## Outward claims` for the morning summary.
+
 ## 5.3.0 — 2026-10-14
 
 - **Unattended mode** ([ADR 0007](docs/adr/0007-unattended-mode.md)). Overnight runs had no process: builders skipped the flow, since the main conversation's route covered every subagent, and the flow's questions waited for no one. When a launcher sets `SEAMS_UNATTENDED=1` (sleep mode's does):
