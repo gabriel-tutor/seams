@@ -65,6 +65,14 @@ class UnattendedRule(unittest.TestCase):
             with self.subTest(words=words):
                 self.assertIn(words, self.section)
 
+    def test_the_night_starts_by_reconciling_and_the_morning_lists_its_outward_claims(self):
+        # senior-overnight ticket 02 (decisions 8 and 9): no builder starts on a stale record, and each claim the night
+        # made to a person reaches the morning with what it rests on.
+        for words in ("`seams:reconcile`", "before any builder starts", "the memories the night reads", "the card",
+                      "## Outward claims", "the morning summary lists", "with its source"):
+            with self.subTest(words=words):
+                self.assertIn(words, self.section)
+
     def test_every_skill_that_stops_points_at_the_rule(self):
         for skill in STOPPING_SKILLS:
             with self.subTest(skill=skill):

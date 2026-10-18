@@ -1,0 +1,37 @@
+---
+name: reconcile
+description: Use when the records work relies on may have drifted (active progress files, the memories read, the card), and first each unattended night
+---
+
+# Reconcile
+
+Re-check the records a piece of work relies on against git and the code, before anything builds on them: fix what the evidence corrects, mark what it can't settle, and record what you did. A record is a pointer, never the truth: git, the code and a command's output are, and every claim below comes from a command run now (shared rules: Evidence).
+
+**Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read when a step names one of its sections; the progress file's format: `progress-file.md` beside it. **Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
+
+## Check
+
+1. **Every active progress file** (`.scratch/*/progress.md` with `Status: active`), each against its branch and the code:
+   - each branch, worktree and SHA its `Next`, `Candidate` and `## Parallel` name exists where it says: `git branch --list <branch>`, `git worktree list`, `git cat-file -e <sha>`, and `git merge-base --is-ancestor <sha> <base-branch>` for a SHA it calls integrated;
+   - its `Stage` and its ticket list against the history: a ticket marked done has its commit or its merge where the file says, and a ticket left open has no integration the file missed;
+   - commits it doesn't account for: the newest commit on its branch (`git log -1 --format=%cI <branch>`) against the file's own last change (`git log -1 --format=%cI -- <file>`);
+   - each `## Facts` line that names a file and line still finds what it says there.
+2. **The memories the work reads**: the memory index the session start loaded and each memory file this work reads. One that names a file, a function, a flag, a commit, a version or a release is checked against the repository (`ls`, `grep`, `git tag`, `git log`). One about the user (a preference, a correction) is checked against what the user said in this conversation, never against a guess.
+3. **The card**: each line the session start showed (its feature, stage, next step and stale flag) against the files and git now. The card is built from the files, so a wrong line is fixed in its file, never in the card.
+
+## Each finding
+
+Exactly one of three:
+
+- **Confirmed**: the evidence matches the record. Leave it as it is.
+- **Corrected**: a command run now settles what the record should say (a SHA that moved, a stage git shows reached, an integrated ticket not ticked, a memory's renamed file). Fix that line at its one home (shared rules: Where docs go) and keep the command and its output for the record. A memory the evidence shows false is corrected, or removed with its index line, citing what showed it.
+- **Unsettled**: no command settles it (a branch that exists nowhere here, a ruling only the user made, a fact outside the repository): mark it in place, `(unverified <date>: <why>)` after the line, and leave the line itself as it is.
+
+Never delete a record you couldn't check, and change nothing you can't verify: a guess is unsettled, never a correction. Never move a branch, a worktree or a commit to match a record: the record follows git.
+
+## Record
+
+1. In each progress file you changed, a `## Reconcile` section replacing the last run's: the date from `date +%F`, then one line per correction or mark with the command that settled it; set `Updated` to that date.
+2. Commit the progress files you changed, by name, with a message that says what was corrected. A file already dirty before you started is edited but left uncommitted, and the report says so. Memory files live outside the repository and are not committed.
+3. Report a table: each record checked, its outcome, and its evidence (the command and the line of output that shows it), the unsettled ones first. In unattended mode the report goes to the morning summary (shared rules: Unattended mode).
+4. Run `seams:verification-before-completion` before saying the records are reconciled.

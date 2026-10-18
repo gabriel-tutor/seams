@@ -7,7 +7,8 @@
 # notices and the copies' checksums; the plugin's name, with no live file naming the old one (seams-rename); the
 # simplicity ladder's pointers and its never-cut list (simplicity-ladder); where docs go, CLAUDE.md held small and
 # foundations' split (claude-md-budget); a publish's yes never taken from a file (5.0.0's eval); the worktree sweep
-# in finishing-a-development-branch, removing only what the user chose (worktree-sweep). No other check pins a skill's or the README's wording: rewording a sentence that
+# in finishing-a-development-branch, removing only what the user chose (worktree-sweep); the claims and learning rules,
+# the bootstrap's pointer to them and reconcile's steps (senior-overnight). No other check pins a skill's or the README's wording: rewording a sentence that
 # changes none of these leaves it green.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -599,6 +600,37 @@ STOPS += [(what, path, scope, pattern) for what, path, scope, pattern in (
     ("to-spec takes no file's note for the publish's yes", "skills/to-spec/SKILL.md", None, r"never stands in for it"))]
 STOPS += [(f"the docs rule is in {where}", path, None, r"official docs[^\n]*version in use")
           for where, path in (("the bootstrap", BOOT), ("the shared rules", RULES))]
+# Claims come from commands, and what a session learns goes to its one home (senior-overnight ticket 02, decisions 2
+# and 8): both rules are written once, in the shared rules' Evidence, and the bootstrap, which every session gets,
+# points every claim and lesson there, so no claim rule depends on which skill a session ran.
+EVIDENCE = r"(?ms)^## Evidence\n.*?(?=^## |\Z)"
+STOPS += [(f"the shared rules' Evidence {what}", RULES, EVIDENCE, pattern) for what, pattern in (
+    ("takes every time, commit id, count and result from a command run in the session",
+     r"time, commit id, count or result[^\n]*from a command run in the session"),
+    ("never takes a claim from memory", r"never from memory"),
+    ("has a claim made to a person cite its evidence", r"claim made to a person[^\n]*cites its evidence"),
+    ("writes what a session learns at once to its one home", r"learns[^\n]*written at once to its one home"),
+    ("sends a lesson home by Where docs go", r"by Where docs go"),
+    ("writes a lesson with its source", r"with its source"))]
+STOPS += [(f"the shared rules' Where docs go names {what} as a home", RULES, WHERE_DOCS, pattern) for what, pattern in (
+    ("the progress file", r"its progress file"), ("Claude's memory of the user", r"Claude's memory of them"))]
+STOPS += [("the bootstrap sends each claim and lesson to the shared rules", BOOT, r"(?m)^4\. .*$",
+           r"each claim, each lesson\): `rules\.md`")]
+# /seams:reconcile (ticket 02, decision 9) re-checks the records work relies on, by day or first each night: it checks
+# each active progress file against its branch and the code, the memories it reads and the card; it fixes only what a
+# command's output corrects, marks what none settles, records what it did, and never deletes what it couldn't check.
+RECONCILE = "skills/reconcile/SKILL.md"
+STOPS += [(f"reconcile {what}", RECONCILE, None, pattern) for what, pattern in (
+    ("checks every active progress file against its branch and the code",
+     r"every active progress file[^\n]*against its branch and the code"),
+    ("checks the memories the work reads", r"\*\*The memories the work reads\*\*"),
+    ("checks the card", r"\*\*The card\*\*"),
+    ("corrects only from a command's output", r"\*\*Corrected\*\*[^\n]*command run now settles"),
+    ("marks in place what no command settles", r"\*\*Unsettled\*\*[^\n]*mark it in place"),
+    ("never deletes a record it couldn't check", r"Never delete a record you couldn't check"),
+    ("changes nothing it can't verify", r"change nothing you can't verify"),
+    ("records what it did", r"## Record"),
+    ("verifies before it claims the records reconciled", r"verification-before-completion"))]
 
 def missed(plugin):
     out = []

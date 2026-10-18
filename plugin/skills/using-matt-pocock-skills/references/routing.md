@@ -35,6 +35,8 @@ A new app starts with `foundations` (the run and verify commands, CI, the produc
 
 Run `/improve-codebase-architecture` (user-only) every few days. It reports deepening opportunities as an HTML file. Grill the candidate the user picks, and design it with `codebase-design` (its design-it-twice pattern explores alternative interfaces).
 
+When a record may have drifted from git or the code (a progress file, a memory, the card), or when the user asks, run `seams:reconcile`: it re-checks them, fixes what the evidence corrects and marks what it can't settle. An unattended night runs it first (shared rules: Unattended mode).
+
 ## Support skills
 
 The four skills from Superpowers (three copies, and `finishing-a-development-branch` adapted to record integration in the progress file), named with their prefix because the Superpowers originals share their names and are not declarations:
