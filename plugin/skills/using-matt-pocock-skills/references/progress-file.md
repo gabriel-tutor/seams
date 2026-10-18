@@ -35,11 +35,11 @@ The header is the `Key: value` lines before the first `##` heading, one line eac
 | `Status` | `active` while work remains; `done` once the feature is finished, which takes it out of the resume note |
 | `Stage` | `designing` while the grill runs, then the stage reached (shared rules: Stages) |
 | `Next` | the next step, in one sentence |
-| `Updated` | the date of the last change, `YYYY-MM-DD`, which a time may follow (`2026-09-25T10:00`); the note lists the newest three |
+| `Updated` | the date of the last change, `YYYY-MM-DD`, which a time may follow (`2026-09-25T10:00`); the note lists every active file, newest first, in full while its cap allows, then by name only |
 | `Ticket` | optional: the ticket in progress, by its number or id (`05`, `#123`), or the tickets of a parallel run (`03, 05, 07`) |
 | `Candidate` | optional: while a ticket is in progress, the short SHA of the commit its review ran on (a commit can't name itself; `Next` says what the ticket's later commits do) |
 
-A file without a `Status`, a `Stage`, a `Next` and a dated `Updated` is skipped. The note shows each field as one line of plain text of at most 200 characters (a ticket in at most 60 characters), with markup removed, so keep the header plain.
+A file without a `Status`, a `Stage`, a `Next` and a dated `Updated` is skipped. The note flags a file stale when its branch has commits newer than the file's last change (its last commit, or its own edit when it isn't committed), or it hasn't changed in three days, so commit it with the work it describes. The note shows each field as one line of plain text of at most 200 characters (a ticket in at most 60 characters), with markup removed, so keep the header plain.
 
 After the header come the sections: `## Decisions`, each settled decision with its reason when it isn't obvious; `## Open questions`, the questions still to ask; `## Facts`, what was found that is worth keeping, with a file and line or a URL. A skill adds a section for its own step, as below.
 
