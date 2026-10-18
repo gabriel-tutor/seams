@@ -15,13 +15,13 @@ Updated: 2026-10-18
 Base: main at 23e302e, 2 at once
 - 01: building, branch senior-overnight/01-live-card, worktree .claude/worktrees/senior-overnight-01
 - 02: building, branch senior-overnight/02-claims-learning-reconcile, worktree .claude/worktrees/senior-overnight-02
-- 03: building in the main session, ~/.claude/skills/sleep-mode
+- 03: built in place in ~/.claude/skills/sleep-mode (61 guard tests pass on 3.14 and 3.9; review findings fixed; backups .bak-2026-10-18)
 
 ## Tickets
 
 - [ ] 01 The live card at every start (blocked by: none)
 - [ ] 02 Claims from commands, learning to its home, and /seams:reconcile (blocked by: none)
-- [ ] 03 The overnight guard's tool boundaries (blocked by: none)
+- [x] 03 The overnight guard's tool boundaries (blocked by: none)
 - [ ] 04 The guard asks GitHub before a merge, and the two takeover modes (blocked by: 03)
 - [ ] 05 Sleep mode's takeover commands, nightly reconcile and independent checks (blocked by: 02, 04)
 - [ ] 06 One paid eval of an unattended night (blocked by: 01, 02, 05)
@@ -53,6 +53,8 @@ Base: main at 23e302e, 2 at once
 16. The breakdown (Gabriel approved it, 2026-10-18): seven tickets under .scratch/senior-overnight/issues/, as listed above.
 
 17. Sends overnight (Gabriel's choice, 2026-10-18, amending 4): the project's ask rules on message sends stay, and an ask rule prompts even under a hook's allow, so overnight every WhatsApp, email and CRM send or record write is refused cleanly and drafted for the morning; no recipient list.
+
+18. Ticket 03's review (mine): a write word in a tool's name wins over any read word; more messaging servers recognized; every environment field must say staging and a Railway change by id is refused (so MCP deploys by id go through the CLI with -e staging); Railway's CLI is closed by default (plain reads pass, everything else names staging; down and delete refused); --set=, attached flags and npx @railway/cli read; the ask check matches server-wide rules and reads the main checkout's and the user's settings. Left as is: `railway variables -e production` is a read, so production values can appear in a transcript (decision 3, every read).
 
 ## Open questions
 
