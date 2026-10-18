@@ -1,8 +1,8 @@
 # Progress: senior-quality overnight work, and a memory that stays current
 
 Status: active
-Stage: designing
-Next: Gabriel's confirmation; then seams:to-spec, seams:to-tickets, and seams:implement per ticket in a worktree.
+Stage: designed
+Next: seams:to-spec for .scratch/senior-overnight/spec.md, then seams:to-tickets (Gabriel approves the breakdown), then seams:implement per ticket in .worktrees/senior-overnight.
 Updated: 2026-10-18
 
 ## Decisions
@@ -26,9 +26,11 @@ Updated: 2026-10-18
 13. Tests (Gabriel's choice): unit tests for each new guard rule (recipient list, Railway production, n8n, the GitHub merge check, takeover -soft and -hard), the card and resume hook tests (every active file listed, stale ones flagged), text pins for the claims and reconcile rules, and one paid `claude plugin eval` of an unattended night on a sample repository, asked before it runs.
 14. Mine: a progress file is flagged stale when its branch has commits newer than its last update, or it hasn't changed in three days; the guard refuses whenever it can't check (a GitHub lookup that fails refuses the merge).
 
+15. Gabriel confirmed on 2026-10-18: spec it (seams:to-spec), then the tickets (he approves the breakdown), then each ticket built in .worktrees/senior-overnight from main.
+
 ## Open questions
 
-- None; Gabriel's confirmation.
+- None.
 
 ## Facts
 
