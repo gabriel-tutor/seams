@@ -648,30 +648,35 @@ class KnowledgeTest(unittest.TestCase):
         self.assertEqual(git(self.repo, "status", "--porcelain", "--untracked-files=no"), "")
         self.assertEqual([r["aka"] for r in self.local().values()], [["plans/scratch.md"]])
 
-    def test_a_folder_a_script_reads_stays_and_is_indexed_in_place(self):
+    def test_a_folder_a_script_reads_stays_where_it_is_and_the_config_is_left_to_the_user(self):
         self.configure()
         self.scattered("feeds/prices.csv", "sku,price\n")
         self.scattered("feeds-notes/a.md", "a note\n")                 # a longer name is another folder
-        (self.repo / "tools").mkdir()
         self.scattered("data/owner/x.md", "x\n")                         # its parent is what the script reads
+        self.scattered("briefs/b.md", "b\n")                             # a skill's instructions name it
+        self.scattered("drops/c.md", "c\n")                              # an untracked script names it
+        (self.repo / "tools").mkdir()
         (self.repo / "tools" / "load.py").write_text('ROWS = open("feeds/prices.csv").read()\nALL = glob("data/*")\n')
-        (self.repo / "docs" / "how.md").write_text("Drop the owner's mail in feeds-notes/ for now.\n")
-        (self.repo / ".gitignore").write_text("docs/knowledge/raw/\nfeeds-notes/\n")
-        git(self.repo, "add", "tools/load.py", "docs/how.md", ".gitignore")
+        (self.repo / "skills" / "brief").mkdir(parents=True)
+        (self.repo / "skills" / "brief" / "SKILL.md").write_text("Read every file in `briefs/` first.\n")
+        (self.repo / "fetch.sh").write_text("cp new/* drops/\n")
+        (self.repo / ".gitignore").write_text("docs/knowledge/raw/\nfeeds-notes/\n")    # ignore rules aren't scripts
+        git(self.repo, "add", "tools/load.py", "skills/brief/SKILL.md", ".gitignore")
         git(self.repo, "commit", "-qm", "a loader")
-        out = self.plan("feeds", "feeds-notes", "docs/rulings.md", "data/owner")
-        self.assertIn("- feeds stays where it is, read by tools/load.py: indexed in place (the config's sources gain "
-                      "it)", out)
+        config = (self.repo / "docs" / "agents" / "knowledge.md").read_text()
+        out = self.plan("feeds", "feeds-notes", "docs/rulings.md", "data/owner", "briefs", "drops")
+        self.assertIn("- feeds stays where it is, named in tools/load.py", out)
+        self.assertIn("- data/owner stays where it is, named in tools/load.py", out)
+        self.assertIn("- briefs stays where it is, named in skills/brief/SKILL.md", out)
+        self.assertIn("- drops stays where it is, named in fetch.sh", out)
         self.assertIn("- docs/rulings.md: refused: not a folder here", out)
-        self.assertIn("- data/owner stays where it is, read by tools/load.py", out)
-        self.assertIn("feeds-notes -> docs/knowledge/raw/2026-08-20-feeds-notes/", out)   # docs and ignore rules aren't scripts
-        self.agree("feeds", "feeds-notes", "docs/rulings.md", "data/owner")
+        self.assertIn("feeds-notes -> docs/knowledge/raw/2026-08-20-feeds-notes/", out)
+        self.assertIn("sources: docs/rulings.md, feeds, data/owner, briefs, drops", out)
+        self.agree("feeds", "feeds-notes", "docs/rulings.md", "data/owner", "briefs", "drops")
         self.assertTrue((self.repo / "feeds" / "prices.csv").exists())
-        self.assertIn("sources: docs/rulings.md, feeds, data/owner\n", (self.repo / "docs" / "agents" / "knowledge.md").read_text())
+        self.assertEqual((self.repo / "docs" / "agents" / "knowledge.md").read_text(), config)
         self.assertEqual(sorted(r["path"] for r in self.local().values()),
-                         ["data/owner/x.md", "docs/knowledge/raw/2026-08-20-feeds-notes/a.md", "feeds/prices.csv"])
-        self.assertEqual(self.counts()["new"], 0)
-        self.assertIn("stays where it is, already a source the config indexes in place", self.plan("feeds"))
+                         ["docs/knowledge/raw/2026-08-20-feeds-notes/a.md"])
 
     def test_folders_that_cant_move_are_refused_with_the_reason(self):
         self.configure()
@@ -708,7 +713,8 @@ class KnowledgeTest(unittest.TestCase):
         self.agree("back")
         (after,) = self.rows()
         self.assertEqual(after["id"], before["id"])
-        self.assertEqual(self.local()[after["id"]]["aka"], ["back/2026-07-02-plan.md", "docs/knowledge/raw/2026-07-02-plan.md"])
+        self.assertEqual(self.local()[after["id"]]["aka"],
+                         ["back/2026-07-02-plan.md", "docs/knowledge/raw/2026-07-02-plan.md"])
         self.assertEqual(self.counts()["absent"], 0)
 
     def test_a_move_that_stops_half_way_records_what_moved_and_deletes_nothing(self):
@@ -723,6 +729,81 @@ class KnowledgeTest(unittest.TestCase):
         self.assertNotIn("jane-doe", out)
         self.assertEqual(self.contents(), before)
         self.assertEqual([r["aka"] for r in self.local().values()], [["mail/a.md"]])
+        (self.repo / "mail" / "sub").chmod(0o755)                        # fixed: the next plan finishes it
+        out = self.plan("mail")
+        self.assertIn("mail -> docs/knowledge/raw/2026-08-20-mail/ (1 file, 2 B)", out)
+        self.agree("mail")
+        self.assertEqual(self.contents(), before)
+        self.assertEqual(sorted(r["path"] for r in self.local().values()),
+                         ["docs/knowledge/raw/2026-08-20-mail/a.md",
+                          "docs/knowledge/raw/2026-08-20-mail/sub/jane-doe.md"])
+
+    def test_a_folder_named_in_another_case_is_refused(self):
+        self.configure()
+        git(self.repo, "add", "docs/agents/knowledge.md")
+        git(self.repo, "commit", "-qm", "config")
+        self.scattered("mail/ask.md")
+        before = self.files()
+        out = self.plan("Docs", "DOCS/agents", "Mail")
+        for folder in ("Docs", "DOCS/agents", "Mail"):
+            with self.subTest(folder=folder):
+                self.assertIn(f"- {folder}: refused: ", out)
+        self.assertNotIn("--yes", out)
+        self.assertEqual(self.files(), before)
+        self.assertEqual(git(self.repo, "status", "--porcelain", "--untracked-files=no"), "")
+
+    def test_a_folder_holding_or_inside_another_repository_is_refused(self):
+        self.configure()
+        lib = self.repo / "vendor" / "lib"
+        lib.mkdir(parents=True)
+        git(lib, "init", "-q")
+        self.scattered("vendor/lib/data/a.md")
+        self.scattered("vendor/notes.md")
+        out = self.plan("vendor", "vendor/lib/data")
+        self.assertIn("- vendor: refused: it holds or sits in another git repository", out)
+        self.assertIn("- vendor/lib/data: refused: it holds or sits in another git repository", out)
+
+    def test_a_folder_of_duplicates_only_records_its_paths(self):
+        self.configure()
+        self.raw("2026-06-01-final.md", "the final offer\n")
+        self.run_script("index")
+        self.scattered("copies/offer.md", "the final offer\n")
+        out = self.plan("copies")
+        self.assertIn("- copies: nothing moves", out)
+        self.assertIn("duplicate, kept once: copies/offer.md", out)
+        self.agree("copies")
+        (row,) = self.local().values()
+        self.assertEqual(row["aka"], ["copies/offer.md"])
+        self.assertTrue((self.repo / "copies" / "offer.md").exists())
+
+    def test_two_folders_that_would_share_a_destination_are_refused(self):
+        self.configure()
+        self.scattered("a/Notes/x.md", "x\n")
+        self.scattered("b/notes/y.md", "y\n")
+        out = self.plan("a/Notes", "b/notes")
+        self.assertIn("- b/notes: refused: docs/knowledge/raw/2026-08-20-notes/ already exists", out)
+
+    def test_the_yes_is_for_the_whole_list_and_only_for_a_while(self):
+        self.configure()
+        self.scattered("mail/ask.md", "12345\n")
+        code = self.plan("mail").strip().splitlines()[-1].split("--yes ")[1].split()[0]
+        (self.repo / "mail" / "ask.md").rename(self.repo / "mail" / "asked.md")    # the same size and folder
+        self.assertIn("changed", self.run_script("move", "--yes", code, "mail", code=1))
+        code = self.plan("mail").strip().splitlines()[-1].split("--yes ")[1].split()[0]
+        minute, digest = code.split("-")
+        late = f"{int(minute, 16) - 31:x}-{digest}"
+        self.assertIn("expired", self.run_script("move", "--yes", late, "mail", code=1))
+        self.assertTrue((self.repo / "mail" / "asked.md").exists())
+        self.run_script("move", "--yes", code, "mail")
+        self.assertFalse((self.repo / "mail").exists())
+
+    def test_only_the_folders_the_move_emptied_are_removed(self):
+        self.configure()
+        self.scattered("mail/sub/a.md")
+        (self.repo / "mail" / "kept-empty").mkdir()
+        self.agree("mail")
+        self.assertTrue((self.repo / "mail" / "kept-empty").is_dir())
+        self.assertFalse((self.repo / "mail" / "sub").exists())
 
 
 if __name__ == "__main__":
