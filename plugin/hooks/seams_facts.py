@@ -40,15 +40,21 @@ class GitSilent(Exception):
 
 def _git(cwd: str, *args: str, timeout: Optional[float] = None) -> tuple:
     """(exit status, stdout, stderr) of `git <args>` in `cwd`. Raises GitSilent when git could not run or did not
-    answer within `timeout` seconds (GIT_TIMEOUT by default). Its process group is killed with it, and the wait for its output after that is
-    bounded too, since a process that left the group may still hold the pipes. A partial clone fetches nothing."""
-    timeout = GIT_TIMEOUT if timeout is None else timeout
+    answer within `timeout` seconds (GIT_TIMEOUT by default). A partial clone fetches nothing."""
     env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1", LC_ALL="C")
+    return _run(["git", *args], cwd, GIT_TIMEOUT if timeout is None else timeout, env)
+
+
+def _run(argv: list, cwd: str, timeout: float, env: dict) -> tuple:
+    """(exit status, stdout, stderr) of `argv` in `cwd`. Raises GitSilent (named for git, its first caller) when it
+    could not run or did not answer within `timeout` seconds. Its process group is killed with it, and the wait for its
+    output after that is bounded too, by DRAIN_TIMEOUT, since a process that left the group may still hold the pipes."""
+    name = os.path.basename(argv[0])
     try:
-        proc = subprocess.Popen(["git", *args], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        proc = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, env=env, start_new_session=True)
     except OSError:
-        raise GitSilent("git could not run here") from None
+        raise GitSilent(f"{name} could not run here") from None
     try:
         out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -60,7 +66,7 @@ def _git(cwd: str, *args: str, timeout: Optional[float] = None) -> tuple:
             proc.communicate(timeout=DRAIN_TIMEOUT)
         except subprocess.TimeoutExpired:
             pass
-        raise GitSilent(f"git did not answer within {timeout:g} s") from None
+        raise GitSilent(f"{name} did not answer within {timeout:g} s") from None
     return proc.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 
 
