@@ -885,6 +885,7 @@ class KnowledgeTest(unittest.TestCase):
         self.assertFalse([line for line in out.splitlines() if line.startswith("- other")], out)
         self.assertIn("\\n- other", out)
         self.assertIn("- 'bad\\nname': refused: its name holds a control character", out)
+        self.assertNotIn("--yes", out)                                   # no command line could carry it
 
     def test_a_script_naming_a_folder_in_another_case_keeps_it_where_git_ignores_case(self):
         self.configure()
@@ -897,6 +898,82 @@ class KnowledgeTest(unittest.TestCase):
         self.configure()
         self.scattered("mail/ask.md")
         self.assertIn("only after the user agrees to this plan", self.plan("mail").strip().splitlines()[-1])
+
+    def stopped_half_way(self):
+        """mail/a.md moved and mail/sub/b.md not, its folder read-only, as a failed yes leaves them."""
+        self.scattered("mail/a.md", "a\n")
+        self.scattered("mail/sub/b.md", "b\n")
+        code = self.code_of("mail")
+        (self.repo / "mail" / "sub").chmod(0o555)
+        self.run_script("move", "--yes", code, "mail", code=2)
+        (self.repo / "mail" / "sub").chmod(0o755)
+
+    def killed_half_way(self):
+        """mail/a.md renamed and the process gone at once, with nothing saved."""
+        self.scattered("mail/a.md", "a\n")
+        self.scattered("mail/b.md", "b\n")
+        killed = "real = os.rename\ndef rename(src, dst):\n    real(src, dst)\n    os._exit(9)\nos.rename = rename"
+        self.run_patched(killed, "move", "--yes", self.code_of("mail"), "mail", code=9)
+
+    def test_a_refused_folder_is_no_ones_kept_copy(self):
+        self.configure()
+        self.stopped_half_way()
+        blocker = self.repo / "docs" / "knowledge" / "raw" / "2026-08-20-mail" / "sub" / "b.md"
+        blocker.write_text("something else\n")                         # where mail/sub/b.md would go
+        self.scattered("other/b-copy.md", "b\n")                        # the same as mail/sub/b.md
+        out = self.plan("mail", "other")
+        self.assertIn("- mail: refused: a file already sits", out)
+        self.assertIn("other -> docs/knowledge/raw/2026-08-20-other/ (1 file", out)
+        self.assertNotIn("duplicate, kept once", out)
+        out = self.agree("mail", "other")
+        self.assertNotIn("Traceback", out)
+        self.assertTrue((self.repo / "docs" / "knowledge" / "raw" / "2026-08-20-other" / "b-copy.md").exists())
+
+    def test_index_after_a_killed_move_keeps_the_old_path(self):
+        self.configure()
+        self.killed_half_way()
+        self.run_script("index")
+        by_path = {r["path"]: r["aka"] for r in self.local().values()}
+        self.assertEqual(by_path["docs/knowledge/raw/2026-08-20-mail/a.md"], ["mail/a.md"])
+        self.assertIn("mail -> docs/knowledge/raw/2026-08-20-mail/ (1 file", self.plan("mail"))
+
+    def test_a_second_run_is_refused_while_one_holds_the_inbox(self):
+        self.configure()
+        self.scattered("mail/a.md")
+        code = self.code_of("mail")
+        import fcntl
+        with open(self.repo / ".git" / "seams-knowledge.lock", "a") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            for args in (("index",), ("move", "mail"), ("move", "--yes", code, "mail"),
+                         ("topics", "src-0123456789", "a")):
+                with self.subTest(args=args):
+                    out = self.run_script(*args, code=2)
+                    self.assertIn("another", out)
+                    self.assertEqual(len(out.strip().splitlines()), 1, out)
+            self.assertIn("not distilled", self.run_script("status"))   # reading needs no lock
+        self.assertTrue((self.repo / "mail" / "a.md").exists())
+
+    def test_a_journal_that_points_outside_the_inbox_is_refused(self):
+        self.configure()
+        self.scattered("mail/a.md")
+        self.run_script("index")
+        journal = self.repo / "docs" / "knowledge" / "raw" / ".knowledge-move.json"
+        step = {"src": "mail/a.md", "dest": "docs/knowledge/raw/2026-08-20-mail/a.md", "hash": "0" * 64,
+                "date": "2026-08-20", "size": 2, "mtime": 0}
+        for bad in ({"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "dest": "../../outside/a.md"}]},
+                    {"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "dest": "/tmp/a.md"}]},
+                    {"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "dest": "docs/other/a.md"}]},
+                    {"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "src": "/etc/passwd"}]},
+                    {"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "date": "jane doe"}]},
+                    {"folders": {"mail": 7}, "steps": [step]},
+                    {"folders": {"mail": "/etc"}, "steps": [step]}):
+            journal.write_text(json.dumps(bad))
+            for args in (("move", "mail"), ("index",)):
+                with self.subTest(bad=bad, args=args):
+                    out = self.run_script(*args, code=2)
+                    self.assertEqual(len(out.strip().splitlines()), 1, out)
+                    self.assertIn("journal", out)
+        self.assertNotIn("jane", (self.repo / "docs" / "knowledge" / "index.jsonl").read_text())
 
     def test_only_the_folders_the_move_emptied_are_removed(self):
         self.configure()

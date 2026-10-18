@@ -31,7 +31,10 @@ folder holding it, stays where it is; the plan prints the sources line that woul
 left to the user. A folder in another case than on disk, or holding or inside another git repository, is refused, and
 so is a move git wouldn't ignore every file of. A moved file keeps the date it had where it was. Before the first file
 moves, every step goes into a journal in the inbox (.knowledge-move.json), so a move stopped at any point (an error,
-an interrupt, a kill) keeps every old path, and the next plan of the folder finishes it in the same destination. Only
+an interrupt, a kill) keeps every old path, and the next plan of the folder (or the next index) finishes it in the
+same destination; a journal that points outside the inbox, or that names a file outside the repository, is refused.
+A run that writes (index, distilled, topics, move) holds a lock in git's own folder (seams-knowledge.lock), so a
+second one at once is refused rather than dropping the first's rows; status needs none. Only
 the plan names files, escaped; the move itself reports counts. The code is not a secret, and the script can't tell who
 typed it: the user's yes is the consent, so a session runs --yes only after the user agrees to the plan it showed
 them, and never unattended (a move is destructive).
@@ -60,6 +63,7 @@ sys.dont_write_bytecode = True
 
 import email                                        # noqa: E402
 import errno                                        # noqa: E402
+import fcntl                                        # noqa: E402
 import hashlib                                      # noqa: E402
 import json                                         # noqa: E402
 import os                                           # noqa: E402
@@ -76,6 +80,7 @@ KEYS = {"inbox", "index", "entries", "format", "escalation", "sources", "approve
 REQUIRED = ("inbox", "index", "entries")
 LOCAL = ".knowledge-local.jsonl"
 JOURNAL = ".knowledge-move.json"                    # a move under way (ticket 06), in the inbox beside LOCAL
+LOCK = "seams-knowledge.lock"                       # in git's own folder: one writing run at a time
 TRACKED_FIELDS = ("id", "date", "topics", "scan", "cited_by")
 LOCAL_FIELDS = ("id", "path", "aka", "size", "mtime", "hash", "distilled")
 SOURCE_ID = re.compile(r"(?<![0-9A-Za-z_-])src-[0-9a-f]{10}(?![0-9A-Za-z_])")
@@ -312,6 +317,28 @@ def write_rows(path: str, rows: "dict[str, dict]") -> None:
         raise
 
 
+def require_ignored(config: dict, main: str) -> None:
+    check = git(main, "check-ignore", "-q", os.path.join(os.path.normpath(config["inbox"]), LOCAL))
+    if not check or check.returncode != 0:
+        raise KnowledgeError(f"git would track the inbox ({config['inbox']}): add it to .gitignore first")
+
+
+def hold_lock(main: str):
+    """An exclusive lock for a run that writes the index or the inbox's files, taken before they are read: two runs
+    at once would each save their own copy, and the last would drop the other's rows. Held until the process ends."""
+    done = git(main, "rev-parse", "--git-common-dir")
+    folder = os.path.join(main, done.stdout.strip()) if done and done.returncode == 0 else ""
+    if not os.path.isdir(folder):
+        raise KnowledgeError("git can't say where its own folder is, so nothing can be written")
+    handle = open(os.path.join(folder, LOCK), "a")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        raise KnowledgeError("another knowledge.py run is writing the index; try again when it ends")
+    return handle
+
+
 class Store:
     """The tracked index and the machine's own file, read and written together."""
 
@@ -323,9 +350,7 @@ class Store:
         self.local = read_rows(self.local_path, LOCAL_FIELDS, "the inbox's local file")
 
     def require_ignored(self) -> None:
-        check = git(self.main, "check-ignore", "-q", os.path.relpath(self.local_path, self.main))
-        if not check or check.returncode != 0:
-            raise KnowledgeError(f"git would track the inbox ({self.config['inbox']}): add it to .gitignore first")
+        require_ignored(self.config, self.main)
 
     def save(self) -> None:
         self.require_ignored()
@@ -586,12 +611,28 @@ def read_journal(store: Store) -> dict:
         return {"folders": {}, "steps": []}
     except (OSError, ValueError):
         raise KnowledgeError("the inbox's move journal can't be read as UTF-8 text")
+    inbox = os.path.normpath(store.config["inbox"])
+
+    def under(path: object, root: str) -> bool:      # a relative, normal path inside root ("" is the repository)
+        return isinstance(path, str) and not os.path.isabs(path) and os.path.normpath(path) == path \
+            and path not in (".", "..") and not path.startswith(".." + os.sep) \
+            and ".git" not in path.lower().split(os.sep) and (not root or path.startswith(root + os.sep))
+
+    def outside_inbox(path: object) -> bool:
+        return under(path, "") and path != inbox and not path.startswith(inbox + os.sep)
     try:
         journal = json.loads(text)
-        assert isinstance(journal["folders"], dict) and all(
-            isinstance(step[k], str) for step in journal["steps"] for k in ("src", "dest", "hash", "date"))
-    except (ValueError, KeyError, TypeError, AssertionError):
-        raise KnowledgeError("the inbox's move journal has a line it can't read")
+        sound = isinstance(journal, dict) and isinstance(journal.get("folders"), dict) \
+            and isinstance(journal.get("steps"), list) \
+            and all(outside_inbox(f) and under(d, inbox) for f, d in journal["folders"].items()) \
+            and all(isinstance(step, dict) and outside_inbox(step.get("src")) and under(step.get("dest"), inbox)
+                    and isinstance(step.get("hash"), str) and re.fullmatch(r"[0-9a-f]{64}", step["hash"])
+                    and isinstance(step.get("date"), str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", step["date"])
+                    for step in journal["steps"])
+    except ValueError:
+        sound = False
+    if not sound:                                    # hand-edited or restored: it could point anywhere
+        raise KnowledgeError("the inbox's move journal holds a step it can't trust: settle it by hand, then remove it")
     return journal
 
 
@@ -603,11 +644,15 @@ def write_journal(store: Store, journal: dict) -> None:
     folder = os.path.dirname(journal_path(store))
     os.makedirs(folder, exist_ok=True)
     handle, temp = tempfile.mkstemp(dir=folder, prefix=JOURNAL + ".")
-    with os.fdopen(handle, "w", encoding="utf-8") as out:
-        json.dump(journal, out, sort_keys=True)
-        out.flush()
-        os.fsync(out.fileno())
-    os.replace(temp, journal_path(store))
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            json.dump(journal, out, sort_keys=True)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temp, journal_path(store))
+    except BaseException:
+        os.unlink(temp)                              # it holds source paths
+        raise
 
 
 def recover(store: Store) -> "dict[str, str]":
@@ -712,7 +757,7 @@ def plan_move(store: Store, folders: "list[str]", pending: "dict[str, str]") -> 
                                                        and rel not in pending):
             item["why"] = f": refused: {shown(item['dest'])}/ already exists"
             continue
-        moves = []
+        moves, mine = [], {}                         # this folder's copies: kept only once it is accepted
         for path, now in files:
             src = os.path.relpath(path, main)
             if (now.st_dev, now.st_ino) in tracked:  # moving it into the inbox would take it out of git
@@ -721,17 +766,18 @@ def plan_move(store: Store, folders: "list[str]", pending: "dict[str, str]") -> 
             digest = hash_of(path)
             if digest is None:
                 continue
-            if digest in kept:
-                item["dups"].append({"src": src, "kept": kept[digest]})
+            if digest in kept or digest in mine:
+                item["dups"].append({"src": src, "kept": kept.get(digest) or mine[digest]})
                 continue
-            kept[digest] = os.path.join(item["dest"], os.path.relpath(path, real))
-            moves.append({"src": src, "dest": kept[digest], "size": now.st_size, "mtime": now.st_mtime_ns,
+            mine[digest] = os.path.join(item["dest"], os.path.relpath(path, real))
+            moves.append({"src": src, "dest": mine[digest], "size": now.st_size, "mtime": now.st_mtime_ns,
                           "hash": digest, "date": date_of(src, now)})
         if any(os.path.lexists(os.path.join(main, step["dest"])) for step in moves):
             item.update(why=f": refused: a file already sits where one of its files would go in "
                             f"{shown(item['dest'])}/", dups=[], tracked=[])
             continue
         destinations.add(item["dest"].casefold())
+        kept.update(mine)
         item["moves"] = moves
         item["left"] = left_behind(real, {path for path, _ in files})
     planned = [step["dest"] for item in items for step in item["moves"]]
@@ -793,7 +839,7 @@ def move(store: Store, argv: "list[str]") -> int:
     now = int(time.time() // 60)
     if agreed is None:
         print("\n".join(render_plan(items, store.config.get("sources", ""))))
-        if any(item["moves"] or item["dups"] for item in items):
+        if any(item["moves"] or item["dups"] for item in items) and all(f.isprintable() for f in folders):
             print("To move exactly this, only after the user agrees to this plan, run: knowledge.py move --yes "
                   + plan_code(items, now) + " " + " ".join(shlex.quote(f) for f in folders))
         return 0
@@ -815,11 +861,15 @@ def move(store: Store, argv: "list[str]") -> int:
     journal["folders"].update({item["path"]: item["dest"] for item in items if item["moves"]})
     write_journal(store, journal)                    # before the first file moves: a kill can't lose an old path
     found, moved, emptied = present(store.config, store.main), 0, set()
+    inbox = os.path.realpath(os.path.join(store.main, store.config["inbox"]))
     try:
         for item in items:
             for step in item["moves"]:
                 dest = os.path.join(store.main, step["dest"])
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
+                here = os.path.realpath(os.path.dirname(dest))
+                if here != inbox and not inside(here, inbox):   # a link inside the inbox can't lead a file out
+                    raise NotADirectoryError(errno.ENOTDIR, "a destination's folder is not inside the inbox")
                 if os.path.lexists(dest):            # never over a file: a rename would replace it
                     raise FileExistsError(errno.EEXIST, "a file is already where one would go")
                 os.rename(os.path.join(store.main, step["src"]), dest)
@@ -879,8 +929,12 @@ def main(argv: "list[str]") -> int:
         if config is None:
             print("Knowledge: no knowledge config here, so the layer is off.")
             return 0
+        if command != "status":                      # a writing run: the lock first, then what it reads
+            require_ignored(config, main_root)
+            lock = hold_lock(main_root)              # noqa: F841  held until the process ends
         store = Store(config, top, main_root)
         if command == "index":
+            recover(store)                           # a stopped move's old paths, before index sees its files
             index(store)
         elif command == "move":
             return move(store, argv[1:])
