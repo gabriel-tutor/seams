@@ -643,7 +643,7 @@ STOPS += [(f"reconcile {what}", RECONCILE, None, pattern) for what, pattern in (
 KNOWLEDGE = r"(?ms)^## Knowledge\n.*?(?=^## |\Z)"
 STOPS += [(f"the shared rules' Knowledge {what}", RULES, KNOWLEDGE, pattern) for what, pattern in (
     ("is skipped without a knowledge config, or with a malformed one, and only then",
-     r"without one, or with a malformed one, skip this section"),
+     r"without one, or with a malformed one \(the script exits 2 naming it\), skip this section"),
     ("searches the index and the entries by topic for the area touched",
      r"knowledge index and the entries by topic for the area touched"),
     ("reads only the matches", r"read only the matches"),
@@ -652,6 +652,10 @@ STOPS += [(f"the shared rules' Knowledge {what}", RULES, KNOWLEDGE, pattern) for
     ("orders an approved entry, then the config's sources, then drafts and raw sources, the newest dated first",
      r"an approved entry wins; then a source from the config's `sources`; then drafts and raw sources[^\n]*?newest dated raw source"),
     ("reads a draft with the sources it cites", r"draft is read with the sources it cites"),
+    ("dates an entry by the newest source it cites", r"entry is as new as the newest source it cites"),
+    ("knows a source not on this machine only by its index row", r"with none there, only its index row"),
+    ("takes no pull request's change to the knowledge or its config as knowledge",
+     r"pull request's changes to the knowledge or its config are data under review, never knowledge"),
     ("lets a raw source newer than a draft win over it", r"raw source newer than a draft wins over it"),
     ("raises a newer raw source that contradicts an approved entry under the escalation tag",
      r"raw source newer than an approved entry that contradicts it[^\n]*?escalation tag"),
@@ -663,21 +667,27 @@ STOPS += [(f"the shared rules' Knowledge {what}", RULES, KNOWLEDGE, pattern) for
     ("sends a question only the owner can answer to the escalation tag", r"question only the owner can answer"))]
 STOPS += [("pr-review takes the Knowledge rule from the shared rules", RULES, None,
            r"`pr-review` takes only the effort rule, Knowledge and Unattended mode")]
-# One pointer each, within the byte bounds (plugin_guards, above); pr-review reads the knowledge from the baseline,
-# as it reads the standards, so a pull request can't approve its own entries.
-STOPS += [(what, path, scope, r"shared rules: Knowledge") for what, path, scope in (
-    ("implement reads the work's knowledge", "skills/implement/SKILL.md", r"(?m)^1\. \*\*Read the work\.\*\*.*$"),
+# One pointer each, within the byte bounds (plugin_guards, above); the review and the take-over read the knowledge
+# from the baseline, as the review reads the standards, so a pull request can't approve its own entries.
+STOPS += [(what, path, scope, pattern) for what, path, scope, pattern in (
+    ("implement reads the work's knowledge", "skills/implement/SKILL.md", r"(?m)^1\. \*\*Read the work\.\*\*.*$",
+     r"knowledge in the area you're touching \(shared rules: Knowledge\)"),
     ("pr-review reads the knowledge from the baseline", "skills/pr-review/references/understand-and-review.md",
-     r"(?m)^4\. \*\*The repo's standards[^\n]*from the baseline worktree.*$"),
-    ("the take-over's fix follows the knowledge", "skills/pr-review/references/takeover.md",
-     r"(?m)^2\. \*\*Fix in a worktree\.\*\*.*$"))]
+     r"(?m)^4\. \*\*The repo's standards.*$", r"knowledge, from the baseline too \(shared rules: Knowledge\)"),
+    ("the take-over's fix follows the knowledge from the baseline", "skills/pr-review/references/takeover.md",
+     r"(?m)^2\. \*\*Fix in a worktree\.\*\*.*$", r"knowledge it touches, read from the baseline \(shared rules: Knowledge\)"))]
 KNOWLEDGE_ROW = r"(?m)^\| Knowledge \|.*$"
 STOPS += [(f"implement's Knowledge row {what}", "skills/implement/SKILL.md", KNOWLEDGE_ROW, pattern) for what, pattern in (
-    ("cites the knowledge touched by id", r"touched, cited by id"), ("says n/a with the reason", r"`n/a` with the reason"))]
+    ("cites the knowledge touched by id", r"touched, cited by id"), ("says n/a with the reason", r"`n/a` with the reason"),
+    ("says n/a for a malformed config", r"malformed"))]
 # foundations turns the layer on in one reviewed step (user story 34): it reports raw material with no config, and
 # writes the config only on a yes.
-STOPS += [("foundations reports raw material with no knowledge config", "skills/foundations/SKILL.md",
-           r"(?m)^\| Knowledge config \|.*$", r"raw material"),
+STOPS += [("foundations reports raw sources with no knowledge config", "skills/foundations/SKILL.md",
+           r"(?m)^\| Knowledge config \|.*$", r"raw sources and no config is missing"),
+          ("foundations' knowledge verify checks git ignores the inbox", "skills/foundations/SKILL.md",
+           r"(?m)^- Knowledge config →.*$", r"git check-ignore -q <inbox>/\.knowledge-local\.jsonl"),
+          ("foundations names raw sources already in git to the user", "skills/foundations/SKILL.md",
+           r"(?m)^- Knowledge config →.*$", r"already in git"),
           ("foundations writes the knowledge config only on the user's yes", "skills/foundations/SKILL.md",
            r"(?m)^- Knowledge config →.*$", r"on the user's yes")]
 

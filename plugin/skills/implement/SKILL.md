@@ -77,7 +77,7 @@ Before claiming the work is done, commit the ticket's record (Progress file, abo
 | Tests | the tests at the agreed seams pass, and the full suite passes |
 | Typecheck and lint | typecheck passes; lint passes if the repo has one |
 | Acceptance criteria | every criterion on the ticket or spec is met, checked one by one |
-| Knowledge | the knowledge touched, cited by id as approved, draft or raw; `n/a` with the reason (no knowledge config, or nothing matched) |
+| Knowledge | the knowledge touched, cited by id as approved, draft or raw; `n/a` with the reason (no knowledge config or a malformed one, or nothing matched) |
 | Failure paths | each new way the change can fail has a test |
 | Security | no secret in the diff; on a sensitive change, each security finding fixed or left with a reason |
 | Performance | a hot path or a growing collection, measured before and after |
