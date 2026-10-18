@@ -424,7 +424,10 @@ def knowledge_line(root: Path) -> "str | None":
              f"{changed} changed since distilled" if changed else "",
              plural(missing, "entry cites a missing source", "entries cite a missing source") if missing else ""]
     parts = [part for part in parts if part]
-    return f"Knowledge, from the knowledge index's quick check: {', '.join(parts)}." if parts else None
+    if not parts:
+        return None
+    hint = "; /seams:distill drafts entries from them" if undistilled or changed else ""
+    return f"Knowledge, from the knowledge index's quick check: {', '.join(parts)}{hint}."
 
 
 NAMES_ROOM = 40                                # kept free for the files past the budget: room for their count at least

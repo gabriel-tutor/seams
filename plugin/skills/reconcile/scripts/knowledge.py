@@ -13,6 +13,7 @@ Two files, so nothing personal is committed (knowledge-layer decision 18):
     knowledge.py status [--quick] [--json]   counts (--quick: sizes and times only, never hashing; without it, a
                                              source whose size or time moved is hashed to settle it)
     knowledge.py index                       add and update the rows
+    knowledge.py pending [--json]            what waits to be distilled on this machine (id, path, date, scan, why)
     knowledge.py distilled <id>...           mark sources distilled at their current content (and rescan them)
     knowledge.py topics <id> <a,b,...>       set a source's topics, as written (what an action searches by)
     knowledge.py move <folder>...            the plan to move folders of raw sources (from the repository's root)
@@ -476,6 +477,30 @@ def status(store: Store, quick: bool) -> dict:
                 counts["changed"] += digest != row["distilled"]
     counts["missing"] = sum(1 for ids in entry_citations(store.config, store.top).values() if ids - set(store.tracked))
     return counts
+
+
+def pending(store: Store) -> "tuple[list[dict], int]":
+    """What /seams:distill reads, on this machine: each indexed source never distilled, or whose content moved on
+    since it was, with its id, path, date, scan and why; and how many files the index doesn't know yet (index first).
+    Paths are printed for the session only, never written anywhere."""
+    found = present(store.config, store.main)
+    rows = [row for source, row in store.local.items() if source in store.tracked]
+    known = {row["path"] for row in rows} | {a for row in rows for a in row["aka"]}
+    waiting = []
+    for source in sorted(store.tracked):
+        row = store.local.get(source)
+        now = found.get(row["path"]) if row else None
+        if now is None:
+            continue
+        if row["distilled"]:
+            moved = (now.st_size, now.st_mtime_ns) != (row["size"], row["mtime"])
+            digest = hash_of(os.path.join(store.main, row["path"])) if moved else row["hash"]
+            if digest == row["distilled"]:
+                continue
+        waiting.append({"id": source, "path": row["path"], "date": store.tracked[source]["date"],
+                        "scan": store.tracked[source]["scan"],
+                        "why": "changed since distilled" if row["distilled"] else "not distilled"})
+    return waiting, sum(1 for path in found if path not in known)
 
 
 def report(counts: dict) -> str:
@@ -950,7 +975,7 @@ def record_move(store: Store, step: dict, found: "dict[str, os.stat_result]") ->
 
 def main(argv: "list[str]") -> int:
     command = argv[0] if argv else "status"
-    if command not in ("status", "index", "distilled", "topics", "move"):
+    if command not in ("status", "pending", "index", "distilled", "topics", "move"):
         print(f"knowledge.py: unknown command {command[:40]}", file=sys.stderr)
         return 1
     top, main_root, belongs = roots(os.getcwd())
@@ -961,7 +986,7 @@ def main(argv: "list[str]") -> int:
         if config is None:
             print("Knowledge: no knowledge config here, so the layer is off.")
             return 0
-        if command != "status":                      # a writing run: the lock first, then what it reads
+        if command not in ("status", "pending"):    # a writing run: the lock first, then what it reads
             require_ignored(config, main_root)
             lock = hold_lock(main_root)              # noqa: F841  held until the process ends
         store = Store(config, top, main_root)
@@ -970,6 +995,18 @@ def main(argv: "list[str]") -> int:
             index(store)
         elif command == "move":
             return move(store, argv[1:])
+        elif command == "pending":
+            waiting, new = pending(store)
+            if "--json" in argv:
+                print(json.dumps(waiting, sort_keys=True))
+            else:
+                for row in waiting:
+                    print(f"{row['id']}  {row['date']}  {row['why']}, {row['scan']}: {ascii(row['path'])[1:-1]}")
+                if new:
+                    print(f"Knowledge: {new} file{'s' if new != 1 else ''} the index doesn't know yet: run knowledge.py "
+                          "index first.")
+                if not waiting and not new:
+                    print("Knowledge: nothing waits to be distilled.")
         elif command == "distilled":
             return mark_distilled(store, argv[1:])
         elif command == "topics":

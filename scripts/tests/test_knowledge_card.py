@@ -97,7 +97,15 @@ class KnowledgeCard(unittest.TestCase):
         self.knowledge("index")
         self.active()
         self.assertEqual(self.knowledge_lines(), ["Knowledge, from the knowledge index's quick check: "
-                                                  "1 raw source not distilled."])
+                                                  "1 raw source not distilled; /seams:distill drafts entries from them."])
+
+    def test_the_line_names_distill_when_raw_sources_wait(self):
+        self.configure()
+        self.raw("2026-09-01-call.md")
+        self.knowledge("index")
+        self.active()
+        (line,) = self.knowledge_lines()
+        self.assertTrue(line.endswith("; /seams:distill drafts entries from them."), line)
 
     def test_each_count_is_on_the_card(self):
         self.configure()
@@ -116,7 +124,7 @@ class KnowledgeCard(unittest.TestCase):
         self.active()
         self.assertEqual(self.knowledge_lines(), ["Knowledge, from the knowledge index's quick check: 2 raw sources "
                                                   "not distilled, 1 changed since distilled, 2 entries cite a missing "
-                                                  "source."])
+                                                  "source; /seams:distill drafts entries from them."])
 
     def test_the_card_never_hashes(self):
         """A source touched but not changed: the quick report sees its time move and counts it changed, where the
@@ -129,14 +137,14 @@ class KnowledgeCard(unittest.TestCase):
         self.assertIn("0 changed", self.knowledge("status"))
         self.active()
         self.assertEqual(self.knowledge_lines(), ["Knowledge, from the knowledge index's quick check: "
-                                                  "1 changed since distilled."])
+                                                  "1 changed since distilled; /seams:distill drafts entries from them."])
 
     def test_with_no_active_file_the_line_is_the_card_and_no_notice(self):
         self.configure()
         self.raw("2026-09-01-call.md")
         output = self.start()
         self.assertEqual(self.card(), HEADING + "\nKnowledge, from the knowledge index's quick check: 1 raw source "
-                                                "not distilled.")
+                                                "not distilled; /seams:distill drafts entries from them.")
         self.assertNotIn("systemMessage", output)
 
     def test_the_line_stays_within_the_card_cap_and_the_injection_bound(self):
@@ -152,7 +160,7 @@ class KnowledgeCard(unittest.TestCase):
         self.assertLessEqual(len(bootstrap.encode()), 2900)          # test_plugin_hook.sh's bound, untouched
         self.assertLess(len("\n\n" + card), 1500)                    # the card's cap, the line within it
         self.assertLessEqual(len(context), 2900 + 1500)
-        self.assertIn("\nKnowledge, from the knowledge index's quick check: 1 raw source not distilled.\n", card)
+        self.assertIn("\nKnowledge, from the knowledge index's quick check: 1 raw source not distilled; /seams:distill drafts entries from them.\n", card)
         self.assertIn("Also active", card)
 
     # --- no line ---------------------------------------------------------------------------------------------------

@@ -2,7 +2,8 @@
 
 Status: active
 Stage: built
-Next: Ticket 04 (/seams:distill) through seams:implement, continuing on seams-5.5/knowledge-layer. Rules and implement have almost no byte room left (decision 20): 04's text goes in a reference.
+Next: Ticket 04 built in the commit after 3af7fe5 on seams-5.5/knowledge-layer (the distill skill, knowledge.py pending, the card's pointer, the listing cap at 2,750); next the review against the fixed point 3af7fe5, then the live run (asked first, with its cost).
+Ticket: 04
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -60,6 +61,8 @@ The client project's own ticket (its config, `.gitignore` line, the move on Gabr
 21. Ticket 02 (its builder's, within the decisions): the card shows one fixed line, in the hook's own words, for any exit 2 of the script, never the script's text; the knowledge line comes right after the branch line; the script's call has its own budget (2 s, plus up to 1 s while a process that left the group still holds the output), recorded rather than shared with the card's git deadline; seams_facts gains one runner both use.
 
 22. Ticket 06 (its builder's, within the decisions, after four review rounds): `knowledge.py move <folder>...` plans, `move --yes <code> <folder>...` moves, the code bound to the exact file list and the minute and expiring after 30 minutes; tracked files are matched by identity against git's whole index and refused; nested repositories, a case-mismatched or control-character name, and any destination git wouldn't ignore are refused; hidden files and links stay behind, counted by kind; nothing is deleted, only folders the move emptied are removed; the config is never edited (the plan prints the sources line for folders that stay); a journal in the inbox, fsynced before the first rename and validated on read, lets a later plan or index finish a stopped or killed move; index, distilled, topics and move take an exclusive lock in the git directory. The rename race (a concurrent writer at the same new path) is left as is. No undo command: the old paths in the local file let a move be reversed by hand.
+
+23. The listing cap (Gabriel's choice, ticket 04): the plugin's listing may grow to 2,750 characters (about +33 tokens a session), so /seams:distill gets a real description and ticket 05 can name the knowledge check in reconcile's.
 
 ## Open questions
 

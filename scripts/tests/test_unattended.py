@@ -20,7 +20,7 @@ RULES = PLUGIN / "skills" / "using-matt-pocock-skills" / "references" / "rules.m
 # using-git-worktrees stops too (a worktree's consent), but it stays byte-identical to its Superpowers original: the
 # rule names that stop itself.
 STOPPING_SKILLS = ("grill", "to-spec", "to-tickets", "implement", "finishing-a-development-branch", "release",
-                   "foundations", "incident", "pr-review")
+                   "foundations", "incident", "pr-review", "distill")
 
 
 def run_hook(name: str, event: dict, unattended: bool) -> dict:

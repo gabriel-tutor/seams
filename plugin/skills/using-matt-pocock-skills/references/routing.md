@@ -37,6 +37,8 @@ Run `/improve-codebase-architecture` (user-only) every few days. It reports deep
 
 When a record may have drifted from git or the code (a progress file, a memory, the card), or when the user asks, run `seams:reconcile`: it re-checks them, fixes what the evidence corrects and marks what it can't settle. An unattended night runs it first (shared rules: Unattended mode).
 
+When raw sources wait to be distilled (the card counts them), or when the user asks, run `seams:distill`: it drafts knowledge entries from them, citing each source, for the owner to approve; it never approves one.
+
 ## Support skills
 
 The four skills from Superpowers (three copies, and `finishing-a-development-branch` adapted to record integration in the progress file), named with their prefix because the Superpowers originals share their names and are not declarations:

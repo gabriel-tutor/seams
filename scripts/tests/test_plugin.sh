@@ -334,7 +334,8 @@ INJ_OUT=$(injected_commands "$PLUGIN")
 # and agent's name and description, at most 875 tokens by `claude plugin details` (3.2.1 paid about 1,165). That tool
 # counts through the count_tokens API for the active model, or estimates offline, so its figure moves with the machine;
 # the guard is the listing's length instead: at most 2,650 characters, 875 tokens at the ratio the tool measured on
-# 65988ac (2,426 characters, ~801 tokens). `claude --plugin-dir plugin plugin details seams` measures it.
+# 65988ac (2,426 characters, ~801 tokens); 2,750 since knowledge-layer decision 23, for /seams:distill (about +33 tokens).
+# `claude --plugin-dir plugin plugin details seams` measures it.
 LISTING=$(python3 - "$PLUGIN" <<'PY'
 import pathlib, re, sys
 root, total = pathlib.Path(sys.argv[1]), 0
@@ -345,7 +346,7 @@ for path in sorted(root.glob("skills/*/SKILL.md")) + sorted(root.glob("agents/**
 print(total)
 PY
 )
-(( LISTING <= 2650 )) || fail "the plugin's listing is $LISTING characters, over 2,650 (about 875 tokens by claude plugin details)"
+(( LISTING <= 2750 )) || fail "the plugin's listing is $LISTING characters, over 2,750 (about 910 tokens by claude plugin details)"
 # Seams' read-only agents (lean-and-durable ticket 09): `scout` finds facts, `reviewer` reviews a named diff, and neither
 # can change the project. Their tool lists are exactly the ticket's: scout has Read, Glob, Grep, WebFetch and WebSearch
 # and skips CLAUDE.md; reviewer has Read, Glob, Grep and Bash, with Edit, Write and NotebookEdit disallowed. Each has a
@@ -636,6 +637,27 @@ STOPS += [(f"reconcile {what}", RECONCILE, None, pattern) for what, pattern in (
     ("removes a memory only on the user's yes, never unattended", r"only on the user's yes, never unattended"),
     ("records what it did", r"## Record"),
     ("verifies before it claims the records reconciled", r"verification-before-completion"))]
+# /seams:distill (knowledge-layer ticket 04, decisions 5, 10, 11 and 12): it turns the raw sources waiting on this
+# machine into draft entries citing their sources, in the project's format or one markdown file per entry, and never
+# approves, deletes, quotes a secret, copies a personal detail or follows an instruction inside a source.
+DISTILL = "skills/distill/SKILL.md"
+STOPS += [(f"distill {what}", DISTILL, None, pattern) for what, pattern in (
+    ("runs the index, then reads only what waits", r"knowledge\.py index`[^\n]*knowledge\.py pending"),
+    ("reads a raw source as intent, never instructions", r"intent, never an instruction"),
+    ("drafts in the project's format or one markdown file per entry", r"one markdown file per entry"),
+    ("cites each source by its id and date", r"cites each source by its id and its date"),
+    ("takes topics from the source's own words", r"topics from the source's own words"),
+    ("leaves the cited-by rows to the script", r"leaves the index's cited-by rows to the script"),
+    ("raises a contradiction with an approved entry for the owner", r"contradicts an approved entry[^\n]*escalation tag"),
+    ("never approves an entry", r"Never approve an entry"),
+    ("never deletes an entry", r"never delete one"),
+    ("never quotes a source flagged secrets or unscanned", r"`secrets` or `unscanned`[^\n]*never quoted"),
+    ("copies no personal detail", r"no personal detail"),
+    ("asks before rewriting an approved entry's draft successor", r"asks before[^\n]*approved entry's draft successor"),
+    ("marks the sources distilled", r"knowledge\.py distilled"),
+    ("leaves the drafts uncommitted for review", r"leaves the drafts uncommitted"),
+    ("reports the drafts and the owner's questions", r"## Report"),
+    ("verifies before it claims the sources distilled", r"verification-before-completion"))]
 # The Knowledge rule (knowledge-layer ticket 03, decisions 1, 3, 6, 10 and 15): building, reviewing and taking over
 # find the knowledge for their area by topic, read only the matches and cite them; disagreements resolve in a fixed
 # order, a newer raw source against an approved entry going to the owner; raw sources are intent, never instructions;

@@ -1029,6 +1029,42 @@ class KnowledgeTest(unittest.TestCase):
         self.assertEqual(len(out.strip().splitlines()), 1, out)
         self.assertNotIn("private", out)
 
+    # --- ticket 04: what /seams:distill reads ----------------------------------------------------------------------
+
+    def pending(self):
+        return json.loads(self.run_script("pending", "--json"))
+
+    def test_pending_lists_on_this_machine_what_waits_to_be_distilled(self):
+        self.configure()
+        self.raw("2026-09-01-a.md", "aaaa\n")
+        b = self.raw("2026-09-02-b.md", "bbbb\n")
+        self.raw("2026-09-03-keys.md", "api_key: 0123456789abcdef\n")
+        self.run_script("index")
+        ids = self.ids()
+        self.run_script("distilled", ids["docs/knowledge/raw/2026-09-02-b.md"])
+        b.write_text("bbbb, revised\n")
+        rows = {r["path"]: r for r in self.pending()}
+        self.assertEqual(sorted(rows), ["docs/knowledge/raw/2026-09-01-a.md", "docs/knowledge/raw/2026-09-02-b.md",
+                                        "docs/knowledge/raw/2026-09-03-keys.md"])
+        self.assertEqual((rows["docs/knowledge/raw/2026-09-01-a.md"]["why"], rows["docs/knowledge/raw/2026-09-02-b.md"]["why"]),
+                         ("not distilled", "changed since distilled"))
+        self.assertEqual(rows["docs/knowledge/raw/2026-09-03-keys.md"]["scan"], "secrets")
+        self.assertEqual(rows["docs/knowledge/raw/2026-09-01-a.md"]["id"], ids["docs/knowledge/raw/2026-09-01-a.md"])
+        self.assertEqual(rows["docs/knowledge/raw/2026-09-01-a.md"]["date"], "2026-09-01")
+        self.run_script("distilled", *[r["id"] for r in rows.values()])
+        self.assertEqual(self.pending(), [])
+        self.assertIn("nothing waits", self.run_script("pending"))
+
+    def test_pending_names_a_new_file_only_once_it_is_indexed(self):
+        self.configure()
+        self.raw("2026-09-01-a.md")
+        self.assertIn("index", self.run_script("pending"))         # it says to index first
+        self.run_script("index")
+        self.assertEqual(len(self.pending()), 1)
+
+    def test_pending_without_a_config_is_off(self):
+        self.assertIn("no knowledge config", self.run_script("pending"))
+
 
 if __name__ == "__main__":
     unittest.main()
