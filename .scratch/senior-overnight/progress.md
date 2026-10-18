@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Ticket 06, the one paid eval of an unattended night, through seams:implement: ask Gabriel first, with its cost (shared rules: a paid run is his). The parallel run is done: 01 and 02 integrated on main, 03-05 built in ~/.claude/skills/sleep-mode (not a repository; backups beside each file).
+Next: Ticket 06 is a real night now (decision 22): Gabriel runs sleepclaude tonight on the 5.4.0 candidate (main, read in place); in the morning, check its morning summary and progress files against ticket 06's criteria (each builder routed through a Seams skill before changing code; Auto-answered entries; outward claims with sources; nothing merged that failed its checks), with the commands that show each. Then ticket 07, the release, through seams:release (push, main and the tag each asked).
 Updated: 2026-10-18
 
 ## Spec
@@ -65,6 +65,8 @@ Base: main at 23e302e, 2 at once
 20. Ticket 04's security review (Gabriel chose the lead, with evidence): on a soft night the lead reads the card, quotes the clearing line in the progress file, then adds `acceptance-checked`; the morning summary lists each. The guard, from the review: a mode holds only in the session it was typed in (mode-hook writes the session id); CronCreate and ScheduleWakeup can't schedule a takeover; a merge names its head once, in full (40 characters), never --auto, --admin or --input, one merge per command; changes requested read from latestReviews too; up to date asked of the compare API (behind_by 0) and every check develop's tip ran must pass on the head (no branch protection, so GitHub reports neither); review dismissals refused; a write onto a folder holding the fence, or run inside it, refused; the hook's timeout 40 s (a timed-out PreToolUse hook stops the call: the docs, agent-sdk/hooks, Hook timeout).
 
 21. The second security review (mine): a merge names its pull request and never runs under xargs; develop takes merges, never a push; a fence path in a flag's value, or in git or gh (clone, worktree, --work-tree), is refused; gh, git or claude inside another program (arch, script, watch, tmux) refused, and inline code under one; git config writes refused but user, color and display settings (a setting can run a program), and -c likewise; a pull request that changes .github/ waits for Gabriel, and one whose files it can't all see is refused; the base's statuses count as expected checks, and an empty or paged set is refused; gh api paths read as GitHub reads them; sleepclaude clears the takeover state at launch; each lookup 6 s, the hook 60 s; a rebuilt pull request carries the old one's reviews (the skill; the guard can't tie them). Left: Python or a script written to a file can still write the state file (the guard reads commands, not programs: the same limit it states).
+
+22. Ticket 06 (Gabriel): no paid eval. An eval granted Bash can't start on this Mac (the sandbox and ~/.docker's links, docs/compatibility.md), and without a shell it can't test merges, so tonight's real sleepclaude night is the proof, checked against ticket 06's criteria in the morning before 5.4.0 is released.
 
 ## Open questions
 
