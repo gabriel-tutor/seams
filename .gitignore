@@ -11,3 +11,4 @@ tests/runs/
 tests/fixture-deps/
 plugin/evals/results/
 .worktrees/
+.claude/worktrees/
