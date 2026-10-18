@@ -9,13 +9,13 @@ Turn the raw sources waiting in a repository's inbox into draft knowledge entrie
 
 **Shared rules:** `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/rules.md`, read when a step names one of its sections; this skill follows its Knowledge section. **Effort** `${CLAUDE_EFFORT}`: nothing to skip at `low` (shared rules: Effort).
 
-**Unattended mode.** When no one is there to answer: (shared rules: Unattended mode). At night it drafts only: a question below takes its recommended answer (leave the entry as it is), and it and the owner's questions go to the report, never to a committed file.
+**Unattended mode.** When no one is there to answer: (shared rules: Unattended mode). At night it drafts only: a question below takes its recommended answer (leave the entry as it is), and it and the owner's questions go to the report and from there the morning summary, never into an entry, and carry no secret or personal detail.
 
 The script: `python3 -B ${CLAUDE_PLUGIN_ROOT}/skills/reconcile/scripts/knowledge.py`, run from inside the repository.
 
 ## Gate
 
-A repository without a knowledge config (`docs/agents/knowledge.md`) has nothing to distill: say so in one line and offer `seams:foundations`, which writes the config on a yes. When the script exits 2, report its one line and draft nothing.
+A repository without a knowledge config (`docs/agents/knowledge.md`) has nothing to distill: say so in one line and offer `seams:foundations`, which writes the config on a yes. At night, nothing is offered: a repository without one is left as it is, and the morning summary says so. When the script exits 2, report its one line and draft nothing.
 
 ## Read
 

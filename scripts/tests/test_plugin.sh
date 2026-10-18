@@ -620,7 +620,8 @@ STOPS += [(f"the shared rules' Where docs go names {what} as a home", RULES, WHE
 STOPS += [(f"the bootstrap sends {what} to the shared rules", BOOT, r"(?m)^4\. .*$", pattern) for what, pattern in (
     ("a bug fix", r"\(bug fixes, "), ("each claim and lesson", r"claims, lessons\): `rules\.md`"))]
 # /seams:reconcile (ticket 02, decision 9) re-checks the records work relies on, by day or first each night: it checks
-# each active progress file against its branch and the code, the memories it reads and the card; it fixes only what a
+# each active progress file against its branch and the code, the memories it reads, the card and (knowledge-layer
+# ticket 05) the knowledge, through the knowledge script; it fixes only what a
 # command's output corrects, marks what none settles, records what it did, and never deletes what it couldn't check.
 RECONCILE = "skills/reconcile/SKILL.md"
 STOPS += [(f"reconcile {what}", RECONCILE, None, pattern) for what, pattern in (
@@ -637,11 +638,13 @@ STOPS += [(f"reconcile {what}", RECONCILE, None, pattern) for what, pattern in (
     ("removes a memory only on the user's yes, never unattended", r"only on the user's yes, never unattended"),
     ("records what it did", r"## Record"),
     ("verifies before it claims the records reconciled", r"verification-before-completion"),
-    # knowledge-layer ticket 05: the fourth check, the knowledge, with the script's full report.
     ("checks the knowledge", r"\*\*The knowledge\*\*"),
     ("reads the script's full report", r"knowledge\.py status`[^\n]*full report"),
-    ("corrects index rows only through the script", r"knowledge\.py index`[^\n]*Corrected"),
-    ("marks a missing source or a contradiction for the owner", r"Unsettled[^\n]*escalation tag"),
+    ("counts what the index moved as Corrected", r"knowledge\.py index`, then `status` again[^\n]*Corrected"),
+    ("leaves the index's changes uncommitted", r"the index's changes stay uncommitted"),
+    ("marks a missing source in the report, never in an entry", r"citing a missing source[^\n]*never into an entry"),
+    ("calls a source not on this machine Confirmed", r"not on this machine are Confirmed"),
+    ("leaves contradictions and waiting sources to distill", r"contradictions with an approved entry[^\n]*left for `seams:distill`"),
     ("never approves, deletes or rewrites an entry", r"never approves, deletes or rewrites an entry"))]
 # /seams:distill (knowledge-layer ticket 04, decisions 5, 10, 11 and 12): it turns the raw sources waiting on this
 # machine into draft entries citing their sources, in the project's format or one markdown file per entry, and never
@@ -672,6 +675,7 @@ STOPS += [(f"distill {what}", DISTILL, None, pattern) for what, pattern in (
     ("marks the sources distilled at the content read", r"knowledge\.py distilled <id>:<hash>"),
     ("indexes again so the drafts reach the cited-by rows", r"`knowledge\.py index` again"),
     ("drafts only at night, questions to the report", r"At night it drafts only"),
+    ("offers nothing at night, so no config is written unattended", r"At night, nothing is offered"),
     ("leaves the drafts uncommitted", r"leaves the drafts uncommitted"),
     ("reports the secrets found once, for rotation", r"scanned `secrets`, once, for the user to rotate"),
     ("reports the drafts and the owner's questions", r"## Report"),
