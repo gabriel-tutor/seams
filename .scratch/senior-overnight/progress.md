@@ -13,10 +13,13 @@ Updated: 2026-10-18
 3. Overnight tools (Gabriel's choice, 2026-10-18): everything but production may run unattended: every read; the CLIs; browsers; Railway deploys and variable changes on non-production environments; n8n on non-production; CRM test records. Production is refused: the production Railway environment, main or master, live n8n workflows.
 4. Messages (Gabriel's choice): real contacts are production. Overnight WhatsApp, email and CRM sends go only to an allowlist Gabriel sets (his own number and email, the team's test numbers, a test inbox); a send to anyone else is refused and drafted for the morning. A tool that would stall on an ask prompt is refused cleanly instead.
 
+5. Merge check (Gabriel's choice): before any overnight merge the guard asks GitHub directly: every CI check green on the exact head, the branch up to date with develop and conflict-free, no review requesting changes (a fresh review on the fixed head clears an old one), and no awaiting-acceptance marker unless the night was started with takeover -hard. The quality parts (the independent review, the principal-engineer checklist) stay the heartbeat's.
+6. Takeover commands (Gabriel's words, 2026-10-18: "when i say the word takeover ... it should takeover fix all, recreate the logic, merge etc."; "takeover -soft ... 1, takeover -hard ... 2"): `takeover -soft` takes over every open PR in scope, fixes or rebuilds it to the full bar and merges it, except a PR whose card needs its owner's acceptance, which waits merge-ready; `takeover -hard` merges those too once they pass. Both still pass the guard's merge check.
+
 ## Open questions
 
 - How the guard tells production from non-production in Railway and n8n (facts to find).
-- Whether merges are gated by evidence in code, not only by the heartbeat's text.
+- How a card's need for owner acceptance shows on GitHub or Jira (facts to find).
 
 ## Facts
 
