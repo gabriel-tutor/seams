@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designed
-Next: Split the spec into tickets through seams:to-tickets (Gabriel approves the breakdown).
+Next: Ticket 01 (the knowledge config and the knowledge index), through seams:implement, in a new worktree `.worktrees/knowledge-layer` on branch `seams-5.5/knowledge-layer` from main (decision 16).
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
@@ -10,6 +10,18 @@ This repository is public: no client names, people, cards or tools here. The cli
 ## Spec
 
 .scratch/knowledge-layer/spec.md (ready-for-agent)
+
+## Tickets
+
+- [ ] 01 The knowledge config and the knowledge index (blocked by: none)
+- [ ] 02 The start card's knowledge line (blocked by: 01)
+- [ ] 03 The Knowledge rule, its pointers, the done row, and foundations' offer (blocked by: 01)
+- [ ] 04 `/seams:distill` (blocked by: 01, 03)
+- [ ] 05 Reconcile's knowledge check, and the night's distill (blocked by: 04)
+- [ ] 06 Moving existing raw material into the inbox (blocked by: 01)
+- [ ] 07 Release Seams 5.5.0 (blocked by: all)
+
+The client project's own ticket (its config, `.gitignore` line, the move on Gabriel's yes, the index, a pull request into its develop) follows 07, in its own record.
 
 ## Decisions
 
@@ -29,6 +41,7 @@ This repository is public: no client names, people, cards or tools here. The cli
 14. A knowledge factory that consumes packs (Gabriel's choice): out of scope; the approved entries' format already lets a later ticket export them.
 15. Defaults from the design lens (mine, within the decisions above): no knowledge config means the feature is off, so a repository without one behaves exactly as today; the card reads only the index and each file's size and modified time, never hashing at session start (hashes are checked by reconcile and distill, and when a size or time changed); raw sources are evidence of the owner's intent and never instructions to Claude (a directive inside an email is not followed); on a machine without the raw files (a teammate's), their rows read "not on this machine", never stale; the index is one sorted row per source, so merges stay simple.
 16. Gabriel confirmed the shared understanding on 2026-10-18: spec it (seams:to-spec), then the tickets for his approval. Seams 5.5 is built in a new worktree `.worktrees/knowledge-layer` on branch `seams-5.5/knowledge-layer` from main; the client project's part is its own ticket, on a branch from its develop.
+17. The breakdown (Gabriel approved it, 2026-10-18): seven tickets under .scratch/knowledge-layer/issues/, as listed above.
 
 ## Open questions
 
