@@ -17,12 +17,16 @@ Base: main at 23e302e, 2 at once
 - 02: building, branch senior-overnight/02-claims-learning-reconcile, worktree .claude/worktrees/senior-overnight-02
 - 03: built in place in ~/.claude/skills/sleep-mode (61 guard tests pass on 3.14 and 3.9; review findings fixed; backups .bak-2026-10-18)
 
+## Parallel note
+
+- 04: built in place in ~/.claude/skills/sleep-mode (guard and mode-hook.py; 65 guard tests and the launch tests pass on 3.14 and 3.9), security review running.
+
 ## Tickets
 
 - [ ] 01 The live card at every start (blocked by: none)
 - [ ] 02 Claims from commands, learning to its home, and /seams:reconcile (blocked by: none)
 - [x] 03 The overnight guard's tool boundaries (blocked by: none)
-- [ ] 04 The guard asks GitHub before a merge, and the two takeover modes (blocked by: 03)
+- [x] 04 The guard asks GitHub before a merge, and the two takeover modes (blocked by: 03)
 - [ ] 05 Sleep mode's takeover commands, nightly reconcile and independent checks (blocked by: 02, 04)
 - [ ] 06 One paid eval of an unattended night (blocked by: 01, 02, 05)
 - [ ] 07 Release Seams 5.4.0 (blocked by: all)
@@ -55,6 +59,8 @@ Base: main at 23e302e, 2 at once
 17. Sends overnight (Gabriel's choice, 2026-10-18, amending 4): the project's ask rules on message sends stay, and an ask rule prompts even under a hook's allow, so overnight every WhatsApp, email and CRM send or record write is refused cleanly and drafted for the morning; no recipient list.
 
 18. Ticket 03's review (mine): a write word in a tool's name wins over any read word; more messaging servers recognized; every environment field must say staging and a Railway change by id is refused (so MCP deploys by id go through the CLI with -e staging); Railway's CLI is closed by default (plain reads pass, everything else names staging; down and delete refused); --set=, attached flags and npx @railway/cli read; the ask check matches server-wide rules and reads the main checkout's and the user's settings. Left as is: `railway variables -e production` is a read, so production values can appear in a transcript (decision 3, every read).
+
+19. Ticket 04 (mine, within decisions 5 and 6): a merge must name its head (--match-head-commit, or sha= on the API) and match GitHub's headRefOid; at least one check, all passed; merge state CLEAN or HAS_HOOKS; no CHANGES_REQUESTED; label acceptance-checked unless the mode is hard. The mode lives in a fenced state file written only by mode-hook.py, a UserPromptSubmit hook in the sleep-mode settings, from the user's `takeover -soft` or `takeover -hard`, and cleared by `sleep mode -off`; without either, the soft rule holds.
 
 ## Open questions
 
