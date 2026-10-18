@@ -149,17 +149,26 @@ def roots(cwd: str) -> "tuple[str, str, bool]":
 def read_text(path: str, what: str, limit: "int | None" = None, strict: bool = True) -> str:
     """A file's text, only when it is a regular file (never a pipe, a device or a link), at most `limit` bytes.
     FileNotFoundError passes through; anything else it can't trust is a KnowledgeError."""
-    found = os.lstat(path)
-    if not stat_kind.S_ISREG(found.st_mode):
-        raise KnowledgeError(f"{what} isn't a regular file")
+    try:                                             # opened once, the open file itself checked: no swap between
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        raise
+    except OSError:                                  # a link (O_NOFOLLOW), or a file it may not read
+        raise KnowledgeError(f"{what} isn't a regular file it can read")
     try:
-        with open(path, "rb") as handle:
+        if not stat_kind.S_ISREG(os.fstat(fd).st_mode):
+            raise KnowledgeError(f"{what} isn't a regular file")
+        with os.fdopen(fd, "rb") as handle:
+            fd = -1
             data = handle.read() if limit is None else handle.read(limit)
         return data.decode("utf-8", errors="strict" if strict else "replace")
     except ValueError:
         raise KnowledgeError(f"{what} can't be read as UTF-8 text")
     except OSError:
         raise KnowledgeError(f"{what} can't be read")
+    finally:
+        if fd >= 0:
+            os.close(fd)
 
 
 def inside(path: str, root: str) -> bool:
