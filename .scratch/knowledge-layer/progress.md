@@ -2,7 +2,8 @@
 
 Status: active
 Stage: designed
-Next: Ticket 01 (the knowledge config and the knowledge index), through seams:implement, in a new worktree `.worktrees/knowledge-layer` on branch `seams-5.5/knowledge-layer` from main (decision 16).
+Next: Ticket 01 built in the commit after 2754bd2 on seams-5.5/knowledge-layer (the knowledge script, plugin/skills/reconcile/scripts/knowledge.py, and its command-line tests); next the review against the fixed point 2754bd2.
+Ticket: 01
 Updated: 2026-10-18
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
