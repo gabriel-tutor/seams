@@ -222,6 +222,9 @@ sys.stdout.write(o.get("systemMessage", "") if sys.argv[1] == "systemMessage"
 }
 note_of() { awk 'f; /^## Work in progress$/ {f=1}' <<< "$1"; }     # the note's lines after its heading
 entries_of() { grep '^- ' <<< "$(note_of "$1")" || true; }           # one line per listed feature
+listed_of() {   # every feature on the card, newest first, one per line: those in full, then those by name only
+  { entries_of "$1" | sed 's/^\(- [^:]*\):.*/\1/'
+    note_of "$1" | sed -n 's/^Also active, by name only: \(.*\)\.$/\1/p' | tr ',' '\n' | sed 's/^ */- /'; } | grep . || true; }
 
 # One active feature: one entry after the bootstrap, with the feature, its stage, its next step and its
 # path, and a one-line notice naming the same.
@@ -237,6 +240,92 @@ E=$(entries_of "$C")
   || fail "the entry should give the feature, stage, date, next step and path: $E"
 [[ "$M" == "Seams: resuming gift-cards (designing): Ask the open questions on the tier discount and the out-of-stock hold." ]] \
   || fail "the notice should name the feature, stage and next step: $M"
+# The card holds pointers only (senior-overnight ticket 01): nothing of the file's sections is copied into it.
+[[ "$C" != *"A settled decision"* && "$C" != *"An open question"* ]] || fail "the card should copy no section of the file: $C"
+
+# The current branch and commit head the card (senior-overnight ticket 01), from the local repository: a branch at its
+# commit, a branch with no commit yet, a detached head; outside a repository, no such line.
+gitc() { git -C "$1" -c user.name=t -c user.email=t@e "${@:2}"; }
+HEADED="$TMP/note-headed"; mkdir -p "$HEADED"; git -C "$HEADED" init -q -b trunk
+progress "$HEADED" gift-cards active designing 2026-09-20 "Ask the open questions."
+first_line() { note_of "$(out_field additionalContext <<< "$(start_out startup "$1")")" | head -1; }
+[[ $(first_line "$HEADED") == "Branch trunk, no commits yet." ]] || fail "an unborn branch should head the card: $(first_line "$HEADED")"
+gitc "$HEADED" commit -q --allow-empty -m base; HEADED_SHA=$(git -C "$HEADED" rev-parse --short HEAD)
+[[ $(first_line "$HEADED") == "Branch trunk at $HEADED_SHA." ]] || fail "the branch and its commit should head the card: $(first_line "$HEADED")"
+git -C "$HEADED" checkout -q --detach
+[[ $(first_line "$HEADED") == "Detached HEAD at $HEADED_SHA." ]] || fail "a detached head should head the card: $(first_line "$HEADED")"
+NOREPO="$TMP/note-norepo"; progress "$NOREPO" gift-cards active designing 2026-09-20 "Ask the open questions."
+[[ $(first_line "$NOREPO") == "The progress files of this repository"* ]] || fail "outside a repository no branch line: $(first_line "$NOREPO")"
+
+# A stale record is flagged (senior-overnight ticket 01): its branch has commits newer than the file's last change (its
+# last commit, or its own edit when it differs from HEAD or isn't committed), or it hasn't changed in three days. Each
+# rule on its own, then both, from commits and edits dated relative to now.
+ago() { python3 -c 'import sys, time; print(int(time.time() - float(sys.argv[1])))' "$1"; }
+commit_at() {   # commit_at <repo> <seconds ago> <message> [path...]: a commit dated that long ago
+  local when; when="@$(ago "$2") +0000"; [[ $# -gt 3 ]] && git -C "$1" add -- "${@:4}"
+  GIT_AUTHOR_DATE="$when" GIT_COMMITTER_DATE="$when" gitc "$1" commit -q --allow-empty -m "$3"
+}
+dated_repo() { mkdir -p "$TMP/$1"; git -C "$TMP/$1" init -q -b main; progress "$TMP/$1" coupons active built 2026-09-24 "Implement ticket 03."; }
+entry_of() { entries_of "$(out_field additionalContext <<< "$(start_out startup "$TMP/$1")")"; }
+COUPONS="- coupons: stage built, updated 2026-09-24"
+dated_repo stale-moved; commit_at "$TMP/stale-moved" 7200 record .scratch/coupons/progress.md; commit_at "$TMP/stale-moved" 3600 later
+[[ $(entry_of stale-moved) == "$COUPONS, stale (its branch has newer commits); next: "* ]] \
+  || fail "a file its branch has moved past should be flagged stale: $(entry_of stale-moved)"
+dated_repo fresh; commit_at "$TMP/fresh" 7200 base; commit_at "$TMP/fresh" 3600 record .scratch/coupons/progress.md
+[[ $(entry_of fresh) == "$COUPONS; next: "* ]] || fail "a file changed in its branch's last commit should not be flagged: $(entry_of fresh)"
+dated_repo edited; commit_at "$TMP/edited" 7200 record .scratch/coupons/progress.md; commit_at "$TMP/edited" 3600 later
+printf 'Edited since.\n' >> "$TMP/edited/.scratch/coupons/progress.md"
+[[ $(entry_of edited) == "$COUPONS; next: "* ]] || fail "an edit after the branch's last commit is the file's last change: $(entry_of edited)"
+# A merge that brings the file's change onto the branch is its last change there.
+dated_repo merged; commit_at "$TMP/merged" 7200 base; git -C "$TMP/merged" checkout -q -b ticket
+commit_at "$TMP/merged" 5400 record .scratch/coupons/progress.md; git -C "$TMP/merged" checkout -q main
+commit_at "$TMP/merged" 3600 elsewhere
+when="@$(ago 1800) +0000"; GIT_AUTHOR_DATE="$when" GIT_COMMITTER_DATE="$when" gitc "$TMP/merged" merge -q --no-ff -m merge ticket
+[[ $(entry_of merged) == "$COUPONS; next: "* ]] || fail "a merge bringing the file's change is its last change: $(entry_of merged)"
+dated_repo stale-old; commit_at "$TMP/stale-old" $((4 * 86400 + 3600)) record .scratch/coupons/progress.md
+[[ $(entry_of stale-old) == "$COUPONS, stale (unchanged for 4 days); next: "* ]] \
+  || fail "a file unchanged for three days or more should be flagged stale: $(entry_of stale-old)"
+dated_repo recent; commit_at "$TMP/recent" $((2 * 86400 + 82800)) record .scratch/coupons/progress.md
+[[ $(entry_of recent) == "$COUPONS; next: "* ]] || fail "a file changed under three days ago should not be flagged: $(entry_of recent)"
+dated_repo stale-both; commit_at "$TMP/stale-both" $((5 * 86400 + 3600)) record .scratch/coupons/progress.md
+commit_at "$TMP/stale-both" 86400 later
+[[ $(entry_of stale-both) == "$COUPONS, stale (its branch has newer commits, unchanged for 5 days); next: "* ]] \
+  || fail "a file stale by both rules should name both: $(entry_of stale-both)"
+dated_repo edited-old; commit_at "$TMP/edited-old" 7200 record .scratch/coupons/progress.md
+touch -t "$(python3 -c 'import time; print(time.strftime("%Y%m%d%H%M", time.localtime(time.time() - 4 * 86400)))')" \
+  "$TMP/edited-old/.scratch/coupons/progress.md"; : > "$TMP/edited-old/other"; git -C "$TMP/edited-old" add other
+[[ $(entry_of edited-old) == "$COUPONS; next: "* ]] \
+  || fail "a committed file's age is its last commit's, not its modification time: $(entry_of edited-old)"
+
+# The card reads only local sources (senior-overnight ticket 01): in a repository with a remote, the hook runs only local
+# git commands, starts no network tool, and its Python opens no socket.
+OFFLINE="$TMP/offline-bin"; mkdir -p "$OFFLINE"; REAL_GIT=$(command -v git); NETLOG="$TMP/offline.log"; : > "$NETLOG"
+cat > "$OFFLINE/git" <<SH
+#!/usr/bin/env bash
+args=("\$@"); i=0
+while [[ "\${args[i]}" == -C || "\${args[i]}" == -c ]]; do i=\$((i + 2)); done
+echo "git \${args[i]}" >> "$NETLOG"; exec "$REAL_GIT" "\$@"
+SH
+for tool in gh curl wget ssh nc; do printf '#!/bin/sh\necho "network %s" >> "%s"; exit 1\n' "$tool" "$NETLOG" > "$OFFLINE/$tool"; done
+chmod +x "$OFFLINE"/*
+mkdir -p "$TMP/offline-py"; cat > "$TMP/offline-py/sitecustomize.py" <<PYSITE
+import socket
+def refuse(*args, **kwargs):
+    open("$NETLOG", "a").write("network socket\\n")
+    raise OSError("no network in this test")
+socket.socket.connect = socket.create_connection = socket.getaddrinfo = refuse
+PYSITE
+PYTHONPATH="$TMP/offline-py" python3 -c 'import socket; socket.getaddrinfo("localhost", 1)' 2>/dev/null \
+  && fail "the offline check's socket block does not hold"
+grep -q 'network socket' "$NETLOG" || fail "the offline check's socket block does not log"; : > "$NETLOG"
+dated_repo offline; commit_at "$TMP/offline" 7200 record .scratch/coupons/progress.md; commit_at "$TMP/offline" 3600 later
+git -C "$TMP/offline" remote add origin https://github.com/acme/shop.git
+OUT=$(printf '{"source":"startup","cwd":"%s"}' "$TMP/offline" | PATH="$OFFLINE:$PATH" PYTHONPATH="$TMP/offline-py" HOME="$MP_HOME" "$FIX/hooks/session-start")
+[[ $(entries_of "$(out_field additionalContext <<< "$OUT")") == "$COUPONS, stale (its branch has newer commits); next: "* ]] \
+  || fail "the card should come out offline: $OUT"
+grep -q '^git log$' "$NETLOG" || fail "the offline check should have seen the hook's git commands: $(cat "$NETLOG")"
+[[ -z $(grep -v -E '^git (symbolic-ref|log|diff|worktree)$' "$NETLOG") ]] \
+  || fail "the card should run only local git commands and no network tool: $(sort -u "$NETLOG")"
 
 # A ticket in progress (lean-and-durable ticket 05): its entry names the ticket after the stage, and the note says that a
 # ticket in progress continues through implement, as a grill in progress does through the grill. The
@@ -264,7 +353,7 @@ for S in "${SOURCES[@]}"; do
   [[ "|$MATCHER|" == *"|$S|"* ]] || fail "SessionStart does not run at $S: matcher $MATCHER"
 done
 
-# Four active features and a finished one: the three most recently updated, newest first, and never the
+# Four active features and a finished one (senior-overnight ticket 01): every active one, newest first, and never the
 # finished one, however recent. The notice names the newest.
 FOUR="$TMP/note-four"; mkdir -p "$FOUR"; git -C "$FOUR" init -q
 progress "$FOUR" alpha   active designing  2026-09-01 "Ask about alpha."
@@ -274,7 +363,8 @@ progress "$FOUR" delta   active designed   2026-09-10 "Split the spec into ticke
 progress "$FOUR" echo    active integrated 2026-09-15 "Release it."
 FOUR_EXPECTED="- bravo: stage built, updated 2026-09-22; next: Implement ticket 03. File: .scratch/bravo/progress.md
 - echo: stage integrated, updated 2026-09-15; next: Release it. File: .scratch/echo/progress.md
-- delta: stage designed, updated 2026-09-10; next: Split the spec into tickets. File: .scratch/delta/progress.md"
+- delta: stage designed, updated 2026-09-10; next: Split the spec into tickets. File: .scratch/delta/progress.md
+- alpha: stage designing, updated 2026-09-01; next: Ask about alpha. File: .scratch/alpha/progress.md"
 
 # A stale file is still listed: the note is a pointer, dated so its age shows, and the skill re-reads the
 # real state before acting. A file that cannot be read or does not parse is skipped, and never breaks the
@@ -357,7 +447,7 @@ PY
 }
 
 # Features updated on the same day: a time after the date orders them (a date alone counts as the start
-# of its day), then the file's modification time, so the one worked on last is not the one left out.
+# of its day), then the file's modification time, so the one worked on last comes first.
 SAMEDAY="$TMP/note-sameday"; mkdir -p "$SAMEDAY"; git -C "$SAMEDAY" init -q
 progress "$SAMEDAY" early active built 2026-09-24T01:00 "Early in the day."
 progress "$SAMEDAY" late  active built 2026-09-24T23:00 "Late in the day."
@@ -389,7 +479,7 @@ for S in "${SOURCES[@]}"; do
   [[ $(out_field systemMessage <<< "$OUT") == "Seams: resuming gift-cards (designing): "* ]] || fail "no notice at $S: $OUT"
   # Four active and one done.
   OUT=$(start_out "$S" "$FOUR"); E=$(entries_of "$(out_field additionalContext <<< "$OUT")")
-  [[ "$E" == "$FOUR_EXPECTED" ]] || fail "four active files should list the newest three in order ($S): $E"
+  [[ "$E" == "$FOUR_EXPECTED" ]] || fail "four active files should all be listed, newest first ($S): $E"
   [[ $(out_field systemMessage <<< "$OUT") == "Seams: resuming bravo (built): Implement ticket 03." ]] || fail "the notice should name the newest ($S): $OUT"
   # Stale, unreadable and unparseable files.
   OUT=$(start_out "$S" "$MIXED" 2> "$TMP/err"); C=$(out_field additionalContext <<< "$OUT")
@@ -410,7 +500,7 @@ PY
   [[ "$E" == "- good" ]] || fail "a path longer than a field's cap should be skipped ($S): $E"
   # Four updated the same day.
   E=$(entries_of "$(out_field additionalContext <<< "$(start_out "$S" "$SAMEDAY")")" | cut -d: -f1)
-  [[ "$E" == $'- late\n- early\n- newer' ]] || fail "same-day entries should go by time, then modification time ($S): $E"
+  [[ "$E" == $'- late\n- early\n- newer\n- older' ]] || fail "same-day entries should go by time, then modification time ($S): $E"
   # The format reference's example.
   [[ $(entries_of "$(out_field additionalContext <<< "$(start_out "$S" "$EXAMPLE")")") == "- gift-cards: stage designing, updated "* ]] \
     || fail "the example in progress-file.md is not listed ($S)"
@@ -440,7 +530,7 @@ PY
 
 # --- An unfinished pr-review batch (lean-and-durable ticket 07) ---------------------------------------------------------
 # A batch keeps its progress file beside its evidence, under ${TMPDIR:-/tmp}/seams-pr-review, and names the repository
-# the review ran in. The note lists the newest unfinished batch of the session's repository among its three entries,
+# the review ran in. The note lists the newest unfinished batch of the session's repository among its entries,
 # with its count and next step, never another repository's and never a finished one. The note says how it continues:
 # through pr-review, which Claude may start once the user asks to go on.
 
@@ -485,16 +575,16 @@ progress "$BREPO" coupons active built 2026-09-24 "Implement ticket 03."
 C=$(out_field additionalContext <<< "$(batch_out startup "$BREPO" "$BT_OTHER")")
 [[ "$C" != *"pr-review"* ]] || fail "without a batch in it, the note should not speak of batches: $C"
 
-# A batch counts among the three entries by when it was updated: here after two features updated on its day (a date
-# alone is the day's start) and before an older one; four features newer than it leave it out.
+# A batch takes its place among the entries by when it was updated: here after two features updated on its day (a date
+# alone is the day's start) and before an older one; an older batch comes after every newer feature.
 progress "$BREPO" gift-cards active designing 2026-09-26 "Ask the open questions."
 progress "$BREPO" alpha active designed 2026-09-20 "Split the spec into tickets."
-E=$(entries_of "$(out_field additionalContext <<< "$(batch_out startup "$BREPO" "$BT")")" | cut -d: -f1)
-[[ "$E" == $'- pr-review batch\n- gift-cards\n- coupons' ]] || fail "the batch should be ordered by its update among the entries: $E"
+E=$(listed_of "$(out_field additionalContext <<< "$(batch_out startup "$BREPO" "$BT")")")
+[[ "$E" == $'- pr-review batch\n- gift-cards\n- coupons\n- alpha' ]] || fail "the batch should be ordered by its update among the entries: $E"
 BT_OLD="$TMP/batch-tmp-old"; mkdir -p "$BT_OLD"
 batch "$BT_OLD" "$BREPO" active 2026-09-01T09:00 "$BATCH_STAGE" "$BATCH_NEXT"
-E=$(entries_of "$(out_field additionalContext <<< "$(batch_out startup "$BREPO" "$BT_OLD")")" | cut -d: -f1)
-[[ "$E" == $'- gift-cards\n- coupons\n- alpha' ]] || fail "three newer features should leave an older batch out: $E"
+E=$(listed_of "$(out_field additionalContext <<< "$(batch_out startup "$BREPO" "$BT_OLD")")")
+[[ "$E" == $'- gift-cards\n- coupons\n- alpha\n- pr-review batch' ]] || fail "an older batch should come after the newer features: $E"
 
 # The evidence root belongs to the user: a batch file that is a link, a root that is a link, or a root others may write
 # to is skipped; the next file is still read. A planted batch file's fields reach the note as capped plain data.
@@ -588,6 +678,38 @@ print(f"  {len(bootstrap.encode())} bytes of bootstrap + {len(note)} characters 
       f" ({len(entries)} of {5 if batch else 4} entries) = {len(context)} characters")
 PY
   done
+done
+
+# Many active files (senior-overnight ticket 01): the newest in full while they fit, then every other one by name only,
+# newest first, and the note never past its 1,500 characters. With more names than fit, as many as do, then how many
+# more. Every active file is on the card one way or the other, once.
+check_many() {   # check_many <repo> <count>
+  python3 - "$(start_out compact "$1")" "$2" <<'PY2' || fail "many active files should be listed in full, then by name, within the cap ($2 files)"
+import json, re, sys
+context, count = json.loads(sys.argv[1])["hookSpecificOutput"]["additionalContext"], int(sys.argv[2])
+note = context[context.index("\n\n## Work in progress"):]
+assert len(note) < 1500, f"note {len(note)} characters"
+full = [l.split(":")[0][2:] for l in note.splitlines() if l.startswith("- ")]
+rest = [l for l in note.splitlines() if l.startswith("Also active")]
+assert full and len(rest) == 1, (full, rest)
+m = re.fullmatch(r"Also active, by name only: (.+?)(?: \(and (\d+) more\))?\.", rest[0])
+assert m, rest[0]
+named, more = m.group(1).split(", "), int(m.group(2) or 0)
+newest_first = [f"f{n:03d}-{'x' * 40}" for n in range(count, 0, -1)]
+assert full + named == newest_first[:len(full) + len(named)], (full, named)
+assert len(full) + len(named) + more == count, (len(full), len(named), more)
+assert (more > 0) == (count > 100), more
+print(f"  {count} active files: {len(full)} in full, {len(named)} by name, {more} more; note {len(note)} characters")
+PY2
+}
+for COUNT in 6 200; do
+  MANY="$TMP/many-$COUNT"; mkdir -p "$MANY"; git -C "$MANY" init -q
+  for n in $(seq 1 "$COUNT"); do
+    progress "$MANY" "f$(printf '%03d' "$n")-$(printf '%0*d' 40 0 | tr 0 x)" active built \
+      "2026-0$((n / 28 + 1))-$(printf '%02d' $((n % 28 + 1)))" "$(printf 'step %.0s' $(seq 30))"
+  done
+  progress "$MANY" "f999-$(printf '%0*d' 40 0 | tr 0 x)" done operated 2026-12-31 "Nothing left."   # newest, and done
+  check_many "$MANY" "$COUNT"
 done
 
 # Worktrees pile up (worktree-sweep decision 1): over 10 in the repository, the user's notice says how many and points
