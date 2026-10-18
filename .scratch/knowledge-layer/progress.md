@@ -1,9 +1,9 @@
 # Progress: a knowledge layer, raw notes to approved knowledge
 
-Status: active
-Stage: integrated
-Next: Ticket 07, the release of Seams 5.5.0, through seams:release (push, main and the tag each asked; the client-detail scan of every commit first). Integrated on local main at 304c3e5 (a fast-forward, nothing pushed); the worktree .worktrees/knowledge-layer and its branch are kept until the suite runs green here. Local suite on the merge: 20 of 21, the one failure PostReviewsTest.test_a_later_call_waits_for_the_budget_an_earlier_call_spent, which fails the same way on released 5.4.0 (08c3a44) at this machine's load (35-41 from other sessions): a timing test, not the merge; the release's CI settles it.
-Updated: 2026-10-18
+Status: done
+Stage: deployed
+Next: None. Seams 5.5.0 released 2026-10-19: main and v5.5.0 at b3bdc8f (staging PR #21's CI and main's CI green on it, all three jobs); this Mac reads 5.5.0 in place. Left: the client project's own knowledge ticket (its config, the .gitignore line, moving the raw folders on Gabriel's yes, the index, a PR into its develop), tracked in its own record.
+Updated: 2026-10-19
 
 This repository is public: no client names, people, cards or tools here. The client project's facts and decisions live in its own record, `.scratch/knowledge-layer/progress.md` in the client repository (gitignored there); its path is in Claude's memory of this project.
 
@@ -28,7 +28,7 @@ Done (after the integrations): README.md's card paragraph names the knowledge li
 - [x] 04 `/seams:distill` (blocked by: 01, 03)
 - [x] 05 Reconcile's knowledge check, and the night's distill (blocked by: 04)
 - [x] 06 Moving existing raw material into the inbox (blocked by: 01)
-- [ ] 07 Release Seams 5.5.0 (blocked by: all)
+- [x] 07 Release Seams 5.5.0 (blocked by: all)
 
 The client project's own ticket (its config, `.gitignore` line, the move on Gabriel's yes, the index, a pull request into its develop) follows 07, in its own record.
 
