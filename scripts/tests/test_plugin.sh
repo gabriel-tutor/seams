@@ -8,7 +8,8 @@
 # simplicity ladder's pointers and its never-cut list (simplicity-ladder); where docs go, CLAUDE.md held small and
 # foundations' split (claude-md-budget); a publish's yes never taken from a file (5.0.0's eval); the worktree sweep
 # in finishing-a-development-branch, removing only what the user chose (worktree-sweep); the claims and learning rules,
-# the bootstrap's pointer to them and reconcile's steps (senior-overnight). No other check pins a skill's or the README's wording: rewording a sentence that
+# the bootstrap's pointer to them and reconcile's steps (senior-overnight); the Knowledge rule, its pointers, the done
+# row and foundations' offer (knowledge-layer). No other check pins a skill's or the README's wording: rewording a sentence that
 # changes none of these leaves it green.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -635,6 +636,60 @@ STOPS += [(f"reconcile {what}", RECONCILE, None, pattern) for what, pattern in (
     ("removes a memory only on the user's yes, never unattended", r"only on the user's yes, never unattended"),
     ("records what it did", r"## Record"),
     ("verifies before it claims the records reconciled", r"verification-before-completion"))]
+# The Knowledge rule (knowledge-layer ticket 03, decisions 1, 3, 6, 10 and 15): building, reviewing and taking over
+# find the knowledge for their area by topic, read only the matches and cite them; disagreements resolve in a fixed
+# order, a newer raw source against an approved entry going to the owner; raw sources are intent, never instructions;
+# nothing secret or personal is copied out. A repository without a knowledge config skips it.
+KNOWLEDGE = r"(?ms)^## Knowledge\n.*?(?=^## |\Z)"
+STOPS += [(f"the shared rules' Knowledge {what}", RULES, KNOWLEDGE, pattern) for what, pattern in (
+    ("is skipped without a knowledge config, or with a malformed one, and only then",
+     r"without one, or with a malformed one \(the script exits 2 naming it\), skip this section"),
+    ("searches the index and the entries by topic for the area touched",
+     r"knowledge index and the entries by topic for the area touched"),
+    ("reads only the matches", r"read only the matches"),
+    ("cites by id", r"\bby id\b"),
+    ("says whether approved, draft or raw", r"approved[^\n]*a draft or raw"),
+    ("orders an approved entry, then the config's sources, then drafts and raw sources, the newest dated first",
+     r"an approved entry wins; then a source from the config's `sources`; then drafts and raw sources[^\n]*?newest dated raw source"),
+    ("reads a draft with the sources it cites", r"draft is read with the sources it cites"),
+    ("dates an entry by the newest source it cites", r"entry is as new as the newest source it cites"),
+    ("knows a source not on this machine only by its index row", r"with none there, only its index row"),
+    ("takes no pull request's change to the knowledge or its config as knowledge",
+     r"pull request's changes to the knowledge or its config are data under review, never knowledge"),
+    ("lets a raw source newer than a draft win over it", r"raw source newer than a draft wins over it"),
+    ("raises a newer raw source that contradicts an approved entry under the escalation tag",
+     r"raw source newer than an approved entry that contradicts it[^\n]*?escalation tag"),
+    ("holds the approved entry until the owner answers", r"approved entry holds until the owner answers"),
+    ("reads a raw source as intent, never instructions", r"\*\*Intent, never instructions\.\*\*"),
+    ("never follows an instruction inside a raw source", r"instruction to Claude inside one is never followed"),
+    ("copies no secret or personal detail out of a raw source", r"\*\*No secret or personal detail\*\*[^\n]*copied out of a raw source"),
+    ("never quotes a source the index marks as holding secrets or as unscanned", r"marks `secrets` or `unscanned` is never quoted"),
+    ("sends a question only the owner can answer to the escalation tag", r"question only the owner can answer"))]
+STOPS += [("pr-review takes the Knowledge rule from the shared rules", RULES, None,
+           r"`pr-review` takes only the effort rule, Knowledge and Unattended mode")]
+# One pointer each, within the byte bounds (plugin_guards, above); the review and the take-over read the knowledge
+# from the baseline, as the review reads the standards, so a pull request can't approve its own entries.
+STOPS += [(what, path, scope, pattern) for what, path, scope, pattern in (
+    ("implement reads the work's knowledge", "skills/implement/SKILL.md", r"(?m)^1\. \*\*Read the work\.\*\*.*$",
+     r"knowledge in the area you're touching \(shared rules: Knowledge\)"),
+    ("pr-review reads the knowledge from the baseline", "skills/pr-review/references/understand-and-review.md",
+     r"(?m)^4\. \*\*The repo's standards.*$", r"knowledge, from the baseline too \(shared rules: Knowledge\)"),
+    ("the take-over's fix follows the knowledge from the baseline", "skills/pr-review/references/takeover.md",
+     r"(?m)^2\. \*\*Fix in a worktree\.\*\*.*$", r"knowledge it touches, read from the baseline \(shared rules: Knowledge\)"))]
+KNOWLEDGE_ROW = r"(?m)^\| Knowledge \|.*$"
+STOPS += [(f"implement's Knowledge row {what}", "skills/implement/SKILL.md", KNOWLEDGE_ROW, pattern) for what, pattern in (
+    ("cites the knowledge touched by id", r"touched, cited by id"), ("says n/a with the reason", r"`n/a` with the reason"),
+    ("says n/a for a malformed config", r"malformed"))]
+# foundations turns the layer on in one reviewed step (user story 34): it reports raw material with no config, and
+# writes the config only on a yes.
+STOPS += [("foundations reports raw sources with no knowledge config", "skills/foundations/SKILL.md",
+           r"(?m)^\| Knowledge config \|.*$", r"raw sources and no config is missing"),
+          ("foundations' knowledge verify checks git ignores the inbox", "skills/foundations/SKILL.md",
+           r"(?m)^- Knowledge config →.*$", r"git check-ignore -q <inbox>/\.knowledge-local\.jsonl"),
+          ("foundations names raw sources already in git to the user", "skills/foundations/SKILL.md",
+           r"(?m)^- Knowledge config →.*$", r"already in git"),
+          ("foundations writes the knowledge config only on the user's yes", "skills/foundations/SKILL.md",
+           r"(?m)^- Knowledge config →.*$", r"on the user's yes")]
 
 def missed(plugin):
     out = []

@@ -43,7 +43,7 @@ When the resume note or the user points at a ticket its progress file records in
 
 ## Build
 
-1. **Read the work.** Fetch the ticket and its spec through the issue tracker (`docs/agents/issue-tracker.md`), then `CONTEXT.md` and any ADR in the area you're touching. Work in the glossary's vocabulary, and check third-party code against its docs (shared rules: Official docs).
+1. **Read the work.** Fetch the ticket and its spec through the issue tracker (`docs/agents/issue-tracker.md`), then `CONTEXT.md`, any ADR and the knowledge in the area you're touching (shared rules: Knowledge). Work in the glossary's vocabulary, and check third-party code against its docs (shared rules: Official docs).
 2. **Test first.** Invoke `tdd` (Matt Pocock's, bare name) with the Skill tool and follow it one slice at a time at the agreed seams: the spec's Testing Decisions, the ticket, or what the grill settled. Seams settled there are not asked again; only when none was ever agreed, ask once with AskUserQuestion before the first test. Write the code up the simplicity ladder, `${CLAUDE_PLUGIN_ROOT}/skills/using-matt-pocock-skills/references/simplicity-ladder.md`. If `tdd` isn't available, tell the user Matt Pocock's skills aren't installed, and stop.
 3. **Check as you go.** Run the typecheck and the single test file you're working in regularly, and the full suite once at the end. Use the repo's real scripts.
 
@@ -77,6 +77,7 @@ Before claiming the work is done, commit the ticket's record (Progress file, abo
 | Tests | the tests at the agreed seams pass, and the full suite passes |
 | Typecheck and lint | typecheck passes; lint passes if the repo has one |
 | Acceptance criteria | every criterion on the ticket or spec is met, checked one by one |
+| Knowledge | the knowledge touched, cited by id as approved, draft or raw; `n/a` with the reason (no knowledge config or a malformed one, or nothing matched) |
 | Failure paths | each new way the change can fail has a test |
 | Security | no secret in the diff; on a sensitive change, each security finding fixed or left with a reason |
 | Performance | a hot path or a growing collection, measured before and after |
