@@ -15,6 +15,29 @@ Two files, so nothing personal is committed (knowledge-layer decision 18):
     knowledge.py index                       add and update the rows
     knowledge.py distilled <id>...           mark sources distilled at their current content (and rescan them)
     knowledge.py topics <id> <a,b,...>       set a source's topics, as written (what an action searches by)
+    knowledge.py move <folder>...            the plan to move folders of raw sources (from the repository's root)
+                                             into the inbox: each to <inbox>/<date>-<name>/ with its size, and what
+                                             stays
+    knowledge.py move --yes <code> <folder>...
+                                             that plan carried out, only with the code the plan printed, within 30
+                                             minutes, and while every file in it is as planned (the user's yes to the
+                                             list shown)
+
+The move never deletes or overwrites a file. Exact duplicates (of a source or of each other), tracked files (known by
+identity, so a case-only rename can't hide one), hidden files and links stay where they are, outside the inbox, and the
+plan counts them: a duplicate's path joins its copy's old paths, and a tracked file is listed and refused, so nothing
+leaves git silently. A folder that something not ignored names (a script, a skill's instructions, a build file), or a
+folder holding it, stays where it is; the plan prints the sources line that would index it in place, and the config is
+left to the user. A folder in another case than on disk, or holding or inside another git repository, is refused, and
+so is a move git wouldn't ignore every file of. A moved file keeps the date it had where it was. Before the first file
+moves, every step goes into a journal in the inbox (.knowledge-move.json), so a move stopped at any point (an error,
+an interrupt, a kill) keeps every old path, and the next plan of the folder (or the next index) finishes it in the
+same destination; a journal that points outside the inbox, or that names a file outside the repository, is refused.
+A run that writes (index, distilled, topics, move) holds a lock in git's own folder (seams-knowledge.lock), so a
+second one at once is refused rather than dropping the first's rows; status needs none. Only
+the plan names files, escaped; the move itself reports counts. The code is not a secret, and the script can't tell who
+typed it: the user's yes is the consent, so a session runs --yes only after the user agrees to the plan it showed
+them, and never unattended (a move is destructive).
 
 The config's block, one `key: value` per line (paths from the repository's root, inside it; lists comma-separated):
 
@@ -39,11 +62,14 @@ import sys
 sys.dont_write_bytecode = True
 
 import email                                        # noqa: E402
+import errno                                        # noqa: E402
+import fcntl                                        # noqa: E402
 import hashlib                                      # noqa: E402
 import json                                         # noqa: E402
 import os                                           # noqa: E402
 import re                                           # noqa: E402
 import secrets                                      # noqa: E402
+import shlex                                        # noqa: E402
 import stat as stat_kind                            # noqa: E402
 import subprocess                                   # noqa: E402
 import tempfile                                     # noqa: E402
@@ -53,6 +79,8 @@ CONFIG = os.path.join("docs", "agents", "knowledge.md")
 KEYS = {"inbox", "index", "entries", "format", "escalation", "sources", "approved", "approval-record"}
 REQUIRED = ("inbox", "index", "entries")
 LOCAL = ".knowledge-local.jsonl"
+JOURNAL = ".knowledge-move.json"                    # a move under way (ticket 06), in the inbox beside LOCAL
+LOCK = "seams-knowledge.lock"                       # in git's own folder: one writing run at a time
 TRACKED_FIELDS = ("id", "date", "topics", "scan", "cited_by")
 LOCAL_FIELDS = ("id", "path", "aka", "size", "mtime", "hash", "distilled")
 SOURCE_ID = re.compile(r"(?<![0-9A-Za-z_-])src-[0-9a-f]{10}(?![0-9A-Za-z_])")
@@ -88,10 +116,10 @@ class KnowledgeError(Exception):
 
 # --- where things are ----------------------------------------------------------------------------------------------
 
-def git(cwd: str, *args: str) -> "subprocess.CompletedProcess | None":
+def git(cwd: str, *args: str, input: "str | None" = None) -> "subprocess.CompletedProcess | None":
     try:
-        return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=5,
-                              stdin=subprocess.DEVNULL)
+        return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=5, input=input,
+                              stdin=None if input is not None else subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired):
         return None
 
@@ -223,9 +251,13 @@ def scan(path: str) -> str:
     return "clean" if complete else "unscanned"
 
 
+def real_day(month: str, day: str) -> bool:
+    return 1 <= int(month) <= 12 and 1 <= int(day) <= 31
+
+
 def date_of(path: str, found: os.stat_result) -> str:
     for year, month, day in reversed(DATE.findall(path)):
-        if 1 <= int(month) <= 12 and 1 <= int(day) <= 31:
+        if real_day(month, day):
             return f"{year}-{month}-{day}"
     return time.strftime("%Y-%m-%d", time.gmtime(found.st_mtime))
 
@@ -285,6 +317,28 @@ def write_rows(path: str, rows: "dict[str, dict]") -> None:
         raise
 
 
+def require_ignored(config: dict, main: str) -> None:
+    check = git(main, "check-ignore", "-q", os.path.join(os.path.normpath(config["inbox"]), LOCAL))
+    if not check or check.returncode != 0:
+        raise KnowledgeError(f"git would track the inbox ({config['inbox']}): add it to .gitignore first")
+
+
+def hold_lock(main: str):
+    """An exclusive lock for a run that writes the index or the inbox's files, taken before they are read: two runs
+    at once would each save their own copy, and the last would drop the other's rows. Held until the process ends."""
+    done = git(main, "rev-parse", "--git-common-dir")
+    folder = os.path.join(main, done.stdout.strip()) if done and done.returncode == 0 else ""
+    if not os.path.isdir(folder):
+        raise KnowledgeError("git can't say where its own folder is, so nothing can be written")
+    handle = open(os.path.join(folder, LOCK), "a")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        raise KnowledgeError("another knowledge.py run is writing the index; try again when it ends")
+    return handle
+
+
 class Store:
     """The tracked index and the machine's own file, read and written together."""
 
@@ -295,14 +349,29 @@ class Store:
         self.tracked = read_rows(self.index_path, TRACKED_FIELDS, "the knowledge index")
         self.local = read_rows(self.local_path, LOCAL_FIELDS, "the inbox's local file")
 
+    def require_ignored(self) -> None:
+        require_ignored(self.config, self.main)
+
     def save(self) -> None:
-        inbox = os.path.join(self.main, self.config["inbox"])
-        check = git(self.main, "check-ignore", "-q", os.path.relpath(self.local_path, self.main))
-        if not check or check.returncode != 0:
-            raise KnowledgeError(f"git would track the inbox ({self.config['inbox']}): add it to .gitignore first")
-        os.makedirs(inbox, exist_ok=True)
+        self.require_ignored()
+        os.makedirs(os.path.join(self.main, self.config["inbox"]), exist_ok=True)
         write_rows(self.local_path, self.local)
         write_rows(self.index_path, self.tracked)
+
+    def add(self, path: str, aka: "list[str]", now: os.stat_result, digest: str, date: str) -> str:
+        """A new source's two rows: what the team may see, and what only this machine keeps."""
+        source = new_id(set(self.tracked) | set(self.local))
+        self.local[source] = {"id": source, "path": path, "aka": aka, "size": now.st_size, "mtime": now.st_mtime_ns,
+                              "hash": digest, "distilled": ""}
+        self.tracked[source] = {"id": source, "date": date, "topics": [], "scan": scan(os.path.join(self.main, path)),
+                                "cited_by": []}
+        return source
+
+    def relocate(self, source: str, path: str, now: os.stat_result, *old: str) -> None:
+        """The same content at a new path: its id kept, and its old path (and any others) with it."""
+        row = self.local[source]
+        row["aka"] = sorted(set(row["aka"]) | {row["path"], *old})
+        row.update(path=path, size=now.st_size, mtime=now.st_mtime_ns)
 
 
 def new_id(taken: set) -> str:
@@ -340,17 +409,10 @@ def index(store: Store) -> None:
             continue
         moved = next((s for s in same if store.local[s]["path"] not in found), None)
         if moved:                                    # the same content at a new path: its id kept, its old path too
-            row = store.local[moved]
-            row["aka"] = sorted(set(row["aka"]) | {row["path"]})
-            row.update(path=path, size=now.st_size, mtime=now.st_mtime_ns)
+            store.relocate(moved, path, now)
             by_path[path] = moved
             continue
-        source = new_id(set(store.tracked) | set(store.local))
-        store.local[source] = {"id": source, "path": path, "aka": [], "size": now.st_size, "mtime": now.st_mtime_ns,
-                               "hash": digest, "distilled": ""}
-        store.tracked[source] = {"id": source, "date": date_of(path, now), "topics": [], "scan": scan(full),
-                                 "cited_by": []}
-        by_path[path] = source
+        by_path[path] = store.add(path, [], now, digest, date_of(path, now))
     cites = entry_citations(store.config, store.top)
     for source, row in store.tracked.items():
         row["cited_by"] = sorted(entry for entry, ids in cites.items() if source in ids)
@@ -418,9 +480,447 @@ def set_topics(store: Store, source: str, topics: str) -> int:
     return 0
 
 
+# --- moving existing raw sources in (ticket 06) -------------------------------------------------------------------
+
+def size_of(total: float) -> str:
+    for unit in ("B", "KB", "MB"):
+        if total < 1024:
+            return f"{total:.0f} B" if unit == "B" else f"{total:.1f} {unit}"
+        total /= 1024
+    return f"{total:.1f} GB"
+
+
+def dated(name: str) -> bool:
+    found = DATE.match(name)
+    return bool(found) and real_day(found.group(2), found.group(3))
+
+
+def shown(text: str) -> str:
+    """A name as the plan prints it: a name holding a line break or a terminal escape (an attachment's name comes
+    from whoever sent it) is printed quoted and escaped, so it can't hide or forge a line of the plan."""
+    return text if text.isprintable() else ascii(text)
+
+
+CODE_MINUTES = 30                                   # how long a plan's yes stays good
+
+
+def node(path: str) -> "tuple[int, int] | None":
+    try:
+        found = os.stat(path)
+    except OSError:
+        return None
+    return found.st_dev, found.st_ino
+
+
+def up_from(path: str, root: str) -> "set[tuple[int, int]]":
+    """The identities of path and every folder above it up to root: compared by identity, not by spelling, so a
+    case-insensitive disk (macOS) or a symlink can't make one folder look like two."""
+    seen = set()
+    while True:
+        here = node(path)
+        if here:
+            seen.add(here)
+        if path == root or os.path.dirname(path) == path:
+            return seen
+        path = os.path.dirname(path)
+
+
+def overlap(a: str, b: str, root: str) -> bool:
+    """a and b are one folder, or one holds the other (b need not exist yet: an index not written)."""
+    a_id, b_id = node(a), node(b)
+    return (a_id is not None and a_id in up_from(b, root)) or (b_id is not None and b_id in up_from(a, root))
+
+
+def spelled_as_on_disk(rel: str, root: str) -> bool:
+    here = root
+    for part in rel.split(os.sep):
+        try:
+            if part not in os.listdir(here):
+                return False
+        except OSError:
+            return False
+        here = os.path.join(here, part)
+    return True
+
+
+def in_another_repository(real: str, root: str) -> bool:
+    """A .git entry in the folder, under it or above it below the root: its files belong to another repository (a
+    submodule, a worktree, a clone), and moving them would take them out of it."""
+    here = real
+    while here != root and inside(here, root):
+        if os.path.lexists(os.path.join(here, ".git")):
+            return True
+        here = os.path.dirname(here)
+    return any(".git" in dirs or ".git" in names for _, dirs, names in os.walk(real))
+
+
+def reader_of(main: str, rel: str, inbox: str) -> str:
+    """The first file, tracked or untracked but not ignored, outside the folder, that names the folder or a folder
+    holding it as a path (quoted, or with a slash beside it), or "": a script that reads data/ reads data/owner/, and
+    a script beside data/owner/ may name it as owner/. Ignore rules name folders without reading them, so they don't
+    count; anything else may read it (code, a skill's instructions, a build file), and erring towards staying is
+    safe."""
+    parts = rel.split(os.sep)
+    folders = [os.sep.join(parts[:end]) for end in range(len(parts), 0, -1)]
+    parent, base = os.path.dirname(rel), parts[-1]
+    setting = git(main, "config", "--bool", "core.ignorecase")
+    caseless = bool(setting) and setting.stdout.strip() == "true"     # a disk that ignores case reads Feeds/ as feeds/
+    done = git(main, "grep", "--untracked", "-z", "-l", "-I", "-F", *(["-i"] if caseless else []),
+               *(arg for f in folders + [base] for arg in ("-e", f)),
+               "--", ".", ":(exclude)*ignore", f":(exclude,literal){rel}", f":(exclude,literal){inbox}")
+    if done is None or done.returncode not in (0, 1):
+        raise KnowledgeError("git can't say which files name a folder, so nothing can move")
+
+    def naming(names: "list[str]") -> "re.Pattern":
+        name = "(?:" + "|".join(re.escape(f) for f in names) + ")"
+        return re.compile(rf"(?<![\w.-])(?:(?<=[/'\"`]){name}(?![\w.-])|{name}(?=[/'\"`]))",
+                          re.IGNORECASE if caseless else 0)
+    far, near = naming(folders), naming(folders + [base])
+    for path in sorted(p for p in done.stdout.split("\0") if p):
+        try:
+            with open(os.path.join(main, path), encoding="utf-8", errors="replace") as handle:
+                text = handle.read(SCAN_BYTES + 1)
+        except OSError:
+            continue
+        beside = bool(parent) and path.startswith(parent + os.sep)
+        if (near if beside else far).search(text) or len(text) > SCAN_BYTES:   # too long to read: it may name it
+            return path
+    return ""
+
+
+def tracked_nodes(main: str) -> "set[tuple[int, int]]":
+    """Every tracked file, by identity: a disk that ignores case or Unicode normalization (macOS) can spell a
+    tracked file otherwise than git's index does (a case-only rename, NFD against NFC), and the identity is the same."""
+    done = git(main, "ls-files", "-z")
+    if done is None or done.returncode != 0:
+        raise KnowledgeError("git can't say which files it tracks, so nothing can move")
+    return {here for here in (node(os.path.join(main, path)) for path in done.stdout.split("\0") if path) if here}
+
+
+# --- the journal: a move's every step, written before the first file moves, so a stop at any point (an error, an
+# interrupt, a kill) loses no old path, and the next plan of the same folder finishes it in the same destination.
+
+def journal_path(store: Store) -> str:
+    return os.path.join(store.main, store.config["inbox"], JOURNAL)
+
+
+def read_journal(store: Store) -> dict:
+    try:
+        text = open(journal_path(store), encoding="utf-8").read()
+    except FileNotFoundError:
+        return {"folders": {}, "steps": []}
+    except (OSError, ValueError):
+        raise KnowledgeError("the inbox's move journal can't be read as UTF-8 text")
+    inbox = os.path.normpath(store.config["inbox"])
+
+    def under(path: object, root: str) -> bool:      # a relative, normal path inside root ("" is the repository)
+        return isinstance(path, str) and not os.path.isabs(path) and os.path.normpath(path) == path \
+            and path not in (".", "..") and not path.startswith(".." + os.sep) \
+            and ".git" not in path.lower().split(os.sep) and (not root or path.startswith(root + os.sep))
+
+    def outside_inbox(path: object) -> bool:
+        return under(path, "") and path != inbox and not path.startswith(inbox + os.sep)
+    try:
+        journal = json.loads(text)
+        sound = isinstance(journal, dict) and isinstance(journal.get("folders"), dict) \
+            and isinstance(journal.get("steps"), list) \
+            and all(outside_inbox(f) and under(d, inbox) for f, d in journal["folders"].items()) \
+            and all(isinstance(step, dict) and outside_inbox(step.get("src")) and under(step.get("dest"), inbox)
+                    and isinstance(step.get("hash"), str) and re.fullmatch(r"[0-9a-f]{64}", step["hash"])
+                    and isinstance(step.get("date"), str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", step["date"])
+                    for step in journal["steps"])
+    except ValueError:
+        sound = False
+    if not sound:                                    # hand-edited or restored: it could point anywhere
+        raise KnowledgeError("the inbox's move journal holds a step it can't trust: settle it by hand, then remove it")
+    return journal
+
+
+def write_journal(store: Store, journal: dict) -> None:
+    if not journal["steps"]:
+        if os.path.lexists(journal_path(store)):
+            os.unlink(journal_path(store))           # the move's own record, finished: never a user's file
+        return
+    folder = os.path.dirname(journal_path(store))
+    os.makedirs(folder, exist_ok=True)
+    handle, temp = tempfile.mkstemp(dir=folder, prefix=JOURNAL + ".")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            json.dump(journal, out, sort_keys=True)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temp, journal_path(store))
+    except BaseException:
+        os.unlink(temp)                              # it holds source paths
+        raise
+
+
+def recover(store: Store) -> "dict[str, str]":
+    """Settles a journal a stopped move left: each file it moved gets its rows (old path, date), and each it didn't
+    stays planned. Returns the destination of every folder still under way."""
+    journal = read_journal(store)
+    if not journal["steps"]:
+        return {}
+    found = present(store.config, store.main)
+    recorded = {row["path"] for row in store.local.values()}
+    left = []
+    for step in journal["steps"]:
+        if os.path.lexists(os.path.join(store.main, step["src"])):
+            left.append(step)
+        elif step["dest"] not in recorded and os.path.isfile(os.path.join(store.main, step["dest"])):
+            record_move(store, step, found)
+    journal = {"steps": left, "folders": {f: d for f, d in journal["folders"].items()
+                                          if any(s["src"].startswith(f + os.sep) for s in left)}}
+    store.save()
+    write_journal(store, journal)
+    return journal["folders"]
+
+
+def left_behind(real: str, read: "set[str]") -> "dict[str, int]":
+    """What a folder holds that the move leaves where it is, by kind: hidden files (an export's .env), links, and
+    files it can't read."""
+    counts = {"hidden file": 0, "link": 0, "unreadable file": 0}
+    for folder, dirs, names in os.walk(real):
+        counts["link"] += sum(1 for d in dirs if os.path.islink(os.path.join(folder, d)))
+        hidden_here = any(part.startswith(".") for part in os.path.relpath(folder, real).split(os.sep) if part != ".")
+        for name in names:
+            path = os.path.join(folder, name)
+            if path in read:
+                continue
+            kind = ("link" if os.path.islink(path) else "hidden file" if hidden_here or name.startswith(".")
+                    else "unreadable file")
+            counts[kind] += 1
+    return {kind: count for kind, count in counts.items() if count}
+
+
+def plan_move(store: Store, folders: "list[str]", pending: "dict[str, str]") -> "list[dict]":
+    """One item per folder named: where its files go (<inbox>/<date>-<name>/, or the destination of its move still
+    under way), or why it stays."""
+    main, inbox_rel = store.main, os.path.normpath(store.config["inbox"])
+    inbox = os.path.join(main, inbox_rel)
+    homes = [os.path.join(main, home) for home in listed(store.config.get("sources", ""))]
+    layer = [os.path.join(root, part) for root in {store.top, main}
+             for part in [CONFIG, store.config["index"]] + listed(store.config["entries"])]
+    items, chosen, destinations, kept, tracked = [], [], set(), {}, None   # kept: a hash -> the copy the index keeps
+    found = present(store.config, main)
+    for source, row in sorted(store.local.items()):
+        now = found.get(row["path"])
+        if now is not None and source in store.tracked:
+            same = (now.st_size, now.st_mtime_ns) == (row["size"], row["mtime"])
+            kept.setdefault(row["hash"] if same else hash_of(os.path.join(main, row["path"])), row["path"])
+    for given in folders:
+        real = os.path.realpath(os.path.join(main, given))
+        rel = os.path.relpath(real, main)
+        item = {"folder": os.path.normpath(given), "path": rel, "moves": [], "dups": [], "tracked": [], "left": {},
+                "why": "", "stays": False}
+        items.append(item)
+        try:
+            is_folder = stat_kind.S_ISDIR(os.lstat(os.path.join(main, given)).st_mode)
+        except OSError:
+            is_folder = False
+        if not given.isprintable():                 # the yes's command line couldn't carry it safely
+            item["why"] = ": refused: its name holds a control character; rename it first"
+        elif not inside(real, main) or ".git" in rel.lower().split(os.sep):
+            item["why"] = ": refused: it is not inside the repository, or it is git's own"
+        elif not is_folder:
+            item["why"] = ": refused: not a folder here"
+        elif not spelled_as_on_disk(rel, main):
+            item["why"] = ": refused: the folder on disk is spelled in another case; name it as it is spelled"
+        elif in_another_repository(real, main):
+            item["why"] = ": refused: it holds or sits in another git repository"
+        elif any(overlap(real, other, main) for other in chosen):
+            item["why"] = ": refused: it overlaps a folder named before it"
+        elif any(overlap(real, part, main) for part in layer):
+            item["why"] = ": refused: it is, holds or sits in the knowledge config, the index or the entries"
+        elif overlap(real, inbox, main):
+            item["why"] = ": refused: it is, holds or sits in the inbox"
+        elif any(overlap(real, home, main) for home in homes):
+            item["why"] = " stays where it is, already a source the config indexes in place"
+        if item["why"]:
+            continue
+        chosen.append(real)
+        reader = reader_of(main, rel, inbox_rel)
+        if reader:
+            item["why"] = f" stays where it is, named in {shown(reader)}"
+            item["stays"] = True
+            continue
+        files = list(files_under(real))
+        if not files:
+            item["why"] = ": refused: it holds no files to move"
+            continue
+        tracked = tracked_nodes(main) if tracked is None else tracked
+        name = os.path.basename(real)
+        newest = max(now.st_mtime for _, now in files)
+        item["dest"] = pending.get(rel) or os.path.join(
+            inbox_rel, name if dated(name) else time.strftime("%Y-%m-%d-", time.gmtime(newest)) + name)
+        if item["dest"].casefold() in destinations or (os.path.lexists(os.path.join(main, item["dest"]))
+                                                       and rel not in pending):
+            item["why"] = f": refused: {shown(item['dest'])}/ already exists"
+            continue
+        moves, mine = [], {}                         # this folder's copies: kept only once it is accepted
+        for path, now in files:
+            src = os.path.relpath(path, main)
+            if (now.st_dev, now.st_ino) in tracked:  # moving it into the inbox would take it out of git
+                item["tracked"].append(src)
+                continue
+            digest = hash_of(path)
+            if digest is None:
+                continue
+            if digest in kept or digest in mine:
+                item["dups"].append({"src": src, "kept": kept.get(digest) or mine[digest]})
+                continue
+            mine[digest] = os.path.join(item["dest"], os.path.relpath(path, real))
+            moves.append({"src": src, "dest": mine[digest], "size": now.st_size, "mtime": now.st_mtime_ns,
+                          "hash": digest, "date": date_of(src, now)})
+        if any(os.path.lexists(os.path.join(main, step["dest"])) for step in moves):
+            item.update(why=f": refused: a file already sits where one of its files would go in "
+                            f"{shown(item['dest'])}/", dups=[], tracked=[])
+            continue
+        destinations.add(item["dest"].casefold())
+        kept.update(mine)
+        item["moves"] = moves
+        item["left"] = left_behind(real, {path for path, _ in files})
+    planned = [step["dest"] for item in items for step in item["moves"]]
+    if planned:
+        check = planned + [os.path.relpath(journal_path(store), main)]
+        done = git(main, "check-ignore", "-z", "--stdin", input="\0".join(check) + "\0")
+        if done is None or done.returncode not in (0, 1) or not set(check) <= set(done.stdout.split("\0")):
+            raise KnowledgeError(f"git would not ignore every file the move would put in the inbox "
+                                 f"({store.config['inbox']}): check its .gitignore rules first")
+    return items
+
+
+def counted(counts: "dict[str, int]") -> str:
+    return ", ".join(f"{count} {kind}{'' if count == 1 else 's'}" for kind, count in counts.items())
+
+
+def render_plan(items: "list[dict]", sources: str) -> "list[str]":
+    lines = ["Knowledge: the plan to move raw sources into the inbox (nothing has moved yet)."]
+    for item in items:
+        if item["why"]:
+            lines.append(f"- {shown(item['folder'])}{item['why']}")
+            continue
+        count, total = len(item["moves"]), sum(m["size"] for m in item["moves"])
+        lines.append(f"- {shown(item['folder'])} -> {shown(item['dest'])}/ ({count} file{'' if count == 1 else 's'}, "
+                     f"{size_of(total)})" if count else f"- {shown(item['folder'])}: nothing moves")
+        lines += [f"    duplicate, kept once: {shown(d['src'])} (the same as {shown(d['kept'])})" for d in item["dups"]]
+        lines += [f"    tracked by git, refused: {shown(path)} (it stays; untrack it to move it)"
+                  for path in item["tracked"]]
+        if item["left"]:
+            lines.append(f"    left where they are, outside the inbox, where git may see them: {counted(item['left'])}")
+    lines.append("Nothing is deleted: duplicates, tracked files, hidden files and links stay where they are, outside "
+                 "the inbox.")
+    staying = [item["path"] for item in items if item["stays"]]
+    if staying:
+        listable = [path for path in staying if "," not in path and "\n" not in path]
+        lines.append(f"The folders that stay are not indexed until the config ({CONFIG}) lists them; this script "
+                     "never edits it. Its sources line would read:")
+        lines.append("    sources: " + ", ".join(shown(path) for path in listed(sources) + listable))
+        if len(listable) < len(staying):
+            lines.append("    (a folder with a comma in its name can't be listed: rename it first)")
+    return lines
+
+
+def plan_code(items: "list[dict]", minute: int) -> str:
+    """The whole list (every file's path, size, time and hash, which the plan doesn't print) and the minute the plan
+    was made, so a yes covers exactly what was planned, then, and expires."""
+    body = json.dumps([f"{minute:x}", items], sort_keys=True)
+    return f"{minute:x}-" + hashlib.sha256(body.encode()).hexdigest()[:12]
+
+
+def move(store: Store, argv: "list[str]") -> int:
+    agreed = argv[1] if argv[:1] == ["--yes"] and len(argv) > 1 else None
+    folders = argv[2:] if agreed is not None else argv
+    if not folders or folders[0] == "--yes":
+        print("usage: knowledge.py move [--yes <code>] <folder>...", file=sys.stderr)
+        return 1
+    store.require_ignored()                          # refused before the plan, so a yes can't be refused later
+    items = plan_move(store, folders, recover(store))
+    now = int(time.time() // 60)
+    if agreed is None:
+        print("\n".join(render_plan(items, store.config.get("sources", ""))))
+        if any(item["moves"] or item["dups"] for item in items) and all(f.isprintable() for f in folders):
+            print("To move exactly this, only after the user agrees to this plan, run: knowledge.py move --yes "
+                  + plan_code(items, now) + " " + " ".join(shlex.quote(f) for f in folders))
+        return 0
+    try:
+        minute = int(agreed.partition("-")[0], 16)
+    except ValueError:
+        minute = -1
+    if minute < 0 or agreed != plan_code(items, minute):
+        print("Knowledge: the plan changed since it was shown, or that code is not its own: nothing moved; run it "
+              "again without --yes to see the plan", file=sys.stderr)
+        return 1
+    if not 0 <= now - minute <= CODE_MINUTES:
+        print(f"Knowledge: that plan's yes has expired (it lasts {CODE_MINUTES} minutes): nothing moved; run it "
+              "again without --yes to see the plan", file=sys.stderr)
+        return 1
+    steps = [step for item in items for step in item["moves"]]
+    journal = read_journal(store)
+    journal["steps"] = [s for s in journal["steps"] if s["src"] not in {step["src"] for step in steps}] + steps
+    journal["folders"].update({item["path"]: item["dest"] for item in items if item["moves"]})
+    write_journal(store, journal)                    # before the first file moves: a kill can't lose an old path
+    found, moved, emptied = present(store.config, store.main), 0, set()
+    inbox = os.path.realpath(os.path.join(store.main, store.config["inbox"]))
+    try:
+        for item in items:
+            for step in item["moves"]:
+                dest = os.path.join(store.main, step["dest"])
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                here = os.path.realpath(os.path.dirname(dest))
+                if here != inbox and not inside(here, inbox):   # a link inside the inbox can't lead a file out
+                    raise NotADirectoryError(errno.ENOTDIR, "a destination's folder is not inside the inbox")
+                if os.path.lexists(dest):            # never over a file: a rename would replace it
+                    raise FileExistsError(errno.EEXIST, "a file is already where one would go")
+                os.rename(os.path.join(store.main, step["src"]), dest)
+                record_move(store, step, found)
+                moved += 1
+                folder = os.path.dirname(step["src"])
+                while folder and folder != os.path.dirname(item["path"]):
+                    emptied.add(folder)
+                    folder = os.path.dirname(folder)
+    except BaseException as error:                   # an interrupt too: what moved keeps its old path
+        store.save()
+        if isinstance(error, OSError):
+            raise KnowledgeError(f"the move stopped after {moved} of {len(steps)} files ({error.strerror}); "
+                                 "nothing was deleted, the index records what moved, and the next plan finishes it")
+        raise
+    by_path = {row["path"]: source for source, row in store.local.items()}
+    for item in items:                               # a duplicate stays where it is, its path kept with its copy
+        for dup in item["dups"]:
+            row = store.local[by_path[dup["kept"]]]
+            row["aka"] = sorted(set(row["aka"]) | {dup["src"]})
+    for folder in sorted(emptied, key=lambda f: -f.count(os.sep)):  # only what this move emptied; never a file
+        try:
+            os.rmdir(os.path.join(store.main, folder))
+        except OSError:
+            pass
+    index(store)
+    recover(store)                                   # the journal keeps only what is still under way
+    left = sum(sum(item["left"].values()) for item in items)
+    print(f"Knowledge: moved {moved} files from {sum(1 for i in items if i['moves'])} folders into the inbox; "
+          f"{sum(len(i['dups']) for i in items)} duplicates stay where they were, kept once in the index; "
+          f"{sum(len(i['tracked']) for i in items)} tracked files refused; {left} files left where they were, "
+          f"outside the inbox; {sum(1 for i in items if i['stays'])} folders stay where they are. "
+          "Nothing was deleted.")
+    return 0
+
+
+def record_move(store: Store, step: dict, found: "dict[str, os.stat_result]") -> None:
+    """A moved file's rows: its old path kept, and its date read where it was (a folder's date prefix is not it).
+    A source that left the inbox and comes back keeps its id, as index's moved sources do."""
+    now = os.lstat(os.path.join(store.main, step["dest"]))
+    back = next((s for s, row in sorted(store.local.items()) if row["hash"] == step["hash"] and s in store.tracked
+                 and row["path"] not in found), None)
+    if back:
+        store.relocate(back, step["dest"], now, step["src"])
+    else:
+        store.add(step["dest"], [step["src"]], now, step["hash"], step["date"])
+
+
 def main(argv: "list[str]") -> int:
     command = argv[0] if argv else "status"
-    if command not in ("status", "index", "distilled", "topics"):
+    if command not in ("status", "index", "distilled", "topics", "move"):
         print(f"knowledge.py: unknown command {command[:40]}", file=sys.stderr)
         return 1
     top, main_root = roots(os.getcwd())
@@ -429,9 +929,15 @@ def main(argv: "list[str]") -> int:
         if config is None:
             print("Knowledge: no knowledge config here, so the layer is off.")
             return 0
+        if command != "status":                      # a writing run: the lock first, then what it reads
+            require_ignored(config, main_root)
+            lock = hold_lock(main_root)              # noqa: F841  held until the process ends
         store = Store(config, top, main_root)
         if command == "index":
+            recover(store)                           # a stopped move's old paths, before index sees its files
             index(store)
+        elif command == "move":
+            return move(store, argv[1:])
         elif command == "distilled":
             return mark_distilled(store, argv[1:])
         elif command == "topics":

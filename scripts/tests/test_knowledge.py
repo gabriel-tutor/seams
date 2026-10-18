@@ -1,4 +1,5 @@
-"""The knowledge index (knowledge-layer ticket 01), through knowledge.py's command line, against temporary
+"""The knowledge index (knowledge-layer ticket 01) and moving existing raw sources into the inbox (ticket 06),
+through knowledge.py's command line, against temporary
 repositories: a repository opts in with a knowledge config; the script keeps a tracked index of every raw source in
 its inbox and its configured source homes, and reports what is new, undistilled, changed, missing or not on this
 machine. The tracked index holds only what is safe to share (decision 18); each source's path, size, time and hashes
@@ -97,6 +98,43 @@ class KnowledgeTest(unittest.TestCase):
         path = self.repo / "docs" / "knowledge" / "entries" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
+
+    def scattered(self, rel, text="the owner's email\n", day="2026-08-20"):
+        """A raw file outside the inbox, where an owner's material was dropped, last modified on day."""
+        path = self.repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        moment = time.mktime(time.strptime(day + " 12:00", "%Y-%m-%d %H:%M"))
+        os.utime(path, (moment, moment))
+        return path
+
+    def contents(self):
+        """Every file's bytes under the repository, git's own aside: a move changes where, never what."""
+        return sorted(p.read_bytes() for p in self.repo.rglob("*") if p.is_file() and ".git" not in p.parts
+                      and p.name not in (".knowledge-local.jsonl", ".knowledge-move.json", "index.jsonl"))
+
+    def plan(self, *folders, code=0):
+        return self.run_script("move", *folders, code=code)
+
+    def code_of(self, *folders):
+        """The yes code the plan's last line carries."""
+        line = self.plan(*folders).strip().splitlines()[-1]
+        self.assertIn("--yes ", line)
+        return line.split("--yes ")[1].split()[0]
+
+    def agree(self, *folders):
+        """The plan, then the yes it ends with, as the user's command would carry it."""
+        return self.run_script("move", "--yes", self.code_of(*folders), *folders)
+
+    def run_patched(self, prelude, *args, code=0):
+        """The script run in-process after prelude (a later clock, a process killed half-way): the stdlib patched,
+        never the script."""
+        runner = (f"import os, runpy, sys, time\n{prelude}\nsys.argv = [{str(SCRIPT)!r}, *{list(args)!r}]\n"
+                  f"runpy.run_path({str(SCRIPT)!r}, run_name='__main__')\n")
+        done = subprocess.run([sys.executable, "-B", "-c", runner], cwd=self.repo, capture_output=True, text=True,
+                              timeout=60, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(done.returncode, code, done.stdout + done.stderr)
+        return done.stdout + done.stderr
 
     # --- the switch ------------------------------------------------------------------------------------------------
 
@@ -529,6 +567,421 @@ class KnowledgeTest(unittest.TestCase):
         started = time.monotonic()
         self.run_script("index", timeout=60)
         self.assertLess(time.monotonic() - started, 15)
+
+    # --- moving existing raw sources in (ticket 06) -----------------------------------------------------------------
+
+    def test_the_plan_lists_each_folder_its_destination_and_size_and_moves_nothing(self):
+        self.configure()
+        self.scattered("owner mail/ask.md", "12345\n", day="2026-08-03")
+        self.scattered("owner mail/old/note.txt", "abc\n", day="2026-08-20")
+        self.scattered("2026-05-01 kickoff/notes.md", "kick\n", day="2026-09-30")
+        before = self.files()
+        out = self.plan("owner mail", "2026-05-01 kickoff")
+        self.assertIn("owner mail -> docs/knowledge/raw/2026-08-20-owner mail/ (2 files, 10 B)", out)
+        self.assertIn("2026-05-01 kickoff -> docs/knowledge/raw/2026-05-01 kickoff/ (1 file, 5 B)", out)
+        self.assertEqual(self.files(), before)
+        self.assertFalse((self.repo / "docs" / "knowledge" / "index.jsonl").exists())
+
+    def test_on_the_yes_the_files_move_and_the_index_records_every_old_path(self):
+        self.configure()
+        self.scattered("jane doe mail/ask.md", "12345\n", day="2026-08-03")
+        self.scattered("jane doe mail/old/2026-07-01 note.txt", "abc\n", day="2026-08-20")
+        before = self.contents()
+        out = self.agree("jane doe mail")
+        self.assertNotIn("jane", out)                                    # the plan named them; the move doesn't
+        self.assertIn("moved 2 files", out)
+        self.assertFalse((self.repo / "jane doe mail").exists())         # emptied, so its folders are gone
+        self.assertEqual(self.contents(), before)                        # nothing deleted, nothing changed
+        inbox = "docs/knowledge/raw/2026-08-20-jane doe mail/"
+        self.assertEqual({r["path"]: r["aka"] for r in self.local().values()},
+                         {inbox + "ask.md": ["jane doe mail/ask.md"],
+                          inbox + "old/2026-07-01 note.txt": ["jane doe mail/old/2026-07-01 note.txt"]})
+        dates = {self.local()[r["id"]]["path"]: r["date"] for r in self.rows()}
+        self.assertEqual(dates, {inbox + "ask.md": "2026-08-03", inbox + "old/2026-07-01 note.txt": "2026-07-01"})
+        self.assertNotIn("jane", (self.repo / "docs" / "knowledge" / "index.jsonl").read_text())
+        self.assertEqual(self.counts(), {**ZERO, "undistilled": 2})
+        self.run_script("index")
+        self.assertEqual(len(self.rows()), 2)
+
+    def test_without_the_plans_own_yes_nothing_moves(self):
+        self.configure()
+        self.scattered("mail/ask.md")
+        before = self.files()
+        code = self.code_of("mail")
+        self.run_script("move", "--yes", "0123456789ab", "mail", code=1)
+        self.run_script("move", "--yes", code=1)
+        self.scattered("mail/late.md", "added after the plan was shown\n")
+        out = self.run_script("move", "--yes", code, "mail", code=1)
+        self.assertIn("changed", out)
+        self.assertEqual(self.files(), sorted(before + ["mail/late.md"]))
+
+    def test_exact_duplicates_are_kept_once_and_every_copy_stays_on_disk(self):
+        self.configure()
+        self.raw("2026-06-01-final.md", "the final offer\n")
+        self.run_script("index")
+        (kept,) = self.rows()
+        self.scattered("a/offer.md", "the final offer\n")                # already in the inbox
+        self.scattered("a/brief.md", "the brief\n")
+        self.scattered("b/brief copy.md", "the brief\n")                 # the same as a/brief.md
+        self.scattered("b/other.md", "something else\n")
+        before = self.contents()
+        out = self.plan("a", "b")
+        self.assertIn("duplicate, kept once: a/offer.md (the same as docs/knowledge/raw/2026-06-01-final.md)", out)
+        self.assertIn("duplicate, kept once: b/brief copy.md (the same as docs/knowledge/raw/2026-08-20-a/brief.md)",
+                      out)
+        self.assertIn("a -> docs/knowledge/raw/2026-08-20-a/ (1 file, 10 B)", out)
+        self.agree("a", "b")
+        self.assertEqual(self.contents(), before)                        # the copies stay where they were
+        self.assertTrue((self.repo / "a" / "offer.md").exists())
+        self.assertTrue((self.repo / "b" / "brief copy.md").exists())
+        by_path = {r["path"]: r for r in self.local().values()}
+        self.assertEqual(len(by_path), 3)
+        self.assertEqual(by_path["docs/knowledge/raw/2026-06-01-final.md"]["aka"], ["a/offer.md"])
+        self.assertEqual(by_path["docs/knowledge/raw/2026-08-20-a/brief.md"]["aka"], ["a/brief.md", "b/brief copy.md"])
+        self.assertEqual(self.local()[kept["id"]]["path"], "docs/knowledge/raw/2026-06-01-final.md")
+        self.assertEqual(self.counts()["new"], 0)
+
+    def test_the_move_is_refused_while_git_would_track_the_inbox(self):
+        self.configure(ignored=False)
+        self.scattered("mail/ask.md")
+        before = self.files()
+        self.assertIn("gitignore", self.plan("mail", code=2))
+        self.assertIn("gitignore", self.run_script("move", "--yes", "0123456789ab", "mail", code=2))
+        self.assertEqual(self.files(), before)
+
+    def test_a_tracked_file_is_listed_and_refused_and_stays_in_git(self):
+        self.configure()
+        self.scattered("plans/2026-07-02-plan.md", "the plan\n")
+        self.scattered("plans/scratch.md", "loose notes\n")
+        git(self.repo, "add", "plans/2026-07-02-plan.md")
+        git(self.repo, "commit", "-qm", "a tracked plan")
+        out = self.plan("plans")
+        self.assertIn("tracked by git, refused: plans/2026-07-02-plan.md", out)
+        self.assertIn("plans -> docs/knowledge/raw/2026-08-20-plans/ (1 file, 12 B)", out)
+        self.agree("plans")
+        self.assertTrue((self.repo / "plans" / "2026-07-02-plan.md").exists())
+        self.assertEqual(git(self.repo, "status", "--porcelain", "--untracked-files=no"), "")
+        self.assertEqual([r["aka"] for r in self.local().values()], [["plans/scratch.md"]])
+
+    def test_a_folder_a_script_reads_stays_where_it_is_and_the_config_is_left_to_the_user(self):
+        self.configure()
+        self.scattered("feeds/prices.csv", "sku,price\n")
+        self.scattered("feeds-notes/a.md", "a note\n")                 # a longer name is another folder
+        self.scattered("data/owner/x.md", "x\n")                         # its parent is what the script reads
+        self.scattered("briefs/b.md", "b\n")                             # a skill's instructions name it
+        self.scattered("drops/c.md", "c\n")                              # an untracked script names it
+        (self.repo / "tools").mkdir()
+        (self.repo / "tools" / "load.py").write_text('ROWS = open("feeds/prices.csv").read()\nALL = glob("data/*")\n')
+        (self.repo / "skills" / "brief").mkdir(parents=True)
+        (self.repo / "skills" / "brief" / "SKILL.md").write_text("Read every file in `briefs/` first.\n")
+        (self.repo / "fetch.sh").write_text("cp new/* drops/\n")
+        (self.repo / ".gitignore").write_text("docs/knowledge/raw/\nfeeds-notes/\n")    # ignore rules aren't scripts
+        git(self.repo, "add", "tools/load.py", "skills/brief/SKILL.md", ".gitignore")
+        git(self.repo, "commit", "-qm", "a loader")
+        config = (self.repo / "docs" / "agents" / "knowledge.md").read_text()
+        out = self.plan("feeds", "feeds-notes", "docs/rulings.md", "data/owner", "briefs", "drops")
+        self.assertIn("- feeds stays where it is, named in tools/load.py", out)
+        self.assertIn("- data/owner stays where it is, named in tools/load.py", out)
+        self.assertIn("- briefs stays where it is, named in skills/brief/SKILL.md", out)
+        self.assertIn("- drops stays where it is, named in fetch.sh", out)
+        self.assertIn("- docs/rulings.md: refused: not a folder here", out)
+        self.assertIn("feeds-notes -> docs/knowledge/raw/2026-08-20-feeds-notes/", out)
+        self.assertIn("sources: docs/rulings.md, feeds, data/owner, briefs, drops", out)
+        self.agree("feeds", "feeds-notes", "docs/rulings.md", "data/owner", "briefs", "drops")
+        self.assertTrue((self.repo / "feeds" / "prices.csv").exists())
+        self.assertEqual((self.repo / "docs" / "agents" / "knowledge.md").read_text(), config)
+        self.assertEqual(sorted(r["path"] for r in self.local().values()),
+                         ["docs/knowledge/raw/2026-08-20-feeds-notes/a.md"])
+
+    def test_folders_that_cant_move_are_refused_with_the_reason(self):
+        self.configure()
+        self.raw("2026-06-01-final.md")
+        self.scattered("mail/ask.md")
+        self.scattered("mail/sub/b.md", "b\n")
+        self.scattered("2026-08-20-dup/x.md", "x\n")
+        self.raw("2026-08-20-dup/taken.md", "already there\n")
+        (self.repo / "empty").mkdir()
+        (self.repo / "link").symlink_to(self.repo / "mail", target_is_directory=True)
+        (self.repo / "docs" / "knowledge" / "entries").mkdir(parents=True)
+        (self.repo / "docs" / "knowledge" / "entries" / "draft.md").write_text("sources: src-0123456789\n")
+        before = self.files()
+        out = self.plan("mail", "mail/sub", "../outside", ".git", "docs/knowledge/raw", "docs/knowledge/raw/x",
+                        "2026-08-20-dup", "empty", "link", "docs", "docs/knowledge/entries", "nowhere")
+        for folder, why in (("mail/sub", "overlaps"), ("../outside", "not inside the repository"),
+                            (".git", "not inside the repository"), ("docs/knowledge/raw", "inbox"),
+                            ("2026-08-20-dup", "already exists"), ("empty", "no files"), ("link", "not a folder"),
+                            ("docs", "knowledge config"), ("docs/knowledge/entries", "knowledge config"),
+                            ("nowhere", "not a folder")):
+            with self.subTest(folder=folder):
+                self.assertIn(f"- {folder}: refused: ", out)
+                self.assertIn(why, next(line for line in out.splitlines() if line.startswith(f"- {folder}: ")))
+        self.assertIn("mail -> docs/knowledge/raw/2026-08-20-mail/ (2 files", out)
+        self.assertEqual(self.files(), before)
+
+    def test_a_source_that_left_the_inbox_comes_back_with_its_id(self):
+        self.configure()
+        old = self.raw("2026-07-02-plan.md", "the plan\n")
+        self.run_script("index")
+        (before,) = self.rows()
+        (self.repo / "back").mkdir()
+        old.rename(self.repo / "back" / "2026-07-02-plan.md")
+        self.agree("back")
+        (after,) = self.rows()
+        self.assertEqual(after["id"], before["id"])
+        self.assertEqual(self.local()[after["id"]]["aka"],
+                         ["back/2026-07-02-plan.md", "docs/knowledge/raw/2026-07-02-plan.md"])
+        self.assertEqual(self.counts()["absent"], 0)
+
+    def test_a_move_that_stops_half_way_records_what_moved_and_deletes_nothing(self):
+        self.configure()
+        self.scattered("mail/a.md", "a\n")
+        self.scattered("mail/sub/jane-doe.md", "b\n")
+        before = self.contents()
+        code = self.code_of("mail")
+        (self.repo / "mail" / "sub").chmod(0o555)                        # its file can't leave it
+        out = self.run_script("move", "--yes", code, "mail", code=2)
+        self.assertIn("stopped after 1 of 2 files", out)
+        self.assertNotIn("jane-doe", out)
+        self.assertEqual(self.contents(), before)
+        self.assertEqual([r["aka"] for r in self.local().values()], [["mail/a.md"]])
+        (self.repo / "mail" / "sub").chmod(0o755)                        # fixed: the next plan finishes it
+        out = self.plan("mail")
+        self.assertIn("mail -> docs/knowledge/raw/2026-08-20-mail/ (1 file, 2 B)", out)
+        self.agree("mail")
+        self.assertEqual(self.contents(), before)
+        self.assertEqual(sorted(r["path"] for r in self.local().values()),
+                         ["docs/knowledge/raw/2026-08-20-mail/a.md",
+                          "docs/knowledge/raw/2026-08-20-mail/sub/jane-doe.md"])
+
+    def test_a_folder_named_in_another_case_is_refused(self):
+        self.configure()
+        git(self.repo, "add", "docs/agents/knowledge.md")
+        git(self.repo, "commit", "-qm", "config")
+        self.scattered("mail/ask.md")
+        before = self.files()
+        out = self.plan("Docs", "DOCS/agents", "Mail")
+        for folder in ("Docs", "DOCS/agents", "Mail"):
+            with self.subTest(folder=folder):
+                self.assertIn(f"- {folder}: refused: ", out)
+        self.assertNotIn("--yes", out)
+        self.assertEqual(self.files(), before)
+        self.assertEqual(git(self.repo, "status", "--porcelain", "--untracked-files=no"), "")
+
+    def test_a_folder_holding_or_inside_another_repository_is_refused(self):
+        self.configure()
+        lib = self.repo / "vendor" / "lib"
+        lib.mkdir(parents=True)
+        git(lib, "init", "-q")
+        self.scattered("vendor/lib/data/a.md")
+        self.scattered("vendor/notes.md")
+        out = self.plan("vendor", "vendor/lib/data")
+        self.assertIn("- vendor: refused: it holds or sits in another git repository", out)
+        self.assertIn("- vendor/lib/data: refused: it holds or sits in another git repository", out)
+
+    def test_a_folder_of_duplicates_only_records_its_paths(self):
+        self.configure()
+        self.raw("2026-06-01-final.md", "the final offer\n")
+        self.run_script("index")
+        self.scattered("copies/offer.md", "the final offer\n")
+        out = self.plan("copies")
+        self.assertIn("- copies: nothing moves", out)
+        self.assertIn("duplicate, kept once: copies/offer.md", out)
+        self.agree("copies")
+        (row,) = self.local().values()
+        self.assertEqual(row["aka"], ["copies/offer.md"])
+        self.assertTrue((self.repo / "copies" / "offer.md").exists())
+
+    def test_two_folders_that_would_share_a_destination_are_refused(self):
+        self.configure()
+        self.scattered("a/Notes/x.md", "x\n")
+        self.scattered("b/notes/y.md", "y\n")
+        out = self.plan("a/Notes", "b/notes")
+        self.assertIn("- b/notes: refused: docs/knowledge/raw/2026-08-20-notes/ already exists", out)
+
+    def test_the_yes_is_for_the_whole_list_and_only_for_a_while(self):
+        self.configure()
+        self.scattered("mail/ask.md", "12345\n")
+        code = self.code_of("mail")
+        (self.repo / "mail" / "ask.md").rename(self.repo / "mail" / "asked.md")    # the same size and folder
+        self.assertIn("changed", self.run_script("move", "--yes", code, "mail", code=1))
+        code = self.code_of("mail")
+        minute, digest = code.split("-")
+        revived = f"{int(minute, 16) + 31:x}-{digest}"                   # a later minute can't renew it
+        self.assertIn("changed", self.run_script("move", "--yes", revived, "mail", code=1))
+        later = "real = time.time\ntime.time = lambda: real() + 31 * 60"
+        self.assertIn("expired", self.run_patched(later, "move", "--yes", code, "mail", code=1))
+        self.assertTrue((self.repo / "mail" / "asked.md").exists())
+        self.run_script("move", "--yes", code, "mail")
+        self.assertFalse((self.repo / "mail").exists())
+
+    def test_a_move_killed_half_way_keeps_every_old_path_and_the_next_plan_finishes_it(self):
+        self.configure()
+        self.scattered("mail/a.md", "a\n")
+        self.scattered("mail/b.md", "b\n")
+        before = self.contents()
+        killed = ("real = os.rename\ndef rename(src, dst):\n    real(src, dst)\n    os._exit(9)\n"
+                  "os.rename = rename")                                   # no finally runs, as with SIGKILL
+        self.run_patched(killed, "move", "--yes", self.code_of("mail"), "mail", code=9)
+        self.assertEqual(self.contents(), before)
+        out = self.plan("mail")
+        self.assertIn("mail -> docs/knowledge/raw/2026-08-20-mail/ (1 file, 2 B)", out)
+        self.assertEqual([r["aka"] for r in self.local().values()], [["mail/a.md"]])
+        self.agree("mail")
+        self.assertEqual(sorted(r["path"] for r in self.local().values()),
+                         ["docs/knowledge/raw/2026-08-20-mail/a.md", "docs/knowledge/raw/2026-08-20-mail/b.md"])
+        self.assertEqual(self.contents(), before)
+        inbox = self.repo / "docs" / "knowledge" / "raw"
+        self.assertEqual(sorted(p.name for p in inbox.iterdir() if p.name.startswith(".")), [".knowledge-local.jsonl"])
+
+    def test_a_tracked_file_whose_folder_was_renamed_in_case_is_still_refused(self):
+        self.configure()
+        self.scattered("Owner/a.md", "tracked\n")
+        git(self.repo, "add", "Owner/a.md")
+        git(self.repo, "commit", "-qm", "a tracked note")
+        (self.repo / "Owner").rename(self.repo / "t")
+        (self.repo / "t").rename(self.repo / "owner")
+        if not (self.repo / "Owner").exists():
+            self.skipTest("this disk tells cases apart, so git sees the rename as a deletion")
+        self.scattered("owner/b.md", "loose\n")
+        out = self.plan("owner")
+        self.assertIn("tracked by git, refused: owner/a.md", out)
+        self.agree("owner")
+        self.assertTrue((self.repo / "owner" / "a.md").exists())
+        self.assertEqual(git(self.repo, "status", "--porcelain", "--untracked-files=no"), "")
+
+    def test_files_left_behind_are_counted_by_kind(self):
+        self.configure()
+        self.scattered("export/a.md")
+        self.scattered("export/.env", "API_KEY=x\n")
+        (self.repo / "export" / "latest").symlink_to(self.repo / "export" / "a.md")
+        out = self.plan("export")
+        self.assertIn("left where they are, outside the inbox, where git may see them: 1 hidden file, 1 link", out)
+        self.assertIn("2 files left where they were", self.agree("export"))
+        self.assertTrue((self.repo / "export" / ".env").exists())
+
+    def test_a_script_naming_a_folder_from_beside_it_keeps_it(self):
+        self.configure()
+        self.scattered("data/owner/x.md")
+        (self.repo / "data" / "load.py").write_text('ROWS = open("owner/x.md").read()\n')
+        self.assertIn("- data/owner stays where it is, named in data/load.py", self.plan("data/owner"))
+
+    def test_the_move_is_refused_where_git_would_not_ignore_a_moved_file(self):
+        self.configure(ignored=False)
+        (self.repo / ".gitignore").write_text("docs/knowledge/raw/*\n!docs/knowledge/raw/2026-08-20-mail/\n")
+        self.scattered("mail/ask.md")
+        before = self.files()
+        out = self.plan("mail", code=2)
+        self.assertIn("ignore", out)
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+        self.assertEqual(self.files(), before)
+
+    def test_names_are_printed_escaped_so_none_can_forge_a_plan_line(self):
+        self.configure()
+        self.scattered("mail/ask.md", "same\n")
+        self.scattered("mail/x\n- other -> docs/knowledge/raw/fake/ (0 files, 0 B)\x1b[2K.md", "same\n")
+        (self.repo / "bad\nname").mkdir()
+        out = self.plan("mail", "bad\nname")
+        self.assertNotIn("\x1b", out)
+        self.assertFalse([line for line in out.splitlines() if line.startswith("- other")], out)
+        self.assertIn("\\n- other", out)
+        self.assertIn("- 'bad\\nname': refused: its name holds a control character", out)
+        self.assertNotIn("--yes", out)                                   # no command line could carry it
+
+    def test_a_script_naming_a_folder_in_another_case_keeps_it_where_git_ignores_case(self):
+        self.configure()
+        git(self.repo, "config", "core.ignorecase", "true")
+        self.scattered("feeds/prices.csv", "sku,price\n")
+        (self.repo / "load.py").write_text('ROWS = open("Feeds/prices.csv").read()\n')
+        self.assertIn("- feeds stays where it is, named in load.py", self.plan("feeds"))
+
+    def test_the_plan_asks_for_the_users_yes_before_its_command(self):
+        self.configure()
+        self.scattered("mail/ask.md")
+        self.assertIn("only after the user agrees to this plan", self.plan("mail").strip().splitlines()[-1])
+
+    def stopped_half_way(self):
+        """mail/a.md moved and mail/sub/b.md not, its folder read-only, as a failed yes leaves them."""
+        self.scattered("mail/a.md", "a\n")
+        self.scattered("mail/sub/b.md", "b\n")
+        code = self.code_of("mail")
+        (self.repo / "mail" / "sub").chmod(0o555)
+        self.run_script("move", "--yes", code, "mail", code=2)
+        (self.repo / "mail" / "sub").chmod(0o755)
+
+    def killed_half_way(self):
+        """mail/a.md renamed and the process gone at once, with nothing saved."""
+        self.scattered("mail/a.md", "a\n")
+        self.scattered("mail/b.md", "b\n")
+        killed = "real = os.rename\ndef rename(src, dst):\n    real(src, dst)\n    os._exit(9)\nos.rename = rename"
+        self.run_patched(killed, "move", "--yes", self.code_of("mail"), "mail", code=9)
+
+    def test_a_refused_folder_is_no_ones_kept_copy(self):
+        self.configure()
+        self.stopped_half_way()
+        blocker = self.repo / "docs" / "knowledge" / "raw" / "2026-08-20-mail" / "sub" / "b.md"
+        blocker.write_text("something else\n")                         # where mail/sub/b.md would go
+        self.scattered("other/b-copy.md", "b\n")                        # the same as mail/sub/b.md
+        out = self.plan("mail", "other")
+        self.assertIn("- mail: refused: a file already sits", out)
+        self.assertIn("other -> docs/knowledge/raw/2026-08-20-other/ (1 file", out)
+        self.assertNotIn("duplicate, kept once", out)
+        out = self.agree("mail", "other")
+        self.assertNotIn("Traceback", out)
+        self.assertTrue((self.repo / "docs" / "knowledge" / "raw" / "2026-08-20-other" / "b-copy.md").exists())
+
+    def test_index_after_a_killed_move_keeps_the_old_path(self):
+        self.configure()
+        self.killed_half_way()
+        self.run_script("index")
+        by_path = {r["path"]: r["aka"] for r in self.local().values()}
+        self.assertEqual(by_path["docs/knowledge/raw/2026-08-20-mail/a.md"], ["mail/a.md"])
+        self.assertIn("mail -> docs/knowledge/raw/2026-08-20-mail/ (1 file", self.plan("mail"))
+
+    def test_a_second_run_is_refused_while_one_holds_the_inbox(self):
+        self.configure()
+        self.scattered("mail/a.md")
+        code = self.code_of("mail")
+        import fcntl
+        with open(self.repo / ".git" / "seams-knowledge.lock", "a") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            for args in (("index",), ("move", "mail"), ("move", "--yes", code, "mail"),
+                         ("topics", "src-0123456789", "a")):
+                with self.subTest(args=args):
+                    out = self.run_script(*args, code=2)
+                    self.assertIn("another", out)
+                    self.assertEqual(len(out.strip().splitlines()), 1, out)
+            self.assertIn("not distilled", self.run_script("status"))   # reading needs no lock
+        self.assertTrue((self.repo / "mail" / "a.md").exists())
+
+    def test_a_journal_that_points_outside_the_inbox_is_refused(self):
+        self.configure()
+        self.scattered("mail/a.md")
+        self.run_script("index")
+        journal = self.repo / "docs" / "knowledge" / "raw" / ".knowledge-move.json"
+        step = {"src": "mail/a.md", "dest": "docs/knowledge/raw/2026-08-20-mail/a.md", "hash": "0" * 64,
+                "date": "2026-08-20", "size": 2, "mtime": 0}
+        for bad in ({"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "dest": "../../outside/a.md"}]},
+                    {"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "dest": "/tmp/a.md"}]},
+                    {"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "dest": "docs/other/a.md"}]},
+                    {"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "src": "/etc/passwd"}]},
+                    {"folders": {"mail": "docs/knowledge/raw/x"}, "steps": [{**step, "date": "jane doe"}]},
+                    {"folders": {"mail": 7}, "steps": [step]},
+                    {"folders": {"mail": "/etc"}, "steps": [step]}):
+            journal.write_text(json.dumps(bad))
+            for args in (("move", "mail"), ("index",)):
+                with self.subTest(bad=bad, args=args):
+                    out = self.run_script(*args, code=2)
+                    self.assertEqual(len(out.strip().splitlines()), 1, out)
+                    self.assertIn("journal", out)
+        self.assertNotIn("jane", (self.repo / "docs" / "knowledge" / "index.jsonl").read_text())
+
+    def test_only_the_folders_the_move_emptied_are_removed(self):
+        self.configure()
+        self.scattered("mail/sub/a.md")
+        (self.repo / "mail" / "kept-empty").mkdir()
+        self.agree("mail")
+        self.assertTrue((self.repo / "mail" / "kept-empty").is_dir())
+        self.assertFalse((self.repo / "mail" / "sub").exists())
 
 
 if __name__ == "__main__":
