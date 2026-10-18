@@ -2,7 +2,7 @@
 
 Status: active
 Stage: designing
-Next: The grill's first round: the memory layer's shape, learning about the user, the overnight tool policy (asked alone), and evidence-gated merges (asked alone).
+Next: Gabriel's confirmation; then seams:to-spec, seams:to-tickets, and seams:implement per ticket in a worktree.
 Updated: 2026-10-18
 
 ## Decisions
@@ -22,9 +22,13 @@ Updated: 2026-10-18
 10. Reviewer (Gabriel's choice): the heartbeat runs the gate and the tests itself on the exact head and hands the output to a read-only reviewer that judges the diff and the evidence.
 11. Mine, from the facts: Railway calls naming production, a -prod service, or no environment are refused; n8n has one live instance, so its writes and runs are refused (reads, validation and inactive drafts allowed); a -soft night looks up each PR's card and a PR whose card it can't read waits; overnight sends go to the recipients in a list file Gabriel fills (none until he does); sleepclaude also passes --chrome, with Playwright the overnight browser.
 
+12. Card source (Gabriel's choice): local only at start (progress files, git); a session fetches PR and CI state from GitHub when a task needs it.
+13. Tests (Gabriel's choice): unit tests for each new guard rule (recipient list, Railway production, n8n, the GitHub merge check, takeover -soft and -hard), the card and resume hook tests (every active file listed, stale ones flagged), text pins for the claims and reconcile rules, and one paid `claude plugin eval` of an unattended night on a sample repository, asked before it runs.
+14. Mine: a progress file is flagged stale when its branch has commits newer than its last update, or it hasn't changed in three days; the guard refuses whenever it can't check (a GitHub lookup that fails refuses the merge).
+
 ## Open questions
 
-- Whether the card reads GitHub at session start; test seams.
+- None; Gabriel's confirmation.
 
 ## Facts
 
