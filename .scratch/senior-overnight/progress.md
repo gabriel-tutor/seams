@@ -2,8 +2,12 @@
 
 Status: active
 Stage: designed
-Next: seams:to-spec for .scratch/senior-overnight/spec.md, then seams:to-tickets (Gabriel approves the breakdown), then seams:implement per ticket in .worktrees/senior-overnight.
+Next: seams:to-tickets: split the spec into tickets (Gabriel approves the breakdown), then seams:implement per ticket in .worktrees/senior-overnight.
 Updated: 2026-10-18
+
+## Spec
+
+.scratch/senior-overnight/spec.md (ready-for-agent)
 
 ## Decisions
 
