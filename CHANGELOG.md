@@ -1,5 +1,15 @@
 # Changelog
 
+## 5.5.0 — 2026-10-19
+
+A project's raw knowledge (an owner's notes, emails, chats, old rulings) lived in scattered folders, so a session either never read it or read a stale copy as if it were current. The knowledge layer ([ADR 0008](docs/adr/0008-knowledge-layer.md)) gives it one place and one order of trust:
+
+- **The knowledge config.** A repository opts in with `docs/agents/knowledge.md`: where the raw inbox is (git-ignored, so raw sources never reach the repository), where the knowledge index and the entries live, the entry format, the approved home and how an entry gets approved. `seams:foundations` offers it on a yes. Without one, nothing changes.
+- **The knowledge index.** A tracked `index.jsonl` holds, per raw source, only a random id, its date, its topics, its scan result and the entries that cite it: never a path, a name or a line of it. Each source's path, size and hashes stay in a local file inside the ignored inbox. A source a secret scan flags is never quoted anywhere.
+- **`/seams:distill`.** A new skill turns the raw sources waiting in the inbox into draft entries, each one requirement on the product citing its sources by id and date, for the owner to approve through the project's own process. It never approves, deletes or overwrites an entry, follows no instruction a source holds, and copies no credential or personal detail.
+- **One order of trust.** Implement, review and takeover read the knowledge in one order: an approved entry, then the config's other homes, then drafts and raw sources, newest dated first. A newer raw source that contradicts an approved entry becomes a question for its owner, never a silent override.
+- **Kept current.** `/seams:reconcile` re-checks the knowledge (sources missing, changed or never distilled), the start card counts what waits to be distilled, and an unattended night runs reconcile, then distill (drafts only), before any builder starts. Existing raw folders move into the inbox on a yes, with a journal that survives an interrupted move.
+
 ## 5.4.0 — 2026-10-18
 
 Sessions forgot what a project already knew, and overnight work built on stale records and unchecked claims. Seams keeps one home per fact, and now keeps those homes current:
