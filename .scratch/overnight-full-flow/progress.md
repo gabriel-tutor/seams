@@ -1,8 +1,8 @@
 # Progress: the full Seams flow, enforced overnight
 
 Status: done
-Stage: integrated
-Next: None to build. Integrated on local main at 758a8a4 (live on this Mac, which reads the plugin in place; the SubagentStop hook loads in sleep sessions launched after it). Pushing and releasing (5.6.0) wait for the user's yes.
+Stage: deployed
+Next: None. Released as Seams 5.6.0: main and v5.6.0 at 7b947e6 on GitHub (PR #22's CI and main's CI green on it, all three jobs); this Mac reads 5.6.0 in place; the SubagentStop hook loads in sleep sessions launched after.
 Updated: 2026-10-19
 
 ## Decisions
@@ -18,6 +18,8 @@ Updated: 2026-10-19
 9. Built 2026-10-19 on seams-5.5/overnight-full-flow from 4051dc8 (dd6048c to this record), test first, after a code review, a security review and its re-check, and five automated security passes, each acted on or accepted (decision 8); 21 suites pass, the hook tests on Python 3.14 and 3.9. The guard part was swapped in at ~/.claude/skills/sleep-mode (backups `.bak-2026-10-19d`), 108 tests passing in place on both.
 
 10. Integrated 2026-10-19 on the user's choice ("Merge back to main locally"): fast-forward of main to 758a8a4, 21 suites passing on the result; worktree and branch removed.
+
+11. Released 2026-10-19 on the user's yes ("go", then each deploy question): the 13 commits scanned clean for client details and secrets, staging PR #22 green on 7b947e6, main fast-forwarded and tagged v5.6.0, main's CI green on it. Rollback: revert the release on main and delete the tag v5.6.0.
 
 ## Open questions
 
