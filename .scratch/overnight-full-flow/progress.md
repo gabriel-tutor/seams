@@ -1,8 +1,8 @@
 # Progress: the full Seams flow, enforced overnight
 
-Status: active
-Stage: built
-Next: Integrate seams-5.5/overnight-full-flow into main through seams:finishing-a-development-branch, on the user's yes (the Mac reads the plugin in place, so main makes it live; the SubagentStop hook loads in sleep sessions launched after); then a release only on the user's yes. The sleep-mode guard's merge rule is live (~/.claude/skills/sleep-mode, decisions 29-30 there). Set Status: done in the commit that records the integration.
+Status: done
+Stage: integrated
+Next: None to build. Integrated on local main at 758a8a4 (live on this Mac, which reads the plugin in place; the SubagentStop hook loads in sleep sessions launched after it). Pushing and releasing (5.6.0) wait for the user's yes.
 Updated: 2026-10-19
 
 ## Decisions
@@ -16,6 +16,8 @@ Updated: 2026-10-19
 7. Mine, the user may overrule them (the reviews of dd6048c and 3270778): the commit rule holds builders (subagents) only, not the lead, and not pr-review's own take-over fixers; `seams:implement` is a design step (its ticket comes from a grilled spec); only a change that needs verification is an agent's last change; the handover asks up to three times per change and also refuses a `SubagentHandback`; overnight the ledger is refused to every write; ledger writes take a lock. In the guard a review counts only when its Skill call succeeded, names the pull request among the PR-shaped words its arguments open with (`open` and list URLs never count), and started after the head arrived on GitHub (its newest commit, its check suites, and the lead's own push of its branch).
 8. Mine, the user may overrule it (the security re-checks, 2026-10-19): accepted and recorded as the text checks' limit, since the session runs as the user and nothing it can read is out of its reach: the ledger is matched by path-shaped names (`state/seams`, `.local/state`, its full path), so a path built in pieces gets through; a hook planted in an ignored folder of the repository (husky's generated `.husky/_`) keeps the documentation exemption; the handover asks three times per change, then the merge's `/seams:pr-review` is the backstop; a builder's own push in a repository with no check suites is not seen by the guard (builders hand back, the lead pushes); `PR 12` and `#12 and #13` name only what they lead with (fails closed). An unread commit (an alias, inline code) counts as code.
 9. Built 2026-10-19 on seams-5.5/overnight-full-flow from 4051dc8 (dd6048c to this record), test first, after a code review, a security review and its re-check, and five automated security passes, each acted on or accepted (decision 8); 21 suites pass, the hook tests on Python 3.14 and 3.9. The guard part was swapped in at ~/.claude/skills/sleep-mode (backups `.bak-2026-10-19d`), 108 tests passing in place on both.
+
+10. Integrated 2026-10-19 on the user's choice ("Merge back to main locally"): fast-forward of main to 758a8a4, 21 suites passing on the result; worktree and branch removed.
 
 ## Open questions
 
