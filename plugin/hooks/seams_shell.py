@@ -781,14 +781,14 @@ INLINE_COMMIT = re.compile(r"\bgit\b.*\b(" + "|".join(sorted(COMMIT_MAKERS)) + r
 # own options, then a subcommand that makes commits. `merge-base` and `--merges` are not one.
 TEXT_COMMIT = re.compile(r"(?<![\w.-])git\s+(?:(?:-[cC]\s+\S+|--?[\w-]+(?:=\S+)?)\s+)*(?:" + "|".join(
     re.escape(m) for m in sorted(COMMIT_MAKERS)) + r")(?![\w-])")
-COMMIT_MESSAGE = re.compile(r"\$\(cat <<-?\s*'(\w+)'\n(.*?)\n\1\n\s*\)", re.S)   # git commit -m "$(cat <<'EOF' ... EOF)"
+COMMIT_MESSAGE = re.compile(r"\$\(cat <<\s*'(\w+)'\n(.*?)\n\1\n\s*\)", re.S)   # never <<-, which ends at a tabbed line   # git commit -m "$(cat <<'EOF' ... EOF)"
 
 
 def _message_only(match) -> str:
     """A commit message's heredoc is text only when nothing but its own end follows its first end line: the shell
     ends a heredoc at the first line equal to its word, so a body holding that line again runs what comes after it."""
     word, body = match.group(1), match.group(2)
-    return match.group(0) if word in body.split("\n") else "MESSAGE"
+    return match.group(0) if word in (line.strip() for line in body.split("\n")) else "MESSAGE"
 
 
 def commits(command: str) -> bool:

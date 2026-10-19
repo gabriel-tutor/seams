@@ -298,7 +298,8 @@ def _touches_ledger(event: dict) -> bool:
     home = os.path.expanduser("~")
     tail = os.path.relpath(root, home) if _under(root, home) else root           # .local/state/seams, its default
     parent = os.path.dirname(tail)
-    return tool in ("Bash", "Monitor", "PowerShell") and any(s and s in command for s in (root, tail, parent))
+    named = any(s and s in command for s in (root, tail, parent)) or ("state" in command and "seams" in command)
+    return tool in ("Bash", "Monitor", "PowerShell") and named
 
 
 def missing_for_commit(ledger: dict, agent_id: object) -> list:
