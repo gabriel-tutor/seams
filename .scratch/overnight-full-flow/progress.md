@@ -20,6 +20,7 @@ Updated: 2026-10-19
 10. Integrated 2026-10-19 on the user's choice ("Merge back to main locally"): fast-forward of main to 758a8a4, 21 suites passing on the result; worktree and branch removed.
 
 11. Released 2026-10-19 on the user's yes ("go", then each deploy question): the 13 commits scanned clean for client details and secrets, staging PR #22 green on 7b947e6, main fast-forwarded and tagged v5.6.0, main's CI green on it. Rollback: revert the release on main and delete the tag v5.6.0.
+12. pr-review lifts its ban on merging, pushing, editing and marking ready (the user's ask, 2026-10-20: "make this not happen again ... I need to be faster"): a skill's `disallowed-tools` hold for the rest of the turn it ran in, so every merge the night started after its `/seams:pr-review` was refused (32 of 32 attempts in one night matched exactly: refused when pr-review ran earlier in the same turn, through otherwise). `disallowed-tools` keeps `gh pr close`, `gh pr reopen` and `gh pr review` (a review goes out only through post_reviews.py); the skill's text still says the review itself never merges, pushes, edits or marks ready.
 
 ## Open questions
 

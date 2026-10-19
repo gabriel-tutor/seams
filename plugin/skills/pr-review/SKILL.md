@@ -18,12 +18,8 @@ allowed-tools:
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/requirements.py *)
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/takeover.py target *)
 disallowed-tools:
-  - Bash(git push:*)
-  - Bash(gh pr merge:*)
   - Bash(gh pr close:*)
   - Bash(gh pr reopen:*)
-  - Bash(gh pr edit:*)
-  - Bash(gh pr ready:*)
   - Bash(gh pr review:*)
 ---
 

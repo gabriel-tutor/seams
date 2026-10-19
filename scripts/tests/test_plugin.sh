@@ -407,8 +407,10 @@ GATE_AGENTS=$(PYTHONDONTWRITEBYTECODE=1 python3 -c 'import sys; sys.path.insert(
 # script as the core runs it, `python3 ${CLAUDE_SKILL_DIR}/scripts/<name>.py`: Claude Code fills in ${CLAUDE_SKILL_DIR}
 # in both places, so the rule matches the command, from any directory. takeover.py is pre-approved for `target` alone,
 # which only decides; `push` pushes to someone else's branch, so Claude Code's own prompt, showing the branch and the
-# commit, is the user's yes. disallowed-tools refuses pushing, merging, closing, reopening, editing, marking ready and
-# reviewing. Each list is read under its own key and held to exactly these entries; a fixture with a refused command
+# commit, is the user's yes. disallowed-tools refuses closing, reopening and reviewing (a review goes out only through
+# post_reviews.py). Merging, pushing, editing and marking ready are not refused: a skill's disallowed tools hold for the
+# rest of the turn it ran in, so they refused the merge an unattended night makes after its review
+# (.scratch/overnight-full-flow, decision 12); the text still says the review itself never does them. Each list is read under its own key and held to exactly these entries; a fixture with a refused command
 # moved into the pre-approved list, and one with an extra pre-approval, shows the check catching both.
 PRR="$PLUGIN/skills/pr-review/SKILL.md"
 PRR_SCRIPTS="evidence run_checks review_payload post_reviews batch_report requirements"
@@ -416,8 +418,7 @@ PRR_ALLOWED=("Bash(gh auth status:*)" "Bash(gh repo view:*)" "Bash(gh pr view:*)
   "Bash(gh pr checks:*)" "Bash(gh issue view:*)")
 for s in $PRR_SCRIPTS; do PRR_ALLOWED+=("Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/$s.py *)"); done
 PRR_ALLOWED+=("Bash(python3 \${CLAUDE_SKILL_DIR}/scripts/takeover.py target *)")
-PRR_DISALLOWED=("Bash(git push:*)" "Bash(gh pr merge:*)" "Bash(gh pr close:*)" "Bash(gh pr reopen:*)" "Bash(gh pr edit:*)"
-  "Bash(gh pr ready:*)" "Bash(gh pr review:*)")
+PRR_DISALLOWED=("Bash(gh pr close:*)" "Bash(gh pr reopen:*)" "Bash(gh pr review:*)")
 permission_problems() {   # $1 = a SKILL.md: how its allowed-tools and disallowed-tools differ from PRR_ALLOWED and PRR_DISALLOWED
   python3 - "$1" "${#PRR_ALLOWED[@]}" "${PRR_ALLOWED[@]}" "${PRR_DISALLOWED[@]}" <<'PY'
 import re, sys
@@ -438,10 +439,10 @@ for key, entries in want.items():
 PY
 }
 PERM_FIX=$(mktemp -d)
-grep -vxF -- "  - Bash(gh pr merge:*)" "$PRR" | awk '{print} $0 == "allowed-tools:" {print "  - Bash(gh pr merge:*)"}' > "$PERM_FIX/moved"
+grep -vxF -- "  - Bash(gh pr close:*)" "$PRR" | awk '{print} $0 == "allowed-tools:" {print "  - Bash(gh pr close:*)"}' > "$PERM_FIX/moved"
 awk '{print} $0 == "allowed-tools:" {print "  - Bash(rm:*)"}' "$PRR" > "$PERM_FIX/extra"
 PERM_OUT="$(permission_problems "$PERM_FIX/moved")"$'\n'"$(permission_problems "$PERM_FIX/extra")"; rm -rf "$PERM_FIX"
-for want in "allowed-tools adds Bash(gh pr merge:*)" "disallowed-tools lacks Bash(gh pr merge:*)" "allowed-tools adds Bash(rm:*)"; do
+for want in "allowed-tools adds Bash(gh pr close:*)" "disallowed-tools lacks Bash(gh pr close:*)" "allowed-tools adds Bash(rm:*)"; do
   [[ $PERM_OUT == *"$want"* ]] || fail "the permission check missed: $want (it said: $PERM_OUT)"
 done
 PERM_OUT=$(permission_problems "$PRR")
