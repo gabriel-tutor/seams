@@ -805,6 +805,7 @@ def commits(command: str) -> bool:
 
 
 ADD_FLAGS = {"-A", "--all", "-u", "--update", "-v", "--verbose", "-n", "--dry-run", "--"}   # plain words, unquoted
+PLAIN_WORD = re.compile(r"^[A-Za-z0-9_./@%+=,:-]+$")     # no quote, escape, expansion, glob or ~
 
 
 def commit_alone(command: str) -> bool:
@@ -819,8 +820,8 @@ def commit_alone(command: str) -> bool:
         if redirects or not words or words[0] != "git" or _git_options(words):    # the plain word, nothing renamed
             return False
         sub, raw = _git_parts(words)
-        flags = [w for w in raw if _unquote(w).startswith("-") or not w.lstrip("'\"").strip() or w[:1] in "'\""]
-        unknown = [w for w in flags if w not in ADD_FLAGS]          # git takes --forc for --force: an allowlist
+        unknown = [w for w in raw if not PLAIN_WORD.match(w) or (w.startswith("-") and w not in ADD_FLAGS)]   # deny
+        # by default: git takes --forc for --force, and the shell turns \--force, $'-f' or {-f,x} into one
         if sub not in ("add", "commit") or (sub == "add" and unknown):
             return False
     return True

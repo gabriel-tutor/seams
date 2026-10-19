@@ -1245,7 +1245,9 @@ class OvernightFullFlow(unittest.TestCase):
             self.assertEqual(self.commit("builder-1")["decision"], "allow", "the repository's own hooks, which status shows")
             git("config", "--unset", "core.hooksPath")
             for command in ("git add -fA && git commit -m docs", "git add --forc build/x.js && git commit -m docs",
-                            "git add \"--fo\"\"rce\" build/x.js && git commit -m docs", "git add --chmod=+x x && git commit -m d"):
+                            "git add \"--fo\"\"rce\" build/x.js && git commit -m docs", "git add --chmod=+x x && git commit -m d",
+                            "git add \\--force x && git commit -m d", "git add $'-f' x && git commit -m d",
+                            "git add {-f,x} && git commit -m d", "git add ~/x && git commit -m d"):
                 with self.subTest(command=command):
                     self.assertEqual(self.commit("builder-1", command)["decision"], "deny")
             self.changed("docs/a.mdx")
