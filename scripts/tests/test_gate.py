@@ -1169,6 +1169,83 @@ class SubagentDeclarations(unittest.TestCase):
         self.assertEqual(sorted(declared(self.ledger)), ["seams:implement", "seams:trivial"])
 
 
+class OvernightFullFlow(unittest.TestCase):
+    """Overnight every agent runs the whole flow, not just any route (.scratch/overnight-full-flow, decisions 1 and 5):
+    a commit needs its agent's own design step (the grill, or diagnosing-bugs for a bug) and tdd, unless every change
+    is documentation; a builder that changed the project hands back only after code-review and verification ran since
+    its last change. By day nothing here applies."""
+
+    def setUp(self):
+        self.ledger = seams_ledger.empty_ledger("s1")
+        self.repo = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.repo, ignore_errors=True))
+        for args in (["init", "-q"], ["-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "base"]):
+            __import__("subprocess").run(["git", "-C", str(self.repo), *args], check=True)
+
+    def changed(self, *paths: str) -> None:
+        for path in paths:
+            (self.repo / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / path).write_text("x\n")
+
+    def commit(self, agent_id: str = None, command: str = "git commit -am wip") -> dict:
+        return gate.decide_pre_tool_use(event("Bash", cwd=str(self.repo), agent_id=agent_id, command=command), self.ledger)
+
+    def ran(self, agent_id, *skills: str) -> None:
+        for skill in skills:
+            seams_ledger.add_declaration(self.ledger, skill, agent_id)
+            seams_ledger.record_run(self.ledger, skill, agent_id)
+
+    def test_a_commit_overnight_needs_its_agents_design_step_and_tdd(self):
+        self.changed("src/a.ts")
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            self.ran("builder-1", "seams:trivial")
+            refused = self.commit("builder-1")
+            self.assertEqual(refused["decision"], "deny")
+            self.assertIn("seams:grill", refused["reason"])
+            self.assertIn("tdd", refused["reason"])
+            self.ran("builder-1", "seams:grill")
+            self.assertIn("tdd", self.commit("builder-1")["reason"], "the design step alone is not the flow")
+            self.ran("builder-1", "tdd")
+            self.assertEqual(self.commit("builder-1")["decision"], "allow")
+            self.ran("builder-2", "diagnosing-bugs", "tdd")
+            self.assertEqual(self.commit("builder-2")["decision"], "allow", "a bug's design step is its diagnosis")
+            self.assertEqual(self.commit("builder-3", "git add -A && git commit -m wip")["decision"], "deny")
+            self.ran(None, "seams:trivial")
+            self.assertEqual(self.commit()["decision"], "deny", "the lead's own code commit too")
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": ""}):
+            self.assertEqual(self.commit("builder-9")["decision"], "allow", "by day any route covers a commit")
+
+    def test_a_documentation_only_commit_needs_only_a_route(self):
+        self.changed("README.md", ".scratch/f/progress.md", "docs/a.md")
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            self.ran("builder-1", "seams:trivial")
+            self.assertEqual(self.commit("builder-1")["decision"], "allow")
+            self.changed("src/a.ts")
+            self.assertEqual(self.commit("builder-1")["decision"], "deny", "one code file makes it a code commit")
+
+    def handover(self, agent_id="builder-1", agent_type="general-purpose", again=False):
+        stop = {"session_id": "s1", "hook_event_name": "SubagentStop", "agent_id": agent_id, "agent_type": agent_type,
+                "stop_hook_active": again}
+        return seams_ledger.decide_subagent_stop(self.ledger, stop)
+
+    def test_a_builder_hands_back_only_after_code_review_and_verification_since_its_last_change(self):
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            self.ran("builder-1", "seams:grill", "tdd")
+            self.assertIsNone(self.handover(), "a builder that changed nothing hands back freely")
+            seams_ledger.record_agent_change(self.ledger, "builder-1")
+            reason = self.handover()
+            self.assertIn("code-review", reason)
+            self.assertIn("seams:verification-before-completion", reason)
+            self.ran("builder-1", "code-review", "seams:verification-before-completion")
+            self.assertIsNone(self.handover())
+            seams_ledger.record_agent_change(self.ledger, "builder-1")
+            self.assertIn("code-review", self.handover(), "a fix after the review is reviewed again")
+            self.assertIsNone(self.handover(again=True), "asked once per stop, as the done-check")
+            self.assertIsNone(self.handover("scout-1", "seams:scout"), "a read-only agent changes nothing")
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": ""}):
+            self.assertIsNone(self.handover(), "by day the user sees the handover")
+
+
 class ReadOnlyAgents(unittest.TestCase):
     """Seams' two read-only agents, `scout` and `reviewer`, read and never write, whatever the ledger says
     (lean-and-durable ticket 09, decision 30). A shell command passes only when every part of it is a read the

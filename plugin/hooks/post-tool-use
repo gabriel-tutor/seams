@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""PostToolUse hook on the Skill tool: record a declaration when a process skill ran, and
-mark the request verified when a verification skill ran.
+"""PostToolUse hook on the Skill tool: record each skill an agent ran (the overnight checks read the whole flow),
+a declaration when a process skill ran, and mark the request verified when a verification skill ran.
 
 Only a completed invocation reaches this hook, so a failed or unknown skill never counts.
 When the skill is implement, the grill or release, it then adds the repository facts as context
@@ -23,9 +23,10 @@ def handle(event: dict):
         return None
     skill = (event.get("tool_input") or {}).get("skill") or ""
     declares, verifies = seams_ledger.is_declaration(skill), seams_ledger.is_verification(skill)
-    if declares or verifies:
+    if skill:
         session = event.get("session_id") or ""
         ledger = seams_ledger.load_ledger(session)
+        seams_ledger.record_run(ledger, skill, event.get("agent_id"))   # each agent's whole flow, for the night's checks
         if declares:
             seams_ledger.add_declaration(ledger, skill, event.get("agent_id"))
         if verifies:

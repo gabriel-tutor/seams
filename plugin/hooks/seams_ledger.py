@@ -266,6 +266,34 @@ def _stays(declaration: object, owner: str | None, prompt_id: object) -> bool:
     return bool(prompt_id) and isinstance(declaration, dict) and declaration.get("prompt_id") == prompt_id
 
 
+def _agent_record(ledger: dict, agent_id: object) -> dict:
+    """One agent's own history (the main conversation's under ""): the skills it ran and its last change, each by
+    sequence number. Unlike a route, it is never replaced or reset by a new request, so the overnight checks see the
+    whole flow an agent ran (.scratch/overnight-full-flow)."""
+    agents = ledger.get("agents")
+    if not isinstance(agents, dict):
+        agents = ledger["agents"] = {}
+    key = agent_id if isinstance(agent_id, str) and agent_id else ""
+    if not isinstance(agents.get(key), dict) or not isinstance(agents[key].get("ran"), dict):
+        agents[key] = {"ran": {}, "changed": 0}
+    return agents[key]
+
+
+def record_run(ledger: dict, skill: str, agent_id: object = None) -> None:
+    """A skill this agent ran to completion."""
+    _agent_record(ledger, agent_id)["ran"][skill] = _next_seq(ledger)
+
+
+def record_agent_change(ledger: dict, agent_id: object = None) -> None:
+    """A change to the project this agent made."""
+    _agent_record(ledger, agent_id)["changed"] = _next_seq(ledger)
+
+
+def ran_by(ledger: dict, agent_id: object = None) -> dict:
+    """The skills this agent ran, each with the sequence number of its last run."""
+    return dict(_agent_record(ledger, agent_id)["ran"])
+
+
 def subagent_of(declaration: dict) -> str | None:
     """The subagent whose own declaration this is, or None for the main conversation's (an entry that names no
     subagent, as every entry did before lean-and-durable ticket 12, is the main conversation's)."""
@@ -443,6 +471,31 @@ def decide_stop(ledger: dict, stop_hook_active: bool) -> str | None:
             f"(for example {describe(pending[0])}). Run `{PLUGIN_PREFIX}verification-before-completion` "
             f"now with the Skill tool, show the verify commands' real output, then finish. This "
             f"check does not repeat in this turn.")
+
+
+HANDOVER_STEPS = ("code-review", PLUGIN_PREFIX + "verification-before-completion")
+
+
+def decide_subagent_stop(ledger: dict, event: dict) -> str | None:
+    """Overnight, the handover check (.scratch/overnight-full-flow): a builder that changed the project hands back
+    only after code-review and verification both ran since its last change, as implement orders them; the reason
+    names what is missing. Asked once per stop (stop_hook_active ends it), never by day, never for a read-only agent,
+    whose writes the gate refuses."""
+    agent = event.get("agent_id")
+    if not unattended() or event.get("stop_hook_active") or not isinstance(agent, str) or not agent or \
+            event.get("agent_type") in (PLUGIN_PREFIX + "scout", PLUGIN_PREFIX + "reviewer"):
+        return None
+    record = _agent_record(ledger, agent)
+    changed = record.get("changed") if isinstance(record.get("changed"), int) else 0
+    if not changed:
+        return None
+    missing = [s for s in HANDOVER_STEPS if not (isinstance(record["ran"].get(s), int) and record["ran"][s] > changed)]
+    if not missing:
+        return None
+    return (f"Seams handover check: in unattended mode a builder hands back only after "
+            f"{' and '.join(f'`{s}`' for s in missing)} ran since its last change to the project. Run "
+            f"{' then '.join(f'`{s}`' for s in missing)} now with the Skill tool, act on what they find, then hand back "
+            "with the verification output.")
 
 
 # --- The hook frame -----------------------------------------------------------------------

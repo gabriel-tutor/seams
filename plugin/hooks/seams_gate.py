@@ -256,4 +256,58 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
             reason += (" In unattended mode a builder routes its own work: invoke the skill your instructions name, "
                        "or the one your ticket's size needs, yourself.")
         return {"decision": "deny", "reason": reason, "change": None}
+    if overnight and _commits(event):
+        missing = missing_for_commit(ledger, event.get("agent_id"))
+        if missing and not _documentation_only(event):
+            return {"decision": "deny", "reason": overnight_commit_reason(missing), "change": None}
     return {"decision": "allow", "reason": None, "change": change}
+
+
+# --- Overnight, the whole flow (.scratch/overnight-full-flow) ------------------------------------
+# By day the user answers the grill and confirms each step, so any route opens the gate. Overnight no one does, and
+# builders took the shortest route (bare tdd, or trivial), so a commit needs its own agent's design step and tests.
+
+DESIGN_STEPS = {PLUGIN_PREFIX + "grill", "diagnosing-bugs"}     # a bug's design step is its diagnosis
+COMMIT_STEPS = (("design", "`seams:grill` (or `diagnosing-bugs` for a bug)"), ("tdd", "`tdd`"))
+
+
+def missing_for_commit(ledger: dict, agent_id: object) -> list:
+    """The steps a commit still needs from this agent's own history: its design step and tdd (which `implement`
+    runs). Code review and verification come after the commit, as implement orders them, and are checked at the
+    handover (seams_ledger.decide_subagent_stop)."""
+    import seams_ledger
+    ran = seams_ledger.ran_by(ledger, agent_id)
+    have = {"design": bool(DESIGN_STEPS & set(ran)), "tdd": "tdd" in ran}
+    return [label for step, label in COMMIT_STEPS if not have[step]]
+
+
+def overnight_commit_reason(missing: list) -> str:
+    return (f"{REFUSAL_PREFIX}in unattended mode a commit of code runs the whole Seams flow first, and this agent "
+            f"has not yet run {' and '.join(missing)}. Invoke {missing[0]} with the Skill tool and carry the work "
+            "through it, then commit; a commit that changes only documentation needs just a route.")
+
+
+def _commits(event: dict) -> bool:
+    tool, command = event.get("tool_name"), (event.get("tool_input") or {}).get("command") or ""
+    if tool in ("Bash", "Monitor"):
+        import seams_shell
+        return seams_shell.commits(command)
+    return tool == "PowerShell" and _powershell_label(command) == "git commit" if command.strip() else False
+
+
+def _documentation_only(event: dict) -> bool:
+    """Whether every change in the repository the command runs in, staged, unstaged or untracked, is documentation
+    (Markdown, or a feature's records under .scratch/). A command that moves elsewhere first (cd, git -C) is read as
+    code, since the repository it commits in can't be told here."""
+    import subprocess
+    cwd, command = event.get("cwd"), (event.get("tool_input") or {}).get("command") or ""
+    if not cwd or re.search(r"(^|[\s;&|(])(cd|pushd)\s|\s-C\s|--git-dir|--work-tree|GIT_DIR=|GIT_WORK_TREE=", command):
+        return False
+    try:
+        out = subprocess.run(["git", "-C", cwd, "status", "--porcelain", "-uall"], capture_output=True, text=True,
+                             timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    paths = [line[3:].split(" -> ")[-1].strip('"') for line in out.stdout.splitlines() if line.strip()]
+    return out.returncode == 0 and bool(paths) and all(
+        p.lower().endswith(DOC_SUFFIXES) or p.startswith(".scratch/") for p in paths)

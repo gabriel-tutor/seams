@@ -765,6 +765,39 @@ def _classify(command: str, is_exempt, env: dict, depth: int = 0) -> str | None:
     return None
 
 
+def commits(command: str) -> bool:
+    """Whether a shell command runs `git commit` anywhere in it: a later segment, a substitution, `bash -c` or `eval`
+    included. A command nested too deeply to read counts as one."""
+    try:
+        return _commits(command, 0)
+    except (_TooDeep, RecursionError):
+        return True
+
+
+def _commits(command: str, depth: int) -> bool:
+    if not command or not command.strip():
+        return False
+    if depth > MAX_NESTING:
+        raise _TooDeep
+    text, heredocs = _without_heredoc_text(command)
+    tokens = _tokens(text)
+    runs = [run for body in heredocs for run in _runs(body)] + [run for token in tokens for run in _word_runs(token)]
+    if any(_commits(inner, depth + 1) for inner in runs):
+        return True
+    for segment in _segments(tokens):
+        words = _words(_split_redirects(segment)[0])
+        if not words:
+            continue
+        base, args = _command_name(words[0]), [_unquote(w) for w in words[1:]]
+        if base == "git" and _git_parts(words)[0] == "commit":
+            return True
+        if base in {"bash", "sh", "zsh"} and "-c" in args and _commits((args[args.index("-c") + 1:] or [""])[0], depth + 1):
+            return True
+        if base == "eval" and _commits(" ".join(args), depth + 1):
+            return True
+    return False
+
+
 def classify_command(command: str, is_exempt: Callable[[str], bool] | None = None) -> str | None:
     """The label for what a shell command changes, or None when it looks read-only.
 

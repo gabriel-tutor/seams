@@ -29,7 +29,7 @@ asks()    { grep -q '"hookEventName": *"Stop"' <<< "$1" && grep -q '"additionalC
               && ! grep -q '"decision"' <<< "$1"; }
 LEDGERS="$HOME/.local/state/seams"; LEDGER="$LEDGERS/s1.json"
 
-for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit session-start stop; do
+for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit session-start stop subagent-stop; do
   [[ -x "$HOOKS/$h" ]] || fail "hook missing or not executable: $h"
 done
 
@@ -135,7 +135,7 @@ OUT=$(in_old odd PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\
 [[ -z "$OUT" ]] || fail "a skill invoked over a ledger of an unknown shape should open the gate: $OUT"
 
 # 5. Garbage in: every hook exits 0 with no stdout.
-for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit session-start stop; do
+for h in pre-tool-use post-tool-use user-prompt-expansion user-prompt-submit session-start stop subagent-stop; do
   OUT=$(echo '{not json' | hook "$h" 2>/dev/null) || fail "$h should exit 0 on garbage"
   [[ -z "$OUT" ]] || fail "$h should print nothing on garbage: $OUT"
 done
@@ -209,6 +209,7 @@ STEPS = [
     ("PostToolUse", skill("seams:verification-before-completion"), None, ""),
     ("Stop", {"stop_hook_active": False}, None, ""),        # the verification was recorded
     ("SubagentStart", {"agent_id": "b1", "agent_type": "general-purpose"}, None, ""),   # by day it briefs no one
+    ("SubagentStop", {"agent_id": "b1", "agent_type": "general-purpose", "stop_hook_active": False}, None, ""),   # nor checks one
 ]
 assert set(hooks) == {event for event, *_ in STEPS}, f"the config's events changed: {sorted(hooks)}"
 
@@ -417,5 +418,23 @@ OUT=$(SID=broken ev_in "$FR" PostToolUse '"tool_name":"Skill","tool_input":{"ski
 OUT=$(SID=broken2 ev_in "$FR" UserPromptExpansion '"prompt_id":"b1","expansion_type":"slash_command","command_name":"seams:grill","command_source":"plugin","command_args":"","prompt":"/grill"' \
       | "$PYABS" "$BROKEN/user-prompt-expansion" 2>/dev/null) || fail "a broken facts module should not fail the expansion hook"
 [[ -z $OUT && $(ledger_of broken2) == *'"prompt_id": "b1"'* ]] || fail "a broken facts module should cost the expansion hook only the facts: $OUT"
+
+# Overnight the whole flow (.scratch/overnight-full-flow): the Skill hook records each skill an agent ran, so the gate
+# refuses a builder's code commit until its own grill and tdd ran, and lets it through after.
+NIGHT="$TMP/night"; mkdir -p "$NIGHT/src"; git -C "$NIGHT" init -q; echo x > "$NIGHT/src/a.ts"
+night() { printf '{"session_id":"night","cwd":"%s","hook_event_name":"%s","agent_id":"b1","agent_type":"general-purpose",%s}' "$NIGHT" "$1" "$2" \
+          | SEAMS_UNATTENDED=1 hook "$3"; }
+night_skill() { night PostToolUse "\"tool_name\":\"Skill\",\"tool_input\":{\"skill\":\"$1\"},\"tool_response\":{}" post-tool-use >/dev/null; }
+night_commit() { night PreToolUse '"tool_name":"Bash","tool_input":{"command":"git commit -am wip"}' pre-tool-use; }
+night_skill seams:trivial
+OUT=$(night_commit); denied "$OUT" && [[ $OUT == *"seams:grill"* ]] || fail "overnight, a code commit after only trivial should be refused: $OUT"
+night_skill seams:grill; night_skill tdd
+OUT=$(night_commit); ! denied "$OUT" || fail "overnight, a commit after the grill and tdd should pass: $OUT"
+# The commit was a change: its builder hands back only after code-review and verification, asked as hook feedback.
+handover() { night SubagentStop '"stop_hook_active":false,"last_assistant_message":"done"' subagent-stop; }
+OUT=$(handover); [[ $OUT == *'"hookEventName": "SubagentStop"'* && $OUT == *code-review* && $OUT != *'"decision"'* ]] \
+  || fail "overnight, a builder that changed code should be asked for code-review before it hands back: $OUT"
+night_skill code-review; night_skill seams:verification-before-completion
+OUT=$(handover); [[ -z $OUT ]] || fail "after code-review and verification the builder should hand back: $OUT"
 
 echo "test_hooks ($($PY --version 2>&1)): OK"
