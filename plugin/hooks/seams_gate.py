@@ -259,7 +259,7 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
         return {"decision": "allow", "reason": None, "change": None}
     commit = overnight and bool(agent_id) and _commits(event)       # a builder's; the lead's merges are reviewed
     if change is None and commit:               # an alias or inline code the classifier reads as no write
-        change = {"tool": event.get("tool_name") or "", "label": "git commit", "doc": False}   # no code by itself
+        change = {"tool": event.get("tool_name") or "", "label": "a commit", "doc": False}   # unread: counted as code
     if change is None:
         return {"decision": "allow", "reason": None, "change": None}
     if not declared_for(ledger, event.get("agent_id"), overnight):

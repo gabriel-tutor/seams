@@ -1244,7 +1244,9 @@ class OvernightFullFlow(unittest.TestCase):
             git("config", "core.hooksPath", ".husky/_")
             self.assertEqual(self.commit("builder-1")["decision"], "allow", "the repository's own hooks, which status shows")
             git("config", "--unset", "core.hooksPath")
-            self.assertEqual(self.commit("builder-1", "git add -fA && git commit -m docs")["decision"], "deny")
+            for command in ("git add -fA && git commit -m docs", "git add --forc build/x.js && git commit -m docs"):
+                with self.subTest(command=command):
+                    self.assertEqual(self.commit("builder-1", command)["decision"], "deny")
             self.changed("docs/a.mdx")
             self.assertEqual(self.commit("builder-1")["decision"], "deny", "MDX runs code")
             (self.repo / "docs" / "a.mdx").unlink()
@@ -1292,10 +1294,7 @@ class OvernightFullFlow(unittest.TestCase):
                             "grep -rn statement .scratch/seams-5.5/progress.md"):
                 with self.subTest(command=command):
                     self.assertEqual(self.commit(None, command)["decision"], "allow")
-            read = gate.decide_pre_tool_use(event("Bash", cwd=str(self.repo), agent_id="builder-1",
-                                                  command='grep -rn "git merge" docs'), self.ledger)
-            self.assertNotEqual(read["change"] and seams_ledger.changes_code(read["change"]), True,
-                                "a read naming a commit is no code change")
+
 
     def test_the_session_cannot_write_the_ledger_overnight(self):
         root = seams_ledger.ledger_root()
