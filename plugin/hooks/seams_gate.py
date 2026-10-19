@@ -247,16 +247,19 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
             return {"decision": "deny", "reason": read_only_reason(agent, problem), "change": None}
         return {"decision": "allow", "reason": None, "change": None}
     change = change_for_event(event, config_dir)
+    overnight = unattended()
+    commit = overnight and _commits(event)
+    if change is None and commit:               # an alias or inline code the classifier reads as no write
+        change = {"tool": event.get("tool_name") or "", "label": "a commit", "doc": False}
     if change is None:
         return {"decision": "allow", "reason": None, "change": None}
-    overnight = unattended()
     if not declared_for(ledger, event.get("agent_id"), overnight):
         reason = deny_reason(change)
         if overnight and event.get("agent_id"):
             reason += (" In unattended mode a builder routes its own work: invoke the skill your instructions name, "
                        "or the one your ticket's size needs, yourself.")
         return {"decision": "deny", "reason": reason, "change": None}
-    if overnight and _commits(event):
+    if commit:
         missing = missing_for_commit(ledger, event.get("agent_id"))
         if missing and not _documentation_only(event):
             return {"decision": "deny", "reason": overnight_commit_reason(missing), "change": None}
@@ -297,11 +300,12 @@ def _commits(event: dict) -> bool:
 
 def _documentation_only(event: dict) -> bool:
     """Whether every change in the repository the command runs in, staged, unstaged or untracked, is documentation
-    (Markdown, or a feature's records under .scratch/). A command that moves elsewhere first (cd, git -C) is read as
-    code, since the repository it commits in can't be told here."""
+    (Markdown, or a feature's records under .scratch/), and the command is only `git add` and `git commit`: anything
+    else in it (a write, a cd, git -C, a merge) could change what is committed after this read, so it is read as code."""
     import subprocess
     cwd, command = event.get("cwd"), (event.get("tool_input") or {}).get("command") or ""
-    if not cwd or re.search(r"(^|[\s;&|(])(cd|pushd)\s|\s-C\s|--git-dir|--work-tree|GIT_DIR=|GIT_WORK_TREE=", command):
+    import seams_shell
+    if not cwd or not seams_shell.commit_alone(command):    # a write beside the commit lands after this read
         return False
     try:
         out = subprocess.run(["git", "-C", cwd, "status", "--porcelain", "-uall"], capture_output=True, text=True,

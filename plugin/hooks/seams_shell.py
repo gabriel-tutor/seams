@@ -499,6 +499,12 @@ def _git_parts(words: list) -> tuple:
     return (_unquote(rest[0]), rest[1:]) if rest else ("", [])
 
 
+def _git_options(words: list) -> list:
+    """git's own options before its subcommand (-C DIR, -c key=value and the like), unquoted."""
+    sub, raw = _git_parts(words)
+    return [_unquote(w) for w in words[1:len(words) - len(raw) - (1 if sub else 0)]]
+
+
 def git_label(words: list) -> str | None:
     sub, raw = _git_parts(words)
     if not sub:
@@ -765,13 +771,41 @@ def _classify(command: str, is_exempt, env: dict, depth: int = 0) -> str | None:
     return None
 
 
+COMMIT_MAKERS = {"commit", "merge", "cherry-pick", "revert", "am", "pull", "rebase", "commit-tree"}
+GIT_OTHERS = {"branch", "stash", "tag", "worktree", "fetch", "config", "remote", "help", "version", "ls-remote",
+              "submodule", "notes", "gc", "fsck", "reflog", "bisect", "sparse-checkout", "lfs", "maintenance",
+              "range-diff", "format-patch", "archive", "bundle", "check-ignore", "check-attr", "count-objects", "var",
+              "hash-object", "update-index", "cherry", "whatchanged", "status", "add"}
+INLINE_COMMIT = re.compile(r"\bgit\b.*\b(" + "|".join(sorted(COMMIT_MAKERS)) + r")\b", re.S)
+
+
 def commits(command: str) -> bool:
-    """Whether a shell command runs `git commit` anywhere in it: a later segment, a substitution, `bash -c` or `eval`
-    included. A command nested too deeply to read counts as one."""
+    """Whether a shell command may make a commit anywhere in it: `git commit` and the other subcommands that make
+    commits (merge, cherry-pick, revert, am, pull, rebase, commit-tree), a git alias or a `-c` setting (either can
+    run one), or inline interpreter code that names one; in a later segment, a substitution, `bash -c` or `eval` too.
+    A command nested too deeply to read counts as one."""
     try:
         return _commits(command, 0)
     except (_TooDeep, RecursionError):
         return True
+
+
+def commit_alone(command: str) -> bool:
+    """Whether a command is only `git add` and `git commit` (no other write, substitution, redirect or alias), so the
+    tree read before it runs is the tree it commits."""
+    text, heredocs = _without_heredoc_text(command or "")
+    tokens = _tokens(text)
+    if heredocs or any(_word_runs(token) for token in tokens):
+        return False
+    for segment in _segments(tokens):
+        words, redirects = _split_redirects(segment)
+        if redirects or not words:
+            return False
+        if _command_name(words[0]) != "git" or _git_options(words):
+            return False
+        if _git_parts(words)[0] not in ("add", "commit"):
+            return False
+    return True
 
 
 def _commits(command: str, depth: int) -> bool:
@@ -789,7 +823,11 @@ def _commits(command: str, depth: int) -> bool:
         if not words:
             continue
         base, args = _command_name(words[0]), [_unquote(w) for w in words[1:]]
-        if base == "git" and _git_parts(words)[0] == "commit":
+        if base == "git":
+            sub = _git_parts(words)[0]
+            if sub in COMMIT_MAKERS or "-c" in _git_options(words) or (sub and sub not in GIT_READS | GIT_WRITES | GIT_OTHERS):
+                return True
+        if INTERPRETERS.match(base) and INLINE_COMMIT.search(" ".join(args)):
             return True
         if base in {"bash", "sh", "zsh"} and "-c" in args and _commits((args[args.index("-c") + 1:] or [""])[0], depth + 1):
             return True

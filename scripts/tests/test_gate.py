@@ -1223,6 +1223,21 @@ class OvernightFullFlow(unittest.TestCase):
             self.changed("src/a.ts")
             self.assertEqual(self.commit("builder-1")["decision"], "deny", "one code file makes it a code commit")
 
+    def test_the_documentation_exemption_and_the_commit_reader_cannot_be_talked_around(self):
+        # The security review of dd6048c: a write in the same command lands after the gate read the tree, and git
+        # makes commits under other names.
+        self.changed("README.md")
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            self.ran("builder-1", "seams:trivial")
+            self.assertEqual(self.commit("builder-1", "git add README.md && git commit -m docs")["decision"], "allow")
+            for command in ("echo x > src/b.ts && git commit -am docs", "sed -i '' s/x/y/ src/a.ts; git commit -am docs",
+                            "git merge origin/develop", "git cherry-pick abc", "git revert HEAD", "git pull",
+                            "git am < p.patch", "git -c alias.ci=commit ci -m x", "git ci -m x",
+                            "python3 -c \"import os; os.system('git commit -m x')\"",
+                            "node -e \"require('child_process').execSync('git commit -m x')\""):
+                with self.subTest(command=command):          # the tree holds only documentation changes
+                    self.assertEqual(self.commit("builder-1", command)["decision"], "deny")
+
     def handover(self, agent_id="builder-1", agent_type="general-purpose", again=False):
         stop = {"session_id": "s1", "hook_event_name": "SubagentStop", "agent_id": agent_id, "agent_type": agent_type,
                 "stop_hook_active": again}
