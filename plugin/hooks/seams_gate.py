@@ -259,7 +259,7 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
         return {"decision": "allow", "reason": None, "change": None}
     commit = overnight and bool(agent_id) and _commits(event)       # a builder's; the lead's merges are reviewed
     if change is None and commit:               # an alias or inline code the classifier reads as no write
-        change = {"tool": event.get("tool_name") or "", "label": "a commit", "doc": False}
+        change = {"tool": event.get("tool_name") or "", "label": "git commit", "doc": False}   # no code by itself
     if change is None:
         return {"decision": "allow", "reason": None, "change": None}
     if not declared_for(ledger, event.get("agent_id"), overnight):
@@ -298,7 +298,7 @@ def _touches_ledger(event: dict) -> bool:
     home = os.path.expanduser("~")
     tail = os.path.relpath(root, home) if _under(root, home) else root           # .local/state/seams, its default
     parent = os.path.dirname(tail)
-    named = any(s and s in command for s in (root, tail, parent)) or ("state" in command and "seams" in command)
+    named = any(s and s in command for s in (root, tail, parent, "state/seams"))   # path-shaped names only
     return tool in ("Bash", "Monitor", "PowerShell") and named
 
 
@@ -336,17 +336,24 @@ def _documentation_only(event: dict) -> bool:
     if not cwd or not seams_shell.commit_alone(command):
         return False
 
-    def git(*args):
-        out = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=5)
+    def git(*args):                              # short: the ledger lock is held meanwhile
+        out = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=1.5)
         return out.stdout if out.returncode == 0 else None
     try:
-        status, hooks_path, hooks = git("status", "--porcelain", "-uall"), git("config", "--get", "core.hooksPath"), \
-            git("rev-parse", "--git-path", "hooks")
+        status, top = git("status", "--porcelain", "-uall"), git("rev-parse", "--show-toplevel")
+        hooks, common = git("rev-parse", "--git-path", "hooks"), git("rev-parse", "--git-common-dir")
     except (OSError, subprocess.SubprocessError):
         return False
-    if status is None or (hooks_path or "").strip():
+    if status is None or not top or not hooks or not common:
         return False
-    hooks_dir = os.path.join(cwd, hooks.strip()) if hooks else ""
+    hooks_dir = os.path.realpath(os.path.join(cwd, hooks.strip()))
+    git_dir = os.path.realpath(os.path.join(cwd, common.strip()))
+    if _under(hooks_dir, git_dir):
+        pass                                     # .git/hooks: refused below when a hook is there, unseen by status
+    elif _under(hooks_dir, os.path.realpath(top.strip())):
+        hooks_dir = ""                           # the repository's own hooks (husky): a change to them shows in status
+    else:
+        return False                             # hooks outside the repository, which nothing here can see
     try:
         if hooks_dir and any(not name.endswith(".sample") and os.access(os.path.join(hooks_dir, name), os.X_OK)
                              for name in os.listdir(hooks_dir)):

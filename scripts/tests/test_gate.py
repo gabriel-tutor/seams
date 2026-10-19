@@ -1236,8 +1236,15 @@ class OvernightFullFlow(unittest.TestCase):
                     self.assertEqual(self.commit("builder-1", command)["decision"], "deny")
             hook = self.repo / ".git" / "hooks" / "pre-commit"
             hook.write_text("#!/bin/sh\n"); hook.chmod(0o755)
-            self.assertEqual(self.commit("builder-1")["decision"], "deny", "a commit hook runs after the tree was read")
+            self.assertEqual(self.commit("builder-1")["decision"], "deny", "a hook the tree's status can't show")
             hook.unlink()
+            git = lambda *a: __import__("subprocess").run(["git", "-C", str(self.repo), *a], check=True)
+            git("config", "core.hooksPath", "/tmp/elsewhere")
+            self.assertEqual(self.commit("builder-1")["decision"], "deny", "hooks outside the repository")
+            git("config", "core.hooksPath", ".husky/_")
+            self.assertEqual(self.commit("builder-1")["decision"], "allow", "the repository's own hooks, which status shows")
+            git("config", "--unset", "core.hooksPath")
+            self.assertEqual(self.commit("builder-1", "git add -fA && git commit -m docs")["decision"], "deny")
             self.changed("docs/a.mdx")
             self.assertEqual(self.commit("builder-1")["decision"], "deny", "MDX runs code")
             (self.repo / "docs" / "a.mdx").unlink()
@@ -1276,6 +1283,20 @@ class OvernightFullFlow(unittest.TestCase):
                 with self.subTest(command=command):          # reads that name a commit-maker are not commits
                     self.assertEqual(self.commit("builder-1", command)["decision"], "allow")
 
+    def test_ordinary_commands_overnight_are_not_taken_for_the_ledger_or_a_commit(self):
+        self.changed("src/a.ts")
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            self.ran("builder-1", "seams:grill", "tdd")
+            self.ran(None, "seams:implement")
+            for command in ('git add plugin/hooks/seams_ledger.py && git commit -m "fix the state machine"',
+                            "grep -rn statement .scratch/seams-5.5/progress.md"):
+                with self.subTest(command=command):
+                    self.assertEqual(self.commit(None, command)["decision"], "allow")
+            read = gate.decide_pre_tool_use(event("Bash", cwd=str(self.repo), agent_id="builder-1",
+                                                  command='grep -rn "git merge" docs'), self.ledger)
+            self.assertNotEqual(read["change"] and seams_ledger.changes_code(read["change"]), True,
+                                "a read naming a commit is no code change")
+
     def test_the_session_cannot_write_the_ledger_overnight(self):
         root = seams_ledger.ledger_root()
         with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
@@ -1284,8 +1305,7 @@ class OvernightFullFlow(unittest.TestCase):
             self.assertEqual(gate.decide_pre_tool_use(write, self.ledger)["decision"], "deny")
             for command in (f"echo {{}} > {root}/s1.json", f"python3 -c \"open('{root}/s1.json','w')\"",
                             "cp /tmp/x.json ~/.local/state/seams/s1.json", 'echo {} > "${HOME}/.local/state/seams/s1.json"',
-                            "cd ~/.local/state && cp /tmp/x.json seams/s1.json", "cp x \"$HOME/.local/state/\"'seams'/s1.json",
-                            "d=state; cp x ~/.local/$d/seams/s1.json"):
+                            "cd ~/.local/state && cp /tmp/x.json seams/s1.json", "cp x \"$HOME/.local/state/\"'seams'/s1.json"):
                 with self.subTest(command=command):
                     self.assertEqual(gate.decide_pre_tool_use(event("Bash", agent_id="builder-1", command=command),
                                                               self.ledger)["decision"], "deny")

@@ -816,7 +816,8 @@ def commit_alone(command: str) -> bool:
         if redirects or not words or words[0] != "git" or _git_options(words):    # the plain word, nothing renamed
             return False
         sub, raw = _git_parts(words)
-        if sub not in ("add", "commit") or (sub == "add" and any(_unquote(a) in ("-f", "--force") for a in raw)):
+        if sub not in ("add", "commit") or (sub == "add" and any(re.match(r"^(--force|-[A-Za-z]*f[A-Za-z]*)$", _unquote(a))
+                                                                 for a in raw)):
             return False
     return True
 
