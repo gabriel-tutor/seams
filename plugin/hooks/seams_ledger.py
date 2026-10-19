@@ -446,6 +446,17 @@ def describe(change: dict) -> str:
     return f"a shell command (`{change.get('label')}`)"
 
 
+CODE_FROM_GIT = {"git apply", "git am", "git cherry-pick", "git merge", "git pull", "git rebase", "git checkout",
+                 "git restore", "git reset", "git stash", "git revert", "git switch"}
+
+
+def changes_code(change: dict) -> bool:
+    """Whether a change can bring code a builder's review has not seen: a code edit (MDX runs code), or a git
+    command that writes the tree's content; never a plain add, commit, push or a Markdown record."""
+    label, path = str(change.get("label") or ""), str(change.get("path") or "").lower()
+    return label in CODE_FROM_GIT or path.endswith(".mdx") or needs_verification(change)
+
+
 def needs_verification(change: dict) -> bool:
     """Code changes do; documentation and VCS operations (a commit after the checks) do not."""
     if change.get("doc"):
@@ -532,10 +543,15 @@ def _ledger_lock():
         yield
         return
     with handle:
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX)
-        except OSError:
-            pass
+        deadline = time.monotonic() + 2         # a lock held too long is never a reason to stall a hook (fail open)
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() > deadline:
+                    break
+                time.sleep(0.02)
         yield
 
 

@@ -294,10 +294,11 @@ def _touches_ledger(event: dict) -> bool:
     if tool in EDITOR_TOOLS:
         path = _editor_path(event)
         return bool(path) and _under(os.path.realpath(path), root)
-    command = str(tool_input.get("command") or "")
+    command = re.sub(r"[\"'\\]", "", str(tool_input.get("command") or ""))     # quotes and escapes split no name
     home = os.path.expanduser("~")
-    spellings = {root, root.replace(home, "~", 1), root.replace(home, "$HOME", 1), ".local/state/seams"}
-    return tool in ("Bash", "Monitor", "PowerShell") and any(s in command for s in spellings)
+    tail = os.path.relpath(root, home) if _under(root, home) else root           # .local/state/seams, its default
+    parent = os.path.dirname(tail)
+    return tool in ("Bash", "Monitor", "PowerShell") and any(s and s in command for s in (root, tail, parent))
 
 
 def missing_for_commit(ledger: dict, agent_id: object) -> list:

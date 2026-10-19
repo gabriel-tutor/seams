@@ -1227,6 +1227,8 @@ class OvernightFullFlow(unittest.TestCase):
             self.assertEqual(self.commit("builder-1", "git commit -m \"$(cat <<'EOF'\ndocs: notes\n\nbody\nEOF\n)\"")["decision"],
                              "allow", "the usual commit message")
             for label, command in (("a forced add of an ignored file", "git add -f build/x.js && git commit -m docs"),
+                                   ("a command hidden in the message's heredoc",
+                                    "git commit -m \"$(cat <<'EOF'\nx\nEOF\necho y > src/a.ts\nEOF\n)\""),
                                    ("a git that isn't the plain word", "/tmp/x/git commit -m docs"),
                                    ("a command that moves first", "cd ../other && git commit -am docs")):
                 with self.subTest(label):
@@ -1280,7 +1282,8 @@ class OvernightFullFlow(unittest.TestCase):
             write = event("Write", agent_id="builder-1", file_path=os.path.join(root, "s1.json"), content="{}")
             self.assertEqual(gate.decide_pre_tool_use(write, self.ledger)["decision"], "deny")
             for command in (f"echo {{}} > {root}/s1.json", f"python3 -c \"open('{root}/s1.json','w')\"",
-                            "cp /tmp/x.json ~/.local/state/seams/s1.json"):
+                            "cp /tmp/x.json ~/.local/state/seams/s1.json", 'echo {} > "${HOME}/.local/state/seams/s1.json"',
+                            "cd ~/.local/state && cp /tmp/x.json seams/s1.json", "cp x \"$HOME/.local/state/\"'seams'/s1.json"):
                 with self.subTest(command=command):
                     self.assertEqual(gate.decide_pre_tool_use(event("Bash", agent_id="builder-1", command=command),
                                                               self.ledger)["decision"], "deny")

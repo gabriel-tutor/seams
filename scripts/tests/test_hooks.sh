@@ -440,5 +440,9 @@ night_skill code-review; night_skill seams:verification-before-completion
 OUT=$(handover); [[ -z $OUT ]] || fail "after code-review and verification the builder should hand back: $OUT"
 night_edit .scratch/progress.md >/dev/null
 OUT=$(handover); [[ -z $OUT ]] || fail "a record written after the review is not a change to review again: $OUT"
+night_skill tdd                              # verification replaced its route: more code is routed again first
+OUT=$(night PreToolUse '"tool_name":"Bash","tool_input":{"command":"git apply fix.patch"}' pre-tool-use)
+! denied "$OUT" || fail "a routed builder's git apply should pass: $OUT"
+OUT=$(handover); [[ $OUT == *code-review* ]] || fail "code brought in by git apply is a change to review again: $OUT"
 
 echo "test_hooks ($($PY --version 2>&1)): OK"
