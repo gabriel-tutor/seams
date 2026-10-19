@@ -804,6 +804,9 @@ def commits(command: str) -> bool:
         return True
 
 
+ADD_FLAGS = {"-A", "--all", "-u", "--update", "-v", "--verbose", "-n", "--dry-run", "--"}   # plain words, unquoted
+
+
 def commit_alone(command: str) -> bool:
     """Whether a command is only `git add` and `git commit` (no other write, substitution, redirect or alias), so the
     tree read before it runs is the tree it commits."""
@@ -816,9 +819,9 @@ def commit_alone(command: str) -> bool:
         if redirects or not words or words[0] != "git" or _git_options(words):    # the plain word, nothing renamed
             return False
         sub, raw = _git_parts(words)
-        forced = [a for a in map(_unquote, raw) if re.match(r"^-[A-Za-z]*f[A-Za-z]*$", a) or
-                  (a.startswith("--f") and "--force".startswith(a.split("=")[0]))]   # git takes --forc for --force
-        if sub not in ("add", "commit") or (sub == "add" and forced):
+        flags = [w for w in raw if _unquote(w).startswith("-") or not w.lstrip("'\"").strip() or w[:1] in "'\""]
+        unknown = [w for w in flags if w not in ADD_FLAGS]          # git takes --forc for --force: an allowlist
+        if sub not in ("add", "commit") or (sub == "add" and unknown):
             return False
     return True
 
