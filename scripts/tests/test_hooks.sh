@@ -430,11 +430,15 @@ night_skill seams:trivial
 OUT=$(night_commit); denied "$OUT" && [[ $OUT == *"seams:grill"* ]] || fail "overnight, a code commit after only trivial should be refused: $OUT"
 night_skill seams:grill; night_skill tdd
 OUT=$(night_commit); ! denied "$OUT" || fail "overnight, a commit after the grill and tdd should pass: $OUT"
-# The commit was a change: its builder hands back only after code-review and verification, asked as hook feedback.
+# A code edit is a change: its builder hands back only after code-review and verification, asked as hook feedback.
+night_edit() { night PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$NIGHT/$1\",\"old_string\":\"x\",\"new_string\":\"y\"}" pre-tool-use; }
 handover() { night SubagentStop '"stop_hook_active":false,"last_assistant_message":"done"' subagent-stop; }
+OUT=$(night_edit src/a.ts); ! denied "$OUT" || fail "a routed builder's edit should pass: $OUT"
 OUT=$(handover); [[ $OUT == *'"hookEventName": "SubagentStop"'* && $OUT == *code-review* && $OUT != *'"decision"'* ]] \
   || fail "overnight, a builder that changed code should be asked for code-review before it hands back: $OUT"
 night_skill code-review; night_skill seams:verification-before-completion
 OUT=$(handover); [[ -z $OUT ]] || fail "after code-review and verification the builder should hand back: $OUT"
+night_edit .scratch/progress.md >/dev/null
+OUT=$(handover); [[ -z $OUT ]] || fail "a record written after the review is not a change to review again: $OUT"
 
 echo "test_hooks ($($PY --version 2>&1)): OK"

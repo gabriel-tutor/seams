@@ -248,7 +248,16 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
         return {"decision": "allow", "reason": None, "change": None}
     change = change_for_event(event, config_dir)
     overnight = unattended()
-    commit = overnight and _commits(event)
+    agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
+    if overnight and _touches_ledger(event):
+        return {"decision": "deny", "reason": LEDGER_REASON, "change": None}
+    if overnight and agent_id and event.get("tool_name") == "SubagentHandback":
+        import seams_ledger
+        missing = seams_ledger.handover_missing(ledger, agent_id)
+        if missing:
+            return {"decision": "deny", "reason": seams_ledger.handover_reason(missing), "change": None}
+        return {"decision": "allow", "reason": None, "change": None}
+    commit = overnight and bool(agent_id) and _commits(event)       # a builder's; the lead's merges are reviewed
     if change is None and commit:               # an alias or inline code the classifier reads as no write
         change = {"tool": event.get("tool_name") or "", "label": "a commit", "doc": False}
     if change is None:
@@ -270,8 +279,25 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
 # By day the user answers the grill and confirms each step, so any route opens the gate. Overnight no one does, and
 # builders took the shortest route (bare tdd, or trivial), so a commit needs its own agent's design step and tests.
 
-DESIGN_STEPS = {PLUGIN_PREFIX + "grill", "diagnosing-bugs"}     # a bug's design step is its diagnosis
-COMMIT_STEPS = (("design", "`seams:grill` (or `diagnosing-bugs` for a bug)"), ("tdd", "`tdd`"))
+DESIGN_STEPS = {PLUGIN_PREFIX + "grill", "diagnosing-bugs", PLUGIN_PREFIX + "implement"}   # a bug's is its diagnosis;
+COMMIT_STEPS = (("design", "`seams:grill` (or `diagnosing-bugs` for a bug)"), ("tdd", "`tdd`"))   # a ticket's, its spec's
+DOCUMENTATION = (".md", ".markdown")             # MDX runs code
+LEDGER_REASON = (f"{REFUSAL_PREFIX}in unattended mode the gate's ledger, which records the flow each agent ran, takes "
+                 "no write from the session: run the skill the record would show instead.")
+
+
+def _touches_ledger(event: dict) -> bool:
+    """Whether a call writes, or may write, the gate's ledger: an editor tool's file inside it, or a shell command that
+    names its folder (read as a write, since the command's text is all the gate has)."""
+    root = os.path.realpath(ledger_root())
+    tool, tool_input = event.get("tool_name"), event.get("tool_input") or {}
+    if tool in EDITOR_TOOLS:
+        path = _editor_path(event)
+        return bool(path) and _under(os.path.realpath(path), root)
+    command = str(tool_input.get("command") or "")
+    home = os.path.expanduser("~")
+    spellings = {root, root.replace(home, "~", 1), root.replace(home, "$HOME", 1), ".local/state/seams"}
+    return tool in ("Bash", "Monitor", "PowerShell") and any(s in command for s in spellings)
 
 
 def missing_for_commit(ledger: dict, agent_id: object) -> list:
@@ -299,19 +325,31 @@ def _commits(event: dict) -> bool:
 
 
 def _documentation_only(event: dict) -> bool:
-    """Whether every change in the repository the command runs in, staged, unstaged or untracked, is documentation
-    (Markdown, or a feature's records under .scratch/), and the command is only `git add` and `git commit`: anything
-    else in it (a write, a cd, git -C, a merge) could change what is committed after this read, so it is read as code."""
+    """Whether every change in the repository the command runs in, staged, unstaged or untracked, both sides of a
+    rename, is Markdown, the command is only a plain `git add` and `git commit` (anything else in it, a write, a cd,
+    git -C, a forced add, could change what is committed after this read), and no commit hook runs after it."""
     import subprocess
-    cwd, command = event.get("cwd"), (event.get("tool_input") or {}).get("command") or ""
     import seams_shell
-    if not cwd or not seams_shell.commit_alone(command):    # a write beside the commit lands after this read
+    cwd, command = event.get("cwd"), (event.get("tool_input") or {}).get("command") or ""
+    if not cwd or not seams_shell.commit_alone(command):
         return False
+
+    def git(*args):
+        out = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=5)
+        return out.stdout if out.returncode == 0 else None
     try:
-        out = subprocess.run(["git", "-C", cwd, "status", "--porcelain", "-uall"], capture_output=True, text=True,
-                             timeout=5)
+        status, hooks_path, hooks = git("status", "--porcelain", "-uall"), git("config", "--get", "core.hooksPath"), \
+            git("rev-parse", "--git-path", "hooks")
     except (OSError, subprocess.SubprocessError):
         return False
-    paths = [line[3:].split(" -> ")[-1].strip('"') for line in out.stdout.splitlines() if line.strip()]
-    return out.returncode == 0 and bool(paths) and all(
-        p.lower().endswith(DOC_SUFFIXES) or p.startswith(".scratch/") for p in paths)
+    if status is None or (hooks_path or "").strip():
+        return False
+    hooks_dir = os.path.join(cwd, hooks.strip()) if hooks else ""
+    try:
+        if hooks_dir and any(not name.endswith(".sample") and os.access(os.path.join(hooks_dir, name), os.X_OK)
+                             for name in os.listdir(hooks_dir)):
+            return False                         # a hook can stage or write more after this read
+    except OSError:
+        pass
+    paths = [p.strip().strip('"') for line in status.splitlines() if line.strip() for p in line[3:].split(" -> ")]
+    return bool(paths) and all(p.lower().endswith(DOCUMENTATION) for p in paths)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SubagentStop hook, the handover check: in unattended mode a builder that changed the project hands back only after
-code-review and verification ran since its last change (.scratch/overnight-full-flow). Asks once per stop as hook
-feedback, which keeps the builder going, the way the done-check asks. Prints nothing otherwise, and never by day.
+code-review and verification ran since its last change (.scratch/overnight-full-flow). Asks as hook feedback, which
+keeps the builder going, up to three times per change. Prints nothing otherwise, and never by day.
 Fails open (see seams_ledger.run_hook)."""
 import os
 import sys
@@ -12,8 +12,11 @@ import seams_ledger  # noqa: E402
 
 
 def handle(event: dict):
-    reason = seams_ledger.decide_subagent_stop(seams_ledger.load_ledger(event.get("session_id") or ""), event)
+    session = event.get("session_id") or ""
+    ledger = seams_ledger.load_ledger(session)
+    reason = seams_ledger.decide_subagent_stop(ledger, event)
     if reason:
+        seams_ledger.save_ledger(session, ledger)     # the ask is counted, so a builder is asked a bounded number of times
         return {"hookSpecificOutput": {"hookEventName": "SubagentStop", "additionalContext": reason}}
     return None
 

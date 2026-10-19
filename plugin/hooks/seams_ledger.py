@@ -11,6 +11,7 @@ interpreter runs the hooks when nothing newer is first on PATH.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -445,7 +446,7 @@ def describe(change: dict) -> str:
     return f"a shell command (`{change.get('label')}`)"
 
 
-def _needs_verification(change: dict) -> bool:
+def needs_verification(change: dict) -> bool:
     """Code changes do; documentation and VCS operations (a commit after the checks) do not."""
     if change.get("doc"):
         return False
@@ -455,7 +456,7 @@ def _needs_verification(change: dict) -> bool:
 def unverified_changes(ledger: dict) -> list:
     """Changes that need verification, recorded after the last verification."""
     since = ledger.get("verified_seq") or 0
-    return [c for c in ledger.get("changes", []) if _needs_verification(c) and c.get("seq", 0) > since]
+    return [c for c in ledger.get("changes", []) if needs_verification(c) and c.get("seq", 0) > since]
 
 
 def decide_stop(ledger: dict, stop_hook_active: bool) -> str | None:
@@ -473,32 +474,69 @@ def decide_stop(ledger: dict, stop_hook_active: bool) -> str | None:
             f"check does not repeat in this turn.")
 
 
-HANDOVER_STEPS = ("code-review", PLUGIN_PREFIX + "verification-before-completion")
+HANDOVER_ASKS = 3                                # per change; then the lead's pr-review before the merge still holds
 
 
-def decide_subagent_stop(ledger: dict, event: dict) -> str | None:
-    """Overnight, the handover check (.scratch/overnight-full-flow): a builder that changed the project hands back
-    only after code-review and verification both ran since its last change, as implement orders them; the reason
-    names what is missing. Asked once per stop (stop_hook_active ends it), never by day, never for a read-only agent,
-    whose writes the gate refuses."""
-    agent = event.get("agent_id")
-    if not unattended() or event.get("stop_hook_active") or not isinstance(agent, str) or not agent or \
-            event.get("agent_type") in (PLUGIN_PREFIX + "scout", PLUGIN_PREFIX + "reviewer"):
-        return None
-    record = _agent_record(ledger, agent)
+def handover_missing(ledger: dict, agent_id: str) -> list:
+    """What a builder that changed the project still owes before it hands back: `code-review`, and a verification
+    (any skill the done-check counts), each run since its last change. Nothing for an agent that changed nothing."""
+    record = _agent_record(ledger, agent_id)
     changed = record.get("changed") if isinstance(record.get("changed"), int) else 0
     if not changed:
-        return None
-    missing = [s for s in HANDOVER_STEPS if not (isinstance(record["ran"].get(s), int) and record["ran"][s] > changed)]
-    if not missing:
-        return None
+        return []
+    since = {skill for skill, seq in record["ran"].items() if isinstance(seq, int) and seq > changed}
+    missing = [] if "code-review" in since else ["code-review"]
+    if not since & VERIFICATION_SKILLS:
+        missing.append(PLUGIN_PREFIX + "verification-before-completion")
+    return missing
+
+
+def handover_reason(missing: list) -> str:
     return (f"Seams handover check: in unattended mode a builder hands back only after "
             f"{' and '.join(f'`{s}`' for s in missing)} ran since its last change to the project. Run "
             f"{' then '.join(f'`{s}`' for s in missing)} now with the Skill tool, act on what they find, then hand back "
             "with the verification output.")
 
 
+def decide_subagent_stop(ledger: dict, event: dict) -> str | None:
+    """Overnight, the handover check (.scratch/overnight-full-flow): a builder that changed the project hands back
+    only after code-review and verification both ran since its last change, as implement orders them. Asked up to
+    HANDOVER_ASKS times per change, whatever stop_hook_active says (a second stop is no excuse), and recorded in the
+    ledger, which the caller saves; never by day, never for a read-only agent, whose writes the gate refuses."""
+    agent = event.get("agent_id")
+    if not unattended() or not isinstance(agent, str) or not agent or \
+            event.get("agent_type") in (PLUGIN_PREFIX + "scout", PLUGIN_PREFIX + "reviewer"):
+        return None
+    missing = handover_missing(ledger, agent)
+    record = _agent_record(ledger, agent)
+    asked = record.get("asked") if isinstance(record.get("asked"), dict) else {}
+    times = asked.get("times", 0) if asked.get("for") == record.get("changed") else 0
+    if not missing or not isinstance(times, int) or times >= HANDOVER_ASKS:
+        return None
+    record["asked"] = {"for": record.get("changed"), "times": times + 1}
+    return handover_reason(missing)
+
+
 # --- The hook frame -----------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def _ledger_lock():
+    """An exclusive lock on the ledger folder for one hook's load and save, so one builder's record never overwrites
+    another's. Where there is no fcntl (Windows) or the lock file can't be made, it runs unlocked, as before."""
+    try:
+        import fcntl
+        os.makedirs(ledger_root(), exist_ok=True)
+        handle = open(os.path.join(ledger_root(), ".lock"), "a")
+    except (ImportError, OSError):
+        yield
+        return
+    with handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        except OSError:
+            pass
+        yield
 
 
 def run_hook(handler: Callable[[dict], dict | None]) -> int:
@@ -510,7 +548,8 @@ def run_hook(handler: Callable[[dict], dict | None]) -> int:
     """
     try:
         event = json.loads(sys.stdin.read() or "{}")
-        output = handler(event)
+        with _ledger_lock():                     # parallel builders' hooks load and save the same ledger
+            output = handler(event)
         if output is not None:
             print(json.dumps(output))
     except Exception:

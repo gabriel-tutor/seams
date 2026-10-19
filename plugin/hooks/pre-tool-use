@@ -25,7 +25,8 @@ def handle(event: dict):
         }}
     if decision["change"]:
         seams_ledger.add_change(ledger, decision["change"])
-        seams_ledger.record_agent_change(ledger, event.get("agent_id"))
+        if seams_ledger.needs_verification(decision["change"]):     # code, not a record or a commit of the work
+            seams_ledger.record_agent_change(ledger, event.get("agent_id"))
         seams_ledger.save_ledger(session, ledger)
     return None
 

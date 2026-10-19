@@ -1210,8 +1210,12 @@ class OvernightFullFlow(unittest.TestCase):
             self.ran("builder-2", "diagnosing-bugs", "tdd")
             self.assertEqual(self.commit("builder-2")["decision"], "allow", "a bug's design step is its diagnosis")
             self.assertEqual(self.commit("builder-3", "git add -A && git commit -m wip")["decision"], "deny")
+            self.ran("builder-4", "seams:implement", "tdd")
+            self.assertEqual(self.commit("builder-4")["decision"], "allow", "a ticket of a grilled spec, through implement")
             self.ran(None, "seams:trivial")
-            self.assertEqual(self.commit()["decision"], "deny", "the lead's own code commit too")
+            self.assertEqual(self.commit()["decision"], "allow", "the lead is held by the merge's review, not this rule")
+            self.ran(None, "seams:pr-review")
+            self.assertEqual(self.commit("builder-5")["decision"], "deny", "a builder under the lead's pr-review too")
         with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": ""}):
             self.assertEqual(self.commit("builder-9")["decision"], "allow", "by day any route covers a commit")
 
@@ -1220,8 +1224,32 @@ class OvernightFullFlow(unittest.TestCase):
         with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
             self.ran("builder-1", "seams:trivial")
             self.assertEqual(self.commit("builder-1")["decision"], "allow")
+            self.assertEqual(self.commit("builder-1", "git commit -m \"$(cat <<'EOF'\ndocs: notes\n\nbody\nEOF\n)\"")["decision"],
+                             "allow", "the usual commit message")
+            for label, command in (("a forced add of an ignored file", "git add -f build/x.js && git commit -m docs"),
+                                   ("a git that isn't the plain word", "/tmp/x/git commit -m docs"),
+                                   ("a command that moves first", "cd ../other && git commit -am docs")):
+                with self.subTest(label):
+                    self.assertEqual(self.commit("builder-1", command)["decision"], "deny")
+            hook = self.repo / ".git" / "hooks" / "pre-commit"
+            hook.write_text("#!/bin/sh\n"); hook.chmod(0o755)
+            self.assertEqual(self.commit("builder-1")["decision"], "deny", "a commit hook runs after the tree was read")
+            hook.unlink()
+            self.changed("docs/a.mdx")
+            self.assertEqual(self.commit("builder-1")["decision"], "deny", "MDX runs code")
+            (self.repo / "docs" / "a.mdx").unlink()
             self.changed("src/a.ts")
             self.assertEqual(self.commit("builder-1")["decision"], "deny", "one code file makes it a code commit")
+
+    def test_a_rename_from_code_to_documentation_is_code(self):
+        self.changed("src/app.py")
+        (self.repo / "docs").mkdir()
+        for args in (["add", "src/app.py"], ["-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "app"],
+                     ["mv", "src/app.py", "docs/app.md"]):
+            __import__("subprocess").run(["git", "-C", str(self.repo), *args], check=True)
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            self.ran("builder-1", "seams:trivial")
+            self.assertEqual(self.commit("builder-1", "git commit -m docs")["decision"], "deny")
 
     def test_the_documentation_exemption_and_the_commit_reader_cannot_be_talked_around(self):
         # The security review of dd6048c: a write in the same command lands after the gate read the tree, and git
@@ -1234,9 +1262,28 @@ class OvernightFullFlow(unittest.TestCase):
                             "git merge origin/develop", "git cherry-pick abc", "git revert HEAD", "git pull",
                             "git am < p.patch", "git -c alias.ci=commit ci -m x", "git ci -m x",
                             "python3 -c \"import os; os.system('git commit -m x')\"",
-                            "node -e \"require('child_process').execSync('git commit -m x')\""):
+                            "node -e \"require('child_process').execSync('git commit -m x')\"",
+                            "bash -lc 'git commit -m x'", "echo 'git commit -m x' | bash", "dash -c 'git commit -m x'",
+                            "bash <<'EOF'\ngit commit -m x\nEOF", "time -p git commit -m x", "sudo -E git commit -m x",
+                            "git --config-env=alias.ci=V ci -m x"):
                 with self.subTest(command=command):          # the tree holds only documentation changes
                     self.assertEqual(self.commit("builder-1", command)["decision"], "deny")
+            for command in ("git -c color.ui=never log", "git merge-base main HEAD", "git log --merges --oneline",
+                            "git branch --merged"):
+                with self.subTest(command=command):          # reads that name a commit-maker are not commits
+                    self.assertEqual(self.commit("builder-1", command)["decision"], "allow")
+
+    def test_the_session_cannot_write_the_ledger_overnight(self):
+        root = seams_ledger.ledger_root()
+        with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": "1"}):
+            self.ran("builder-1", "seams:grill", "tdd")
+            write = event("Write", agent_id="builder-1", file_path=os.path.join(root, "s1.json"), content="{}")
+            self.assertEqual(gate.decide_pre_tool_use(write, self.ledger)["decision"], "deny")
+            for command in (f"echo {{}} > {root}/s1.json", f"python3 -c \"open('{root}/s1.json','w')\"",
+                            "cp /tmp/x.json ~/.local/state/seams/s1.json"):
+                with self.subTest(command=command):
+                    self.assertEqual(gate.decide_pre_tool_use(event("Bash", agent_id="builder-1", command=command),
+                                                              self.ledger)["decision"], "deny")
 
     def handover(self, agent_id="builder-1", agent_type="general-purpose", again=False):
         stop = {"session_id": "s1", "hook_event_name": "SubagentStop", "agent_id": agent_id, "agent_type": agent_type,
@@ -1255,7 +1302,17 @@ class OvernightFullFlow(unittest.TestCase):
             self.assertIsNone(self.handover())
             seams_ledger.record_agent_change(self.ledger, "builder-1")
             self.assertIn("code-review", self.handover(), "a fix after the review is reviewed again")
-            self.assertIsNone(self.handover(again=True), "asked once per stop, as the done-check")
+            self.assertIn("code-review", self.handover(again=True), "a second stop is asked again")
+            self.assertIn("code-review", self.handover(again=True))
+            self.assertIsNone(self.handover(again=True), "asked three times per change, then the merge's review holds")
+            seams_ledger.record_agent_change(self.ledger, "builder-1")
+            self.ran("builder-1", "code-review", "superpowers:verification-before-completion")
+            self.assertIsNone(self.handover(), "every verification the done-check counts")
+            seams_ledger.record_agent_change(self.ledger, "builder-1")
+            back = event("SubagentHandback", agent_id="builder-1", message="done")
+            self.assertEqual(gate.decide_pre_tool_use(back, self.ledger)["decision"], "deny", "a handback is the same stop")
+            self.ran("builder-1", "code-review", "seams:verification-before-completion")
+            self.assertEqual(gate.decide_pre_tool_use(back, self.ledger)["decision"], "allow")
             self.assertIsNone(self.handover("scout-1", "seams:scout"), "a read-only agent changes nothing")
         with mock.patch.dict(os.environ, {"SEAMS_UNATTENDED": ""}):
             self.assertIsNone(self.handover(), "by day the user sees the handover")

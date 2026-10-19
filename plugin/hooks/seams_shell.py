@@ -777,6 +777,11 @@ GIT_OTHERS = {"branch", "stash", "tag", "worktree", "fetch", "config", "remote",
               "range-diff", "format-patch", "archive", "bundle", "check-ignore", "check-attr", "count-objects", "var",
               "hash-object", "update-index", "cherry", "whatchanged", "status", "add"}
 INLINE_COMMIT = re.compile(r"\bgit\b.*\b(" + "|".join(sorted(COMMIT_MAKERS)) + r")\b", re.S)
+# Anywhere in the text, a heredoc fed to a shell, `bash -lc`, a pipe into sh or a wrapper's flags included: git, its
+# own options, then a subcommand that makes commits. `merge-base` and `--merges` are not one.
+TEXT_COMMIT = re.compile(r"(?<![\w.-])git\s+(?:(?:-[cC]\s+\S+|--?[\w-]+(?:=\S+)?)\s+)*(?:" + "|".join(
+    re.escape(m) for m in sorted(COMMIT_MAKERS)) + r")(?![\w-])")
+COMMIT_MESSAGE = re.compile(r"\$\(cat <<-?\s*'(\w+)'\n.*?\n\1\n\s*\)", re.S)   # git commit -m "$(cat <<'EOF' ... EOF)"
 
 
 def commits(command: str) -> bool:
@@ -784,6 +789,8 @@ def commits(command: str) -> bool:
     commits (merge, cherry-pick, revert, am, pull, rebase, commit-tree), a git alias or a `-c` setting (either can
     run one), or inline interpreter code that names one; in a later segment, a substitution, `bash -c` or `eval` too.
     A command nested too deeply to read counts as one."""
+    if TEXT_COMMIT.search(command or ""):
+        return True
     try:
         return _commits(command, 0)
     except (_TooDeep, RecursionError):
@@ -793,17 +800,16 @@ def commits(command: str) -> bool:
 def commit_alone(command: str) -> bool:
     """Whether a command is only `git add` and `git commit` (no other write, substitution, redirect or alias), so the
     tree read before it runs is the tree it commits."""
-    text, heredocs = _without_heredoc_text(command or "")
+    text, heredocs = _without_heredoc_text(COMMIT_MESSAGE.sub("MESSAGE", command or ""))
     tokens = _tokens(text)
     if heredocs or any(_word_runs(token) for token in tokens):
         return False
     for segment in _segments(tokens):
         words, redirects = _split_redirects(segment)
-        if redirects or not words:
+        if redirects or not words or words[0] != "git" or _git_options(words):    # the plain word, nothing renamed
             return False
-        if _command_name(words[0]) != "git" or _git_options(words):
-            return False
-        if _git_parts(words)[0] not in ("add", "commit"):
+        sub, raw = _git_parts(words)
+        if sub not in ("add", "commit") or (sub == "add" and any(_unquote(a) in ("-f", "--force") for a in raw)):
             return False
     return True
 
@@ -825,7 +831,11 @@ def _commits(command: str, depth: int) -> bool:
         base, args = _command_name(words[0]), [_unquote(w) for w in words[1:]]
         if base == "git":
             sub = _git_parts(words)[0]
-            if sub in COMMIT_MAKERS or "-c" in _git_options(words) or (sub and sub not in GIT_READS | GIT_WRITES | GIT_OTHERS):
+            options = _git_options(words)
+            settings = [options[i + 1] for i, o in enumerate(options[:-1]) if o == "-c"]
+            if sub in COMMIT_MAKERS or any(v.lower().startswith("alias.") for v in settings) or \
+                    any(o.startswith("--config-env") for o in options) or \
+                    (sub and sub not in GIT_READS | GIT_WRITES | GIT_OTHERS):
                 return True
         if INTERPRETERS.match(base) and INLINE_COMMIT.search(" ".join(args)):
             return True
