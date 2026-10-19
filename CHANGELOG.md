@@ -1,5 +1,15 @@
 # Changelog
 
+## 5.6.0 — 2026-10-19
+
+Unattended nights held builders to *a* route, not the flow: any routing skill opened the gate, so builders took the shortest one (bare `tdd`, or `trivial`) and skipped the grill and the code review, since by day it is the user's answers that carry a session through the whole chain. In unattended mode the hooks now hold every builder to it:
+
+- **A commit of code needs the builder's own design step and tests.** The gate refuses a builder's commit until that builder ran `seams:grill` (`diagnosing-bugs` for a bug, `seams:implement` for a ticket of a grilled spec) and `tdd`. A commit that changes only Markdown needs just a route. Commits under other names (merge, cherry-pick, revert, am, pull, rebase, commit-tree, a git alias, inline code, a shell fed the command) count as commits.
+- **A handover needs a review and a verification.** A new SubagentStop hook keeps a builder that changed code working until `code-review` and a verification ran since its last change, asking up to three times per change; a `SubagentHandback` waits for the same. Each agent's skills and last change are kept in the gate's ledger beside its route, which a heartbeat never resets.
+- **The ledger is the hooks' own.** Overnight the session's writes to it are refused, and every hook takes a lock on it, so parallel builders never lose each other's records.
+
+Day sessions don't change. The new hook loads in a session launched after this version is installed.
+
 ## 5.5.0 — 2026-10-19
 
 A project's raw knowledge (an owner's notes, emails, chats, old rulings) lived in scattered folders, so a session either never read it or read a stale copy as if it were current. The knowledge layer ([ADR 0008](docs/adr/0008-knowledge-layer.md)) gives it one place and one order of trust:
