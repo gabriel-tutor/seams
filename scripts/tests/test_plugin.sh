@@ -722,6 +722,46 @@ STOPS += [(what, path, scope, pattern) for what, path, scope, pattern in (
      r"(?m)^4\. \*\*The repo's standards.*$", r"knowledge, from the baseline too \(shared rules: Knowledge\)"),
     ("the take-over's fix follows the knowledge from the baseline", "skills/pr-review/references/takeover.md",
      r"(?m)^2\. \*\*Fix in a worktree\.\*\*.*$", r"knowledge it touches, read from the baseline \(shared rules: Knowledge\)"))]
+# A re-review judges the whole delta afresh (pr-review-contract-rereview decision 3: a re-review that only checked its
+# earlier findings had closed could approve a fix round that broke a domain contract).
+EARLIER = r"(?m)^3\. \*\*Your earlier review\.\*\*.*$"
+STOPS += [(f"a re-review {what}", "skills/pr-review/references/understand-and-review.md", EARLIER, pattern)
+          for what, pattern in (
+    ("reviews every line changed since the earlier review's commit afresh",
+     r"every line changed since that commit[^\n]*?afresh"),
+    ("treats earlier findings closing as necessary, never sufficient", r"necessary, never sufficient"))]
+# The domain invariants (decisions 2 and the risk axis): listed in Understand from the baseline's docs and the code's own
+# constants, each with a check that can go red; the risk reviewer gets them as an axis; a probe feeds disagreeing input.
+UAR = "skills/pr-review/references/understand-and-review.md"
+INVARIANTS, RISK, PROVE = (r"(?m)^7\. \*\*Invariants\.\*\*.*$", r"(?m)^   - Start a risk reviewer.*$",
+                           r"(?m)^3\. \*\*Prove what you can\.\*\*.*$")
+STOPS += [(what, UAR, scope, pattern) for what, scope, pattern in (
+    ("Understand lists the invariants the touched code is subject to", INVARIANTS, r"invariants the touched code is subject to"),
+    ("the invariants include closed sets and precedence rules", INVARIANTS, r"closed sets[^\n]*?precedence"),
+    ("the invariants come from the code's own constants too, from the baseline", INVARIANTS,
+     r"the code's own constants[^\n]*?baseline|baseline[^\n]*?the code's own constants"),
+    ("each invariant gets a check that can go red", INVARIANTS, r"a check that can go red"),
+    ("the risk reviewer gets the invariants as an axis", RISK, r"domain invariants \(Understand 7\)"),
+    ("the risk reviewer checks every value written to a constrained field", RISK,
+     r"every value written to a constrained field"),
+    ("a probe feeds input whose declared kind disagrees with its content", PROVE,
+     r"declared [^\n]*?disagrees with its content"))]
+# The take-over owns what it rewrites, and its own commits get an independent review (decisions 1 and 6).
+TKO = "skills/pr-review/references/takeover.md"
+FIX, PUSH, VERDICT = (r"(?m)^2\. \*\*Fix in a worktree\.\*\*.*$", r"(?m)^5\. \*\*Push\*\*.*$", r"(?m)^\*\*Verdict\.\*\*.*$")
+STOPS += [(what, path, scope, pattern) for what, path, scope, pattern in (
+    ("the take-over owns every line its fix rewrites", TKO, FIX, r"every line the fix rewrites is the take-over's own"),
+    ("the take-over checks each literal it rewrites against the invariants", TKO, FIX,
+     r"each literal[^\n]*?against the invariants"),
+    ("a review of the take-over's commits is drafted as COMMENT, never APPROVE", TKO, PUSH,
+     r"drafted as COMMENT, never APPROVE"),
+    ("the take-over's head gets an independent reviewer before merge", TKO, PUSH, r"independent reviewer"),
+    ("the verdict never approves commits that are the viewer's own", UAR, VERDICT,
+     r"no commit[^\n]*?is the viewer's own"),
+    ("a person is never offered APPROVE on the viewer's own commits", "skills/pr-review/references/post.md",
+     r"(?m)^4\. \*\*Ask about the rest.*$", r"never on the viewer's own commits"),
+    ("the handover names the independent reviewer of a take-over", "skills/pr-review/references/handover.md",
+     r"(?m)^4\. \*\*Next\.\*\*.*$", r"independent reviewer"))]
 KNOWLEDGE_ROW = r"(?m)^\| Knowledge \|.*$"
 STOPS += [(f"implement's Knowledge row {what}", "skills/implement/SKILL.md", KNOWLEDGE_ROW, pattern) for what, pattern in (
     ("cites the knowledge touched by id", r"touched, cited by id"), ("says n/a with the reason", r"`n/a` with the reason"),

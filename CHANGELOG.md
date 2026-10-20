@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+A re-review could approve a take-over's own code that broke a domain contract: a value written outside the code's closed set of states, and a declared label allowed to outrank the content it describes. The re-review only checked that its earlier findings had closed, the take-over carried the wrong values into lines it rewrote, and the poster approved the viewer's own commit by itself. pr-review now closes each gap:
+
+- **A re-review judges the whole delta afresh.** Every line changed since the earlier review's commit is reviewed against the spec, the knowledge and the invariants; earlier findings closing is necessary, never sufficient.
+- **Invariants are listed and checked.** Understand lists the domain invariants the touched code is subject to, from the baseline's docs and the code's own constants (closed sets, enums, precedence rules, units, who may see), each with a check that can go red. The risk reviewer gets them as an axis, and every input boundary gets a probe whose declared kind disagrees with its content.
+- **A take-over owns what it rewrites.** Each literal in a line the fix rewrites is checked against the invariants, named finding or not.
+- **No approving your own commits.** A review of the viewer's own take-over or fix round is drafted as a comment and gets an independent reviewer, named in the handover, before merge. `post_reviews.py --auto` refuses an APPROVE when any commit of the pull request was authored or committed by the viewer, and fails closed when the commit list cannot be read, reaches GitHub's 250-commit listing limit, or holds a commit whose author GitHub cannot name; the person is never offered APPROVE on such a pull request. ADR 0004 is amended.
+
 ## 5.6.0 — 2026-10-19
 
 Unattended nights held builders to *a* route, not the flow: any routing skill opened the gate, so builders took the shortest one (bare `tdd`, or `trivial`) and skipped the grill and the code review, since by day it is the user's answers that carry a session through the whole chain. In unattended mode the hooks now hold every builder to it:

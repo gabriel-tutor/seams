@@ -31,7 +31,8 @@ checks/checks.json lists at least one check and none "could not run" or "flaky" 
 open, "broken by the PR" without its run alone after the batch), review.json's not_verified is empty,
 every finding but a question or praise is verified at the head, every blocking one has a proof (a check, a probe,
 a reproduction or a citation), and the reference's requirement lines (reference.json) each have a status, an unmet one
-a blocking finding citing it; an APPROVE needs a reference with at least one line, none unmet. A review that
+a blocking finding citing it; an APPROVE needs a reference with at least one line, none unmet, and no commit of the
+pull request authored or committed by the viewer (its commit list read from GitHub; unreadable refuses). A review that
 falls short is not posted: `needs your yes: <review>: <why>` is printed, it counts as not on GitHub (exit 1), and
 the reviews after it are still tried. Without --auto the poster posts what the person chose, as it always did.
 
@@ -185,7 +186,7 @@ def may_push(repo: str, known: dict) -> bool:
     return known[repo]
 
 
-def shortfalls(review: dict, can_push: bool) -> list:
+def shortfalls(review: dict, can_push: bool, viewer: str) -> list:
     """Why this review may not post without a yes: one line each, [] when it is fully verified at its head.
     Fails closed: evidence that is missing or unreadable is evidence of nothing."""
     data, reasons = review["review"], []
@@ -226,6 +227,7 @@ def shortfalls(review: dict, can_push: bool) -> list:
     reasons += reference_shortfalls(review, findings)
     if review["payload"].get("event") == "APPROVE":
         reasons += approval_shortfalls(review, rows, findings)
+        reasons += own_commit_shortfalls(review, viewer)
     reasons += leak_shortfalls(review["payload"])
     return reasons
 
@@ -261,6 +263,46 @@ def approval_shortfalls(review: dict, rows, findings: list) -> list:
         reasons.append("an approval needs a requirement met, and none is met")
     reasons += independence_shortfalls(review)
     return reasons
+
+
+LISTED_COMMITS = 250   # GitHub's pulls/{n}/commits lists at most this many
+
+
+def own_commit_shortfalls(review: dict, viewer: str) -> list:
+    """An approval never stands on the viewer's own commits: a take-over or fix round the viewer wrote or committed
+    is reviewed by someone else before it merges, since a reviewer judging its own fix round misses what it carried
+    over. A merge commit GitHub made (committer web-flow) simply never matches the viewer. Fails closed: a commit list
+    that cannot be read, one at GitHub's 250-commit listing limit (it lists no more), and a commit whose author or
+    committer GitHub cannot name (an email linked to no account) are evidence of nothing."""
+    me = viewer.casefold()
+    if not me:
+        return ["an approval needs to know who is posting, to rule out the viewer's own commits"]
+    commits, page = [], 1
+    try:
+        while len(commits) < LISTED_COMMITS:
+            batch = gh_json(f"repos/{review['repo']}/pulls/{review['number']}/commits?per_page=100&page={page}")
+            if not isinstance(batch, list):
+                raise GhError("not a list")
+            commits += batch
+            if len(batch) < 100:
+                break
+            page += 1
+    except (GhError, ValueError, TypeError) as err:
+        return [f"an approval needs the pull request's commits, and its commits could not be read ({err})"]
+    if len(commits) >= LISTED_COMMITS:
+        return [f"an approval needs every commit, and GitHub lists only {LISTED_COMMITS}: check the rest by hand"]
+    logins = [(str(c.get("sha") or "")[:7], [str((c.get(role) or {}).get("login") or "").casefold()
+                                             for role in ("author", "committer")])
+              for c in commits if isinstance(c, dict)]
+    unnamed = [sha for sha, names in logins if not all(names)]
+    if unnamed:
+        return [f"an approval needs to know who wrote each commit, and GitHub cannot name the author or committer of "
+                f"{', '.join(unnamed)}"]
+    mine = [sha for sha, names in logins if me in names]
+    if mine:
+        return [f"an approval of the viewer's own commits ({', '.join(mine)}): a take-over or fix round is reviewed "
+                "by someone else before it merges; post it as a comment"]
+    return []
 
 
 NEEDS_A_WRITER = ("issue", "pull", "pr ", "discussion")      # a source from GitHub: whoever opened it may be the author
@@ -593,7 +635,7 @@ def main(argv: "list | None" = None) -> int:
             continue
         if args.auto:
             try:
-                why = shortfalls(review, may_push(review["repo"], rights))
+                why = shortfalls(review, may_push(review["repo"], rights), viewer)
             except Exception as err:                    # noqa: BLE001  evidence that cannot be read is evidence of nothing
                 why = [f"the evidence is unreadable ({type(err).__name__})"]
             if why:

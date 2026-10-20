@@ -1165,6 +1165,11 @@ key = f"{parts[1]}/{parts[2]}#{parts[4]}"
 if method == "GET" and key in state.get("fail_gets", {}):
     print("gh: " + state["fail_gets"][key], file=sys.stderr)
     sys.exit(1)
+if method == "GET" and len(parts) >= 6 and parts[5] == "commits":     # the pull request's commits
+    if key in state.get("commits_fail", []):
+        print("gh: commits unreadable", file=sys.stderr)
+        sys.exit(1)
+    answer(200, state.get("commits", {}).get(key, []))
 reviews = state["reviews"].setdefault(key, [])
 if method == "GET" and len(parts) == 5:
     answer(200, {"number": int(parts[4]), "head": {"sha": state["heads"][key]}})
@@ -2108,6 +2113,13 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
         payload["event"] = event
         (folder / "payload.json").write_text(json.dumps(payload))
 
+    def commits(self, number: int, logins: list) -> None:
+        """The pull request's commits as GitHub lists them: each (author, committer) login pair."""
+        self.state.setdefault("commits", {})[f"o/r#{number}"] = [
+            {"sha": f"{i:040x}", "author": {"login": a} if a else None, "committer": {"login": c} if c else None}
+            for i, (a, c) in enumerate(logins)]
+        self.save()
+
     def deny_push(self, repo: str) -> None:
         self.state.setdefault("perms", {})[repo] = {"pull": True, "triage": True, "push": False}
         self.save()
@@ -2248,6 +2260,21 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
              lambda f: (self.event(f, "APPROVE"), self.source(f, label="issue #4", by="them"))),
             ("an approval against the pull request's own body", "independent",
              lambda f: (self.event(f, "APPROVE"), self.source(f, label="the PR body"))),
+            # A review of the viewer's own take-over or fix round is not independent and never approves by itself
+            # (.scratch/pr-review-contract-rereview, decision 1).
+            ("an approval of a commit the viewer wrote (a take-over or fix round)", "viewer's own",
+             lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"),
+                        self.commits(1, [("them", "web-flow"), ("me", "me")]))),
+            ("an approval of a commit the viewer committed for someone else", "viewer's own",
+             lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"), self.commits(1, [("them", "me")]))),
+            ("an approval of a commit whose author GitHub cannot name (an unlinked email)", "cannot name",
+             lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"), self.commits(1, [(None, None)]))),
+            ("an approval of a pull request at GitHub's 250-commit listing limit", "250",
+             lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"),
+                        self.commits(1, [("them", "them")] * 250))),
+            ("an approval whose commit list cannot be read", "commits could not be read",
+             lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"),
+                        self.state.setdefault("commits_fail", []).append("o/r#1"), self.save())),
             ("a payload with a local path in its body", "local path",
              lambda f: self.body(f, "see /Users/gabriel/secret/notes.txt for details")),
             ("a payload with a home-directory path in an inline comment", "local path",
@@ -2288,6 +2315,18 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
         code, out = self.auto(self.verified(1, event="APPROVE"))
         self.assertEqual(code, 0, out)
         self.assertEqual(self.reviews(1)[0]["state"], "APPROVE")
+
+    def test_an_approval_of_commits_others_wrote_still_posts_and_a_comment_on_the_viewers_own_does_too(self):
+        # Decision 1: the gate is on approving the viewer's own commits, not on reviewing them; a merge commit
+        # GitHub made (web-flow) is no one's.
+        others = self.verified(1, event="APPROVE")
+        self.commits(1, [("them", "web-flow"), ("someone", "someone")])
+        self.assertEqual(self.auto(others)[0], 0)
+        self.assertEqual(self.reviews(1)[0]["state"], "APPROVE")
+        own = self.verified(2)
+        self.commits(2, [("me", "me")])
+        self.assertEqual(self.auto(own)[0], 0)
+        self.assertEqual(self.reviews(2)[0]["state"], "COMMENT")
 
     def test_a_blocking_finding_proven_by_each_kind_of_evidence_may_post(self):
         for proof in ("check", "probe", "reproduction", "citation"):

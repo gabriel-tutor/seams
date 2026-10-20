@@ -12,3 +12,7 @@ We chose a rule the poster enforces over a rule the skill's text asks the model 
 - In a batch the post step runs in a later turn, outside the skill's pre-approval, so hands-off posting needs the user's own `Bash(python3 *post_reviews.py *)` permission. Without it Claude Code asks, and the reviews wait, drafted.
 - A take-over pushes to someone else's branch, so its push is deliberately not pre-approved and not part of this decision: the user's yes, and Claude Code's own prompt naming the branch and commit, stay.
 - A review of the user's own pull request is only a comment, and an approval cannot be exercised on a pull request the user opened: GitHub allows neither.
+
+## Amendment: never an approval of the viewer's own commits
+
+A review of a take-over or fix round the user's own session wrote is not independent: the reviewer judges code it carried over and tends to check only that its earlier findings closed. Such an approval once went out by itself on code that wrote a value outside its closed set. So `post_reviews.py --auto` also refuses an `APPROVE` when any commit of the pull request was authored or committed by the viewer, and fails closed when the commit list cannot be read, reaches GitHub's 250-commit listing limit, or holds a commit whose author or committer GitHub cannot name. A comment still posts. The person is never offered `APPROVE` on such a pull request either; another person, or a fresh-context reviewer given facts only, reviews it before it merges.
