@@ -1,9 +1,9 @@
 # pr-review: a re-review checks the rules, not just closure
 
 Status: done
-Stage: built
+Stage: integrated
 Updated: 2026-10-20
-Next: none; shipped on branch pr-review/contract-rereview (not pushed; release through seams:release).
+Next: none; merged into local main at af60925 (not pushed). Release through seams:release when the user chooses.
 
 ## Why
 A re-review checked only that its earlier findings had closed and approved a take-over's own code, which
