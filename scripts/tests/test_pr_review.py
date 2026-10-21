@@ -1124,7 +1124,7 @@ def answer(status, body, headers=None):
     sys.exit(0)
 parts = path.split("/")
 if path == "user":
-    answer(200, {"login": state["viewer"], "id": 7, "email": None})
+    answer(200, {"login": state["viewer"], "id": 7, "email": state.get("public_email")})
 if method == "GET" and len(parts) == 3:        # repos/<owner>/<repo>: what the viewer may do there
     answer(200, {"permissions": state.get("perms", {}).get(f"{parts[1]}/{parts[2]}", {"push": True})})
 repo = f"{parts[1]}/{parts[2]}"
@@ -2326,16 +2326,53 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
         for number, event in ((1, "COMMENT"), (2, "REQUEST_CHANGES"), (3, "APPROVE")):
             with self.subTest(event):
                 folder = self.verified(number, event=event, not_verified=["whether the flag is on in staging"])
+                self.body(folder, "Review\n\n### Not verified\n\n- whether the flag is on in staging\n")
                 code, out = self.auto(folder)
                 self.assertEqual(code, 0, out)
                 self.assertEqual(self.reviews(number)[0]["state"], event)
 
-    def test_a_comment_posts_when_its_reference_was_never_extracted(self):
-        folder = self.verified()
-        (folder / "reference.json").unlink()
+    def test_a_comment_or_change_request_posts_when_its_reference_was_never_extracted(self):
+        for number, event in ((1, "COMMENT"), (2, "REQUEST_CHANGES")):
+            with self.subTest(event):
+                folder = self.verified(number, event=event)
+                (folder / "reference.json").unlink()
+                code, out = self.auto(folder)
+                self.assertEqual(code, 0, out)
+                self.assertEqual(len(self.reviews(number)), 1)
+
+    def test_an_approval_of_a_commit_under_the_take_over_trees_own_email_does_not_post(self):
+        # A take-over commits in its own worktree, whose identity (a repo-local or includeIf email) may differ from
+        # the poster's; an earlier review's tree of the same pull request counts too.
+        folder = self.verified(1, event="APPROVE")
+        tree = folder.parent / f"{folder.name.rsplit('-', 1)[0]}-0123abc" / "takeover" / "tree"
+        tree.mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(tree)], check=True, env=self.env)
+        subprocess.run(["git", "-C", str(tree), "config", "user.email", "work@corp.example"], check=True, env=self.env)
+        self.commits(1, [(None, None, "work@corp.example")])
         code, out = self.auto(folder)
-        self.assertEqual(code, 0, out)
-        self.assertEqual(len(self.reviews(1)), 1)
+        self.assertEqual(code, 1, out)
+        self.assertIn("viewer's own", out)
+
+    def test_an_approval_of_a_commit_under_the_environments_git_email_or_the_public_email_does_not_post(self):
+        for number, (setting, email) in enumerate((("env", "env@corp.example"), ("public", "pub@corp.example")), 1):
+            with self.subTest(setting):
+                if setting == "env":
+                    self.env["GIT_AUTHOR_EMAIL"] = email
+                else:
+                    self.env.pop("GIT_AUTHOR_EMAIL", None)
+                    self.state["public_email"] = email
+                    self.save()
+                folder = self.verified(number, event="APPROVE")
+                self.commits(number, [(None, None, email)])
+                code, out = self.auto(folder)
+                self.assertEqual(code, 1, out)
+                self.assertIn("viewer's own", out)
+
+    def test_an_open_item_the_body_does_not_list_holds_the_review(self):
+        folder = self.verified(1, not_verified=["whether the flag is on in staging"])
+        code, out = self.auto(folder)                 # its body is "Review of #1": no reader would see the item
+        self.assertEqual(code, 1, out)
+        self.assertIn("not in the review's body", out)
 
     def test_an_approval_of_a_commit_someone_else_made_under_an_unlinked_email_posts(self):
         folder = self.verified(1, event="APPROVE")

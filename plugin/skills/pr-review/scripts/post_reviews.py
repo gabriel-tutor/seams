@@ -29,11 +29,12 @@ With --auto a review posts without a person's yes only when it is fully verified
 viewer can push to the repository; the rule is read from the evidence on disk, never from the model's say-so:
 checks/checks.json lists at least one check and none "could not run" or "flaky" (nor, while the review's batch is
 open, "broken by the PR" without its run alone after the batch), review.json's not_verified is a list (what it
-holds does not stop the post: the body lists it for every reader), every finding but a question or praise is verified at the head, every blocking one has a proof (a check, a probe,
+holds does not stop the post when the body lists each item for every reader), every finding but a question or praise is verified at the head, every blocking one has a proof (a check, a probe,
 a reproduction or a citation), and the reference's requirement lines (reference.json) each have a status, an unmet one
 a blocking finding citing it; an APPROVE needs a reference with at least one line, none unmet, and no commit of the
 pull request authored or committed by the viewer (its commit list read from GitHub; unreadable refuses; a commit
-GitHub names no account for is the viewer's when its email is the viewer's git email or GitHub no-reply address). A review that
+GitHub names no account for is the viewer's when its email is one the viewer commits under: the git identity here,
+in the environment or in a take-over's tree of the pull request, or the account's public or no-reply address). A review that
 falls short is not posted: `needs your yes: <review>: <why>` is printed, it counts as not on GitHub (exit 1), and
 the reviews after it are still tried. Without --auto the poster posts what the person chose, as it always did.
 
@@ -50,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import glob
 import hashlib
 import json
 import os
@@ -206,8 +208,14 @@ def shortfalls(review: dict, can_push: bool, viewer: str, emails: frozenset) -> 
                 batch = in_open_batch(review["folder"]) if batch is None else batch
                 if batch:
                     reasons.append(f"broken by the PR, not yet run alone: {row.get('name')}")
-    if not isinstance(data.get("not_verified"), list):     # its items post: the body lists them (the user, 21 Oct)
+    left = data.get("not_verified")
+    if not isinstance(left, list):
         reasons.append("review.json has no not_verified list")
+    else:                                               # an open item posts only where a reader sees it
+        body = str(review["payload"].get("body") or "")
+        hidden = [str(item) for item in left if str(item) not in body]
+        if hidden:
+            reasons.append("an item under not verified is not in the review's body: " + "; ".join(hidden)[:200])
     findings = data.get("findings")
     if not isinstance(findings, list):
         findings = []
@@ -268,11 +276,11 @@ LISTED_COMMITS = 250   # GitHub's pulls/{n}/commits lists at most this many
 
 
 def viewer_emails(user: dict) -> frozenset:
-    """The emails the viewer's commits carry: the git identity on this machine (a take-over commits here), the
-    GitHub account's public email, and its no-reply addresses. A commit GitHub names no account for is matched on
-    these. ceiling: a commit the viewer made elsewhere under another unlinked email is not recognised; reading the
-    account's private emails needs the token's `user` scope."""
-    found = {str(user.get("email") or "")}
+    """The emails the viewer's commits carry: the git identity here and in the environment, the GitHub account's
+    public email, and its no-reply addresses; a take-over's own tree adds its identity (take_over_emails). A commit
+    GitHub names no account for is matched on these. ceiling: a commit the viewer made on another machine under
+    another unlinked email is not recognised; reading the account's private emails needs the token's `user` scope."""
+    found = {str(user.get("email") or "")} | {os.environ.get(name, "") for name in GIT_EMAILS}
     login, number = str(user.get("login") or ""), user.get("id")
     if login:
         found |= {f"{login}@users.noreply.github.com", f"{number}+{login}@users.noreply.github.com" if number else ""}
@@ -282,6 +290,25 @@ def viewer_emails(user: dict) -> frozenset:
     except (OSError, subprocess.SubprocessError):
         pass
     return frozenset(e.casefold() for e in found if e)
+
+
+GIT_EMAILS = ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL", "EMAIL")       # what git commits under before its config
+
+
+def take_over_emails(folder: Path) -> set:
+    """The identity git uses in each take-over tree of this pull request (`takeover.md` step 2 commits there, at
+    `<evidence>/takeover/tree`, in this review's folder or an earlier review's of the same pull request), resolved
+    by git itself, so a repo-local or includeIf email counts."""
+    prefix, found = folder.name.rsplit("-", 1)[0], set()
+    for tree in folder.parent.glob(f"{glob.escape(prefix)}-*/takeover/tree"):
+        if not re.fullmatch(re.escape(prefix) + r"-[0-9a-f]{7,40}", tree.parent.parent.name):
+            continue
+        try:
+            found.add(subprocess.run(["git", "-C", str(tree), "config", "--get", "user.email"], capture_output=True,
+                                     text=True, stdin=subprocess.DEVNULL, timeout=10).stdout.strip().casefold())
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return found - {""}
 
 
 def own_commit_shortfalls(review: dict, viewer: str, emails: frozenset) -> list:
@@ -314,6 +341,7 @@ def own_commit_shortfalls(review: dict, viewer: str, emails: frozenset) -> list:
     if unnamed:
         return [f"an approval needs to know who wrote each commit, and GitHub cannot name the author or committer of "
                 f"{', '.join(unnamed)}"]
+    emails = emails | take_over_emails(review["folder"])
     mine = [sha for sha, names in logins if me in names or emails & set(names)]
     if mine:
         return [f"an approval of the viewer's own commits ({', '.join(mine)}): a take-over or fix round is reviewed "
@@ -384,7 +412,7 @@ def reference_shortfalls(review: dict, findings: list) -> list:
     finding that cites it; and an APPROVE has at least one line to stand on, with none unmet. The pull
     request's own description is no reference."""
     data, reasons, path = review["review"], [], review["folder"] / "reference.json"
-    lines = []
+    lines, approve = [], review["payload"].get("event") == "APPROVE"     # a comment posts without an extracted one
     if path.exists():
         try:
             lines = json.loads(path.read_text())["requirements"]
@@ -393,10 +421,8 @@ def reference_shortfalls(review: dict, findings: list) -> list:
         except (OSError, ValueError, KeyError, TypeError):
             lines = []
             reasons.append("reference.json is unreadable")
-    elif isinstance(data.get("intent"), dict) and data["intent"].get("sources") and \
-            review["payload"].get("event") == "APPROVE":          # a comment or change request posts without it
+    elif approve and isinstance(data.get("intent"), dict) and data["intent"].get("sources"):
         reasons.append("review.json names a reference but reference.json is missing (requirements.py extract writes it)")
-    approve = review["payload"].get("event") == "APPROVE"
     if approve and not lines:
         reasons.append("an approval needs an independent reference with at least one requirement line, "
                        "and the pull request's own description is not one")

@@ -182,7 +182,7 @@ The closing message of a pull request review: whether each pull request is ready
 _Avoid_: summary, report
 
 **Fully verified**:
-A review is fully verified at a pull request's head when at least one check ran and every check ran on both trees (none "could not run", none flaky), every finding but a question or praise is verified at that head and every blocking finding is proven, every requirement line of the reference has an answer, and the head is unchanged at the moment of posting. What the review lists under "not verified" does not count against it: the posted body lists it for every reader. The poster tests it against the evidence on disk, not the model's judgement.
+A review is fully verified at a pull request's head when at least one check ran and every check ran on both trees (none "could not run", none flaky), every finding but a question or praise is verified at that head and every blocking finding is proven, every requirement line of the reference has an answer, and the head is unchanged at the moment of posting. What the review lists under "not verified", and shows its reader, does not count against it. The poster tests it against the evidence on disk, not the model's judgement.
 _Avoid_: reviewed, checked (a review can be both and still not be this)
 
 **Auto-post**:
