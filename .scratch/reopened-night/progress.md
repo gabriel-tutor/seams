@@ -1,9 +1,9 @@
 # A night reopened outside its launcher stops; an overnight commit needs implement
 
-Status: active
-Stage: designed
+Status: done
+Stage: integrated
 Updated: 2026-10-21
-Next: code-review and a security review of the branch against 73a2015 (sensitive: the gate), fix what they find, then ask before merging into main and set Status: done in that commit. The sleep-mode skill's handoff and restart text changed in ~/.claude/skills/sleep-mode/SKILL.md (backup .bak-2026-10-21).
+Next: none; merged into local main (not pushed). Takes effect in sessions launched after the merge; release through seams:release when the user chooses.
 
 ## Why
 A sleep-mode night was reopened after the Mac restarted (about 06:00 UTC, 20 Oct) as an ordinary
