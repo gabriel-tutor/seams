@@ -16,6 +16,8 @@ import seams_ledger  # noqa: E402
 def handle(event: dict):
     session = event.get("session_id") or ""
     ledger = seams_ledger.load_ledger(session)
+    if seams_ledger.mark_unattended(ledger):
+        seams_ledger.save_ledger(session, ledger)
     decision = gate.decide_pre_tool_use(event, ledger)
     if decision["decision"] == "deny":
         return {"hookSpecificOutput": {

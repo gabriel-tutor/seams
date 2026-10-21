@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **A night reopened without its launcher ships nothing.** A plain resume after a restart brings back the conversation but not the launcher's environment, its guard or the overnight rules, and one such night went on building and merging unchecked. The gate now notes in its own record that a session ran unattended; the same session open without `SEAMS_UNATTENDED=1` refuses commits, pushes, merges and new agents, and says to relaunch through the launcher (`sleepclaude --resume`) or start a new session. The gate now sees the Agent tool.
+- **An overnight code commit needs `seams:implement` too,** after the builder's own grill (or `diagnosing-bugs`) and with `tdd`.
+
 - **The night posts what it reviewed.** `post_reviews.py --auto` no longer holds a review because it lists something it could not check, as long as the body lists each item for the reader; an approval posts too. A reference the review names but never extracted holds only an approval. Every unattended night had left its reviews drafted, waiting for a yes. ADR 0004 is amended.
 - **An unlinked commit is matched on its email.** A commit GitHub names no account for counts as the viewer's only when its email is one the viewer commits under (the git identity here, in the environment or in a take-over's tree, or the GitHub public or no-reply address), so a colleague's commit from an unlinked email no longer holds an approval.
 

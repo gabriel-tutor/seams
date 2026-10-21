@@ -429,7 +429,9 @@ night_commit() { night PreToolUse '"tool_name":"Bash","tool_input":{"command":"g
 night_skill seams:trivial
 OUT=$(night_commit); denied "$OUT" && [[ $OUT == *"seams:grill"* ]] || fail "overnight, a code commit after only trivial should be refused: $OUT"
 night_skill seams:grill; night_skill tdd
-OUT=$(night_commit); ! denied "$OUT" || fail "overnight, a commit after the grill and tdd should pass: $OUT"
+OUT=$(night_commit); denied "$OUT" && [[ $OUT == *"seams:implement"* ]] || fail "overnight, a code commit needs implement too: $OUT"
+night_skill seams:implement
+OUT=$(night_commit); ! denied "$OUT" || fail "overnight, a commit after the grill, implement and tdd should pass: $OUT"
 # A code edit is a change: its builder hands back only after code-review and verification, asked as hook feedback.
 night_edit() { night PreToolUse "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$NIGHT/$1\",\"old_string\":\"x\",\"new_string\":\"y\"}" pre-tool-use; }
 handover() { night SubagentStop '"stop_hook_active":false,"last_assistant_message":"done"' subagent-stop; }
@@ -444,5 +446,24 @@ night_skill tdd                              # verification replaced its route: 
 OUT=$(night PreToolUse '"tool_name":"Bash","tool_input":{"command":"git apply fix.patch"}' pre-tool-use)
 ! denied "$OUT" || fail "a routed builder's git apply should pass: $OUT"
 OUT=$(handover); [[ $OUT == *code-review* ]] || fail "code brought in by git apply is a change to review again: $OUT"
+
+# A night reopened outside its launcher (.scratch/reopened-night): the same session without SEAMS_UNATTENDED=1, as a
+# plain resume after a restart opens it, has no guard and no overnight rules, so it ships nothing and starts no builder
+# until it is relaunched; it still reads, writes its notes and answers. A day session is never touched.
+grep -q '"matcher": "[^"]*|Agent|' "$HOOKS/hooks.json" || fail "the gate should see the Agent tool, to refuse a reopened night's builders"
+reopened() { printf '{"session_id":"night","cwd":"%s","hook_event_name":"PreToolUse",%s}' "$NIGHT" "$1" \
+             | env -u SEAMS_UNATTENDED "$PY" "$HOOKS/pre-tool-use"; }
+for call in '"tool_name":"Agent","tool_input":{"description":"build","prompt":"x","subagent_type":"general-purpose"}' \
+            '"tool_name":"Bash","tool_input":{"command":"git push origin HEAD"}' \
+            '"tool_name":"Bash","tool_input":{"command":"gh pr merge 5 --squash --match-head-commit abc"}' \
+            '"tool_name":"Bash","tool_input":{"command":"git commit -am wip"}'; do
+  OUT=$(reopened "$call"); denied "$OUT" && [[ $OUT == *"--resume"* ]] || fail "a reopened night should refuse $call: $OUT"
+done
+for call in '"tool_name":"Bash","tool_input":{"command":"git status --short"}' \
+            "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$NIGHT/.scratch/progress.md\",\"old_string\":\"x\",\"new_string\":\"y\"}"; do
+  OUT=$(reopened "$call"); [[ $OUT != *"--resume"* ]] || fail "a reopened night should still read and write its notes: $call: $OUT"
+done
+OUT=$(ev PreToolUse '"tool_name":"Agent","tool_input":{"description":"d","prompt":"p"}' | env -u SEAMS_UNATTENDED "$PY" "$HOOKS/pre-tool-use")
+! denied "$OUT" || fail "a day session that never ran unattended starts agents as before: $OUT"
 
 echo "test_hooks ($($PY --version 2>&1)): OK"

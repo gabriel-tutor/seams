@@ -246,6 +246,9 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
         if problem:
             return {"decision": "deny", "reason": read_only_reason(agent, problem), "change": None}
         return {"decision": "allow", "reason": None, "change": None}
+    import seams_ledger
+    if seams_ledger.reopened(ledger) and _ships(event):
+        return {"decision": "deny", "reason": REOPENED_REASON, "change": None}
     change = change_for_event(event, config_dir)
     overnight = unattended()
     agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
@@ -279,11 +282,30 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
 # By day the user answers the grill and confirms each step, so any route opens the gate. Overnight no one does, and
 # builders took the shortest route (bare tdd, or trivial), so a commit needs its own agent's design step and tests.
 
-DESIGN_STEPS = {PLUGIN_PREFIX + "grill", "diagnosing-bugs", PLUGIN_PREFIX + "implement"}   # a bug's is its diagnosis;
-COMMIT_STEPS = (("design", "`seams:grill` (or `diagnosing-bugs` for a bug)"), ("tdd", "`tdd`"))   # a ticket's, its spec's
+DESIGN_STEPS = {PLUGIN_PREFIX + "grill", "diagnosing-bugs"}   # a bug's design step is its diagnosis
+COMMIT_STEPS = (("design", "`seams:grill` (or `diagnosing-bugs` for a bug)"), ("implement", "`seams:implement`"),
+                ("tdd", "`tdd`"))                # implement too, since 21 Oct (.scratch/reopened-night, decision 5)
 DOCUMENTATION = (".md", ".markdown")             # MDX runs code
 LEDGER_REASON = (f"{REFUSAL_PREFIX}in unattended mode the gate's ledger, which records the flow each agent ran, takes "
                  "no write from the session: run the skill the record would show instead.")
+
+
+REOPENED_REASON = (f"{REFUSAL_PREFIX}this session ran unattended and is open now without it, as a plain resume after a "
+                   "restart opens it: the launcher's guard and the overnight rules are not loaded, so it merges, pushes, "
+                   "commits and starts agents no more. To go on with the night, quit and relaunch it through its "
+                   "launcher (sleep mode's: `sleepclaude --resume`). To work by day, start a new session: its start "
+                   "card lists the progress files and what each needs next. Reading, notes and answers still work here.")
+SHIPPING = re.compile(r"\bgit\b[^;&|\n]*\bpush\b|\bgh\s+pr\s+merge\b|\bgh\s+api\b[^;&|\n]*/merge\b")
+
+
+def _ships(event: dict) -> bool:
+    """What a reopened night refuses: starting an agent, a commit, a push or a merge. The command's text is read, as
+    everywhere in the gate: it stops a mistake, not a command built to hide one."""
+    tool = event.get("tool_name")
+    if tool in ("Agent", "Task"):
+        return True
+    command = str((event.get("tool_input") or {}).get("command") or "")
+    return tool in ("Bash", "Monitor", "PowerShell") and (_commits(event) or bool(SHIPPING.search(command)))
 
 
 def _touches_ledger(event: dict) -> bool:
@@ -303,18 +325,18 @@ def _touches_ledger(event: dict) -> bool:
 
 
 def missing_for_commit(ledger: dict, agent_id: object) -> list:
-    """The steps a commit still needs from this agent's own history: its design step and tdd (which `implement`
-    runs). Code review and verification come after the commit, as implement orders them, and are checked at the
-    handover (seams_ledger.decide_subagent_stop)."""
+    """The steps a commit still needs from this agent's own history: its design step, `implement` and tdd. Code review
+    and verification come after the commit, as implement orders them, and are checked at the handover
+    (seams_ledger.decide_subagent_stop)."""
     import seams_ledger
     ran = seams_ledger.ran_by(ledger, agent_id)
-    have = {"design": bool(DESIGN_STEPS & set(ran)), "tdd": "tdd" in ran}
+    have = {"design": bool(DESIGN_STEPS & set(ran)), "implement": PLUGIN_PREFIX + "implement" in ran, "tdd": "tdd" in ran}
     return [label for step, label in COMMIT_STEPS if not have[step]]
 
 
 def overnight_commit_reason(missing: list) -> str:
     return (f"{REFUSAL_PREFIX}in unattended mode a commit of code runs the whole Seams flow first, and this agent "
-            f"has not yet run {' and '.join(missing)}. Invoke {missing[0]} with the Skill tool and carry the work "
+            f"has not yet run {', '.join(missing)}. Invoke {missing[0]} with the Skill tool and carry the work "
             "through it, then commit; a commit that changes only documentation needs just a route.")
 
 

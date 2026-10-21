@@ -313,6 +313,21 @@ def unattended() -> bool:
     return os.environ.get("SEAMS_UNATTENDED") == "1"
 
 
+def mark_unattended(ledger: dict) -> bool:
+    """Notes in the session's ledger that it runs unattended, the first time a hook sees it so; True when it was new
+    (the caller saves). The session cannot write the ledger overnight, so the note stands."""
+    if unattended() and ledger.get("ran_unattended") is not True:
+        ledger["ran_unattended"] = True
+        return True
+    return False
+
+
+def reopened(ledger: dict) -> bool:
+    """A session that ran unattended, open now without it: a plain resume after a restart brings back the conversation
+    but not the launcher's environment, its guard or the overnight rules (.scratch/reopened-night)."""
+    return ledger.get("ran_unattended") is True and not unattended()
+
+
 def declared_for(ledger: dict, agent_id: object = None, unattended: bool = False) -> bool:
     """Whether a call is covered: by the main conversation's declarations, which cover every call, a subagent's
     included, or by the calling subagent's own, which cover it alone. So a parallel run's builder never opens the
