@@ -457,11 +457,27 @@ for call in '"tool_name":"Agent","tool_input":{"description":"build","prompt":"x
             '"tool_name":"Bash","tool_input":{"command":"git push origin HEAD"}' \
             '"tool_name":"Bash","tool_input":{"command":"gh pr merge 5 --squash --match-head-commit abc"}' \
             '"tool_name":"Bash","tool_input":{"command":"git commit -am wip"}'; do
+  OUT=$(reopened "$call"); denied "$OUT" && [[ $OUT == *"--resume"* && $OUT == *"new session"* ]] \
+    || fail "a reopened night should refuse $call, naming both ways on: $OUT"
+done
+for call in '"tool_name":"Bash","tool_input":{"command":"gh -R o/r pr merge 5 --squash"}' \
+            '"tool_name":"Bash","tool_input":{"command":"gh api repos/o/r/merges -X POST -f base=develop -f head=x"}' \
+            '"tool_name":"Bash","tool_input":{"command":"bash -c \"git push\""}' \
+            '"tool_name":"Bash","tool_input":{"command":"gh api graphql -f query=mutation{mergePullRequest(input:{})}"}' \
+            '"tool_name":"Bash","tool_input":{"command":"git -C /x push"}'; do
   OUT=$(reopened "$call"); denied "$OUT" && [[ $OUT == *"--resume"* ]] || fail "a reopened night should refuse $call: $OUT"
 done
+printf '{"session_id":"night","cwd":"%s","hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"seams:trivial"},"tool_response":{}}' "$NIGHT" \
+  | env -u SEAMS_UNATTENDED "$PY" "$HOOKS/post-tool-use" >/dev/null       # the reopened conversation routes its notes
+LEDGER_DIR="$HOME/.local/state/seams"
+OUT=$(reopened "\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rm $LEDGER_DIR/night.json\"}")
+denied "$OUT" && [[ $OUT == *ledger* ]] || fail "a reopened night should not erase the record that it ran unattended: $OUT"
+[[ -f "$LEDGER_DIR/night.json" ]] || fail "the night's record should still be there"
 for call in '"tool_name":"Bash","tool_input":{"command":"git status --short"}' \
+            '"tool_name":"Bash","tool_input":{"command":"git log --grep push --oneline"}' \
+            '"tool_name":"Bash","tool_input":{"command":"git stash push -m wip"}' \
             "\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$NIGHT/.scratch/progress.md\",\"old_string\":\"x\",\"new_string\":\"y\"}"; do
-  OUT=$(reopened "$call"); [[ $OUT != *"--resume"* ]] || fail "a reopened night should still read and write its notes: $call: $OUT"
+  OUT=$(reopened "$call"); ! denied "$OUT" || fail "a reopened night should still read and write its notes: $call: $OUT"
 done
 OUT=$(ev PreToolUse '"tool_name":"Agent","tool_input":{"description":"d","prompt":"p"}' | env -u SEAMS_UNATTENDED "$PY" "$HOOKS/pre-tool-use")
 ! denied "$OUT" || fail "a day session that never ran unattended starts agents as before: $OUT"

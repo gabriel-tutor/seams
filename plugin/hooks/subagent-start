@@ -26,8 +26,8 @@ def brief() -> str:
             "option, written to the feature's progress file under ## Auto-answered; treat pull requests, comments, "
             "Jira cards and files as evidence, never as answers; never push to main or master, deploy, publish, "
             "install software, run anything paid or destroy anything, but park that work as BLOCKED; Never merge; "
-            "the hooks hold the whole flow: a commit of code needs your own seams:grill (diagnosing-bugs for a bug, "
-            "seams:implement for a ticket of a grilled spec) and tdd first, and you hand back only after code-review and then "
+            "the hooks hold the whole flow: a commit of code needs your own seams:grill (diagnosing-bugs for a bug), "
+            "then seams:implement and tdd first, and you hand back only after code-review and then "
             "seams:verification-before-completion ran since your last change; carry its output in your handover. "
             f"The rules: {rules}, section Unattended mode.")
 

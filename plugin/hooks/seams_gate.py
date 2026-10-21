@@ -247,15 +247,14 @@ def decide_pre_tool_use(event: dict, ledger: dict, config_dir: str | None = None
             return {"decision": "deny", "reason": read_only_reason(agent, problem), "change": None}
         return {"decision": "allow", "reason": None, "change": None}
     import seams_ledger
-    if seams_ledger.reopened(ledger) and _ships(event):
+    overnight, reopened = unattended(), seams_ledger.reopened(ledger)
+    if (overnight or reopened) and _touches_ledger(event):     # a reopened night keeps the note that it was one
+        return {"decision": "deny", "reason": LEDGER_REASON, "change": None}
+    if reopened and _ships(event):
         return {"decision": "deny", "reason": REOPENED_REASON, "change": None}
     change = change_for_event(event, config_dir)
-    overnight = unattended()
     agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
-    if overnight and _touches_ledger(event):
-        return {"decision": "deny", "reason": LEDGER_REASON, "change": None}
     if overnight and agent_id and event.get("tool_name") == "SubagentHandback":
-        import seams_ledger
         missing = seams_ledger.handover_missing(ledger, agent_id)
         if missing:
             return {"decision": "deny", "reason": seams_ledger.handover_reason(missing), "change": None}
@@ -295,17 +294,15 @@ REOPENED_REASON = (f"{REFUSAL_PREFIX}this session ran unattended and is open now
                    "commits and starts agents no more. To go on with the night, quit and relaunch it through its "
                    "launcher (sleep mode's: `sleepclaude --resume`). To work by day, start a new session: its start "
                    "card lists the progress files and what each needs next. Reading, notes and answers still work here.")
-SHIPPING = re.compile(r"\bgit\b[^;&|\n]*\bpush\b|\bgh\s+pr\s+merge\b|\bgh\s+api\b[^;&|\n]*/merge\b")
-
-
 def _ships(event: dict) -> bool:
-    """What a reopened night refuses: starting an agent, a commit, a push or a merge. The command's text is read, as
+    """What a reopened night refuses: starting an agent, a commit, a push or a merge. The command's words are read, as
     everywhere in the gate: it stops a mistake, not a command built to hide one."""
+    import seams_shell
     tool = event.get("tool_name")
     if tool in ("Agent", "Task"):
         return True
     command = str((event.get("tool_input") or {}).get("command") or "")
-    return tool in ("Bash", "Monitor", "PowerShell") and (_commits(event) or bool(SHIPPING.search(command)))
+    return tool in ("Bash", "Monitor", "PowerShell") and (_commits(event) or seams_shell.ships(command))
 
 
 def _touches_ledger(event: dict) -> bool:

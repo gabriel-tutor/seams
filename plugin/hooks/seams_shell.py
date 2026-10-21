@@ -791,6 +791,38 @@ def _message_only(match) -> str:
     return match.group(0) if word in (line.strip() for line in body.split("\n")) else "MESSAGE"
 
 
+GH_VALUE_FLAGS = {"-R", "--repo", "--hostname"}       # gh's own options that take a value, before its subcommand
+
+
+def ships(command: str, depth: int = 0) -> bool:
+    """Whether a shell command pushes or merges: `git push` (after git's own options, so `git stash push` is not one),
+    `gh pr merge` (after gh's own options), or `gh api` naming a merge (a pull request's merge, the merges endpoint,
+    a GraphQL merge mutation); in a substitution or `bash -c` too. Read from the words, as the rest of the gate is."""
+    if depth > 4:
+        return True
+    text, _ = _without_heredoc_text(command or "")
+    tokens = _tokens(text)
+    if any(ships(run, depth + 1) for token in tokens for run in _word_runs(token)):
+        return True
+    for segment in _segments(tokens):
+        words = [w for w in _words(segment) if w]
+        if not words:
+            continue
+        name = _command_name(words[0])
+        if name == "git" and _git_parts(words)[0] == "push":
+            return True
+        if name == "gh":
+            rest = [_unquote(w) for w in words[1:]]
+            while rest and rest[0].startswith("-"):
+                rest = rest[2:] if rest[0] in GH_VALUE_FLAGS and len(rest) > 1 else rest[1:]
+            if rest[:2] == ["pr", "merge"] or (rest[:1] == ["api"] and any("merge" in a.lower() for a in rest[1:])):
+                return True
+        if name in ("bash", "sh", "zsh", "dash") and "-c" in words[1:-1]:
+            if ships(_unquote(words[words.index("-c", 1) + 1]), depth + 1):
+                return True
+    return False
+
+
 def commits(command: str) -> bool:
     """Whether a shell command may make a commit anywhere in it: `git commit` and the other subcommands that make
     commits (merge, cherry-pick, revert, am, pull, rebase, commit-tree), a git alias or a `-c` setting (either can

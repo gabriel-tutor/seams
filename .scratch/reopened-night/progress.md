@@ -31,9 +31,12 @@ those commits is refused with SEAMS_UNATTENDED=1 and allowed without it. Separat
 7. Handoff to a normal session: the refusal names both paths; `sleep mode -off` writes a `## Handoff` in each active
    progress file (what is left, the merge queue, what is BLOCKED and on whom) and sets its `Next`, so a fresh
    `claude` session's start card shows the remaining work. (Claude's design, user asked for an easy handoff)
-9. Confirmed by the user 21 Oct; build in a worktree, branch seams-5.6/reopened-night; stop before merging into main.
 8. Tests at the gate's hook tests (test_gate.py, test_hooks.sh for the Agent matcher), plus a replay of the night's
    real commit. (user)
+9. Confirmed by the user 21 Oct; build in a worktree, branch seams-5.6/reopened-night; stop before merging into main.
+10. Review fixes: a reopened night keeps its note (its ledger writes are refused, as overnight); pushes and merges are
+    read word by word (`git stash push` and `git log --grep push` pass; `gh -R x pr merge`, the merges endpoint, a
+    GraphQL merge and `bash -c` pass through the check); the builder brief names implement; the rules trim restored.
 
 ## Facts
 - `claude --resume` keeps the session id: the night's transcript and its gate ledger continued in the same files.
@@ -44,5 +47,10 @@ those commits is refused with SEAMS_UNATTENDED=1 and allowed without it. Separat
 ## Open questions
 - None.
 
+## Facts from the build
+- Replayed through the new gate, the night's real code commit is refused both ways: unattended, for want of grill,
+  implement and tdd; reopened without it, with the relaunch message.
+
 ## Limits
+- `/clear` starts a new ledger, and ledgers unused for 7 days are cleaned up: either forgets the note, so the check passes.
 - A lost or deleted gate record forgets that a session was a night, so the check passes, as the gate fails open today.
