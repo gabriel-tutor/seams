@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **The night posts what it reviewed.** `post_reviews.py --auto` no longer holds a review because it lists something it could not check: the body lists those items for every reader, and an approval posts too. A reference the review names but never extracted holds only an approval. Every unattended night had left its reviews drafted, waiting for a yes. ADR 0004 is amended.
+- **An unlinked commit is matched on its email.** A commit GitHub names no account for counts as the viewer's only when its email is the viewer's git email or GitHub public or no-reply address, so a colleague's commit from an unlinked email no longer holds an approval.
+
 A re-review could approve a take-over's own code that broke a domain contract: a value written outside the code's closed set of states, and a declared label allowed to outrank the content it describes. The re-review only checked that its earlier findings had closed, the take-over carried the wrong values into lines it rewrote, and the poster approved the viewer's own commit by itself. pr-review now closes each gap:
 
 - **A re-review judges the whole delta afresh.** Every line changed since the earlier review's commit is reviewed against the spec, the knowledge and the invariants; earlier findings closing is necessary, never sufficient.

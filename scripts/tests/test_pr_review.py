@@ -1124,7 +1124,7 @@ def answer(status, body, headers=None):
     sys.exit(0)
 parts = path.split("/")
 if path == "user":
-    answer(200, {"login": state["viewer"]})
+    answer(200, {"login": state["viewer"], "id": 7, "email": None})
 if method == "GET" and len(parts) == 3:        # repos/<owner>/<repo>: what the viewer may do there
     answer(200, {"permissions": state.get("perms", {}).get(f"{parts[1]}/{parts[2]}", {"push": True})})
 repo = f"{parts[1]}/{parts[2]}"
@@ -1226,8 +1226,10 @@ class PosterHarness:
         bin_dir.mkdir()
         (bin_dir / "gh").write_text(FAKE_GH)
         (bin_dir / "gh").chmod(0o755)
+        (self.tmp / "gitconfig").write_text("[user]\n\temail = Me@Example.com\n")
         self.env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", TMPDIR=str(self.tmp),
-                        FAKE_GH_STATE=str(self.tmp / "state.json"), FAKE_GH_LOG=str(self.tmp / "calls.log"))
+                        FAKE_GH_STATE=str(self.tmp / "state.json"), FAKE_GH_LOG=str(self.tmp / "calls.log"),
+                        GIT_CONFIG_GLOBAL=str(self.tmp / "gitconfig"), GIT_CONFIG_NOSYSTEM="1")
         self.state = {"viewer": "me", "heads": {}, "reviews": {}, "posts": {}}
         self.save()
 
@@ -2114,10 +2116,13 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
         (folder / "payload.json").write_text(json.dumps(payload))
 
     def commits(self, number: int, logins: list) -> None:
-        """The pull request's commits as GitHub lists them: each (author, committer) login pair."""
+        """The pull request's commits as GitHub lists them: each (author, committer) login pair, and optionally
+        the email git recorded for both, which is all GitHub has when the email is linked to no account."""
         self.state.setdefault("commits", {})[f"o/r#{number}"] = [
-            {"sha": f"{i:040x}", "author": {"login": a} if a else None, "committer": {"login": c} if c else None}
-            for i, (a, c) in enumerate(logins)]
+            {"sha": f"{i:040x}", "author": {"login": a} if a else None, "committer": {"login": c} if c else None,
+             "commit": {"author": {"email": rest[0] if rest else None},
+                        "committer": {"email": rest[0] if rest else None}}}
+            for i, (a, c, *rest) in enumerate(logins)]
         self.save()
 
     def deny_push(self, repo: str) -> None:
@@ -2219,8 +2224,6 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
              lambda f: self.checks(f, [{"name": "e2e", "verdict": "could not run", "head": {"status": "absent"}}])),
             ("a check that came out flaky", "flaky",
              lambda f: self.checks(f, [{"name": "unit", "verdict": "flaky", "head": {"status": "fail"}}])),
-            ("something left under not verified", "left under not verified",
-             lambda f: self.change(f, not_verified=["the e2e suite needs a database"])),
             ("a finding nobody verified at the head", "not verified at the head",
              lambda f: self.change(f, findings=[{**blocking, "verified": False}], **request_changes)),
             ("a blocking finding with no proof", "no proof",
@@ -2232,8 +2235,8 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
              lambda f: (self.no_reference(f), self.event(f, "APPROVE"))),
             ("an approval whose reference has no requirement line", "independent reference",
              lambda f: (self.reference(f, []), self.change(f, requirements=[]), self.event(f, "APPROVE"))),
-            ("a reference the review names but never extracted", "reference.json is missing",
-             lambda f: (f / "reference.json").unlink()),
+            ("an approval whose reference the review names but never extracted", "reference.json is missing",
+             lambda f: ((f / "reference.json").unlink(), self.event(f, "APPROVE"))),
             ("a requirement line with no status", "requirement R1 has no status", lambda f: self.change(f, requirements=[])),
             ("a requirement line left not verified", "requirement R1 is not verified",
              lambda f: self.change(f, requirements=[{"id": "R1", "status": "not verified"}])),
@@ -2267,8 +2270,14 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
                         self.commits(1, [("them", "web-flow"), ("me", "me")]))),
             ("an approval of a commit the viewer committed for someone else", "viewer's own",
              lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"), self.commits(1, [("them", "me")]))),
-            ("an approval of a commit whose author GitHub cannot name (an unlinked email)", "cannot name",
+            ("an approval of a commit whose author GitHub cannot name and git recorded no email for", "cannot name",
              lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"), self.commits(1, [(None, None)]))),
+            ("an approval of a commit the viewer made under an email linked to no account", "viewer's own",
+             lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"),
+                        self.commits(1, [(None, None, "me@example.com")]))),
+            ("an approval of a commit under the viewer's GitHub no-reply email", "viewer's own",
+             lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"),
+                        self.commits(1, [(None, None, "7+me@users.noreply.github.com")]))),
             ("an approval of a pull request at GitHub's 250-commit listing limit", "250",
              lambda f: (self.event(f, "APPROVE"), self.change(f, verdict="approve"),
                         self.commits(1, [("them", "them")] * 250))),
@@ -2310,6 +2319,30 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
         code, out = self.auto(approve)
         self.assertEqual(code, 1, out)
         self.assertEqual(self.reviews(2), [])
+
+    def test_a_review_that_lists_what_it_could_not_check_still_posts_by_itself_approvals_too(self):
+        # The night posts what it found (the user, 21 Oct): its body lists what it could not check, so a reader
+        # sees the open items; holding the review for them left every night's reviews unposted.
+        for number, event in ((1, "COMMENT"), (2, "REQUEST_CHANGES"), (3, "APPROVE")):
+            with self.subTest(event):
+                folder = self.verified(number, event=event, not_verified=["whether the flag is on in staging"])
+                code, out = self.auto(folder)
+                self.assertEqual(code, 0, out)
+                self.assertEqual(self.reviews(number)[0]["state"], event)
+
+    def test_a_comment_posts_when_its_reference_was_never_extracted(self):
+        folder = self.verified()
+        (folder / "reference.json").unlink()
+        code, out = self.auto(folder)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(self.reviews(1)), 1)
+
+    def test_an_approval_of_a_commit_someone_else_made_under_an_unlinked_email_posts(self):
+        folder = self.verified(1, event="APPROVE")
+        self.commits(1, [(None, None, "someone@laptop.local"), ("them", "web-flow")])
+        code, out = self.auto(folder)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.reviews(1)[0]["state"], "APPROVE")
 
     def test_an_approval_with_an_independent_reference_posts_by_itself(self):
         code, out = self.auto(self.verified(1, event="APPROVE"))
@@ -2399,7 +2432,7 @@ class AutoPostTest(PosterHarness, unittest.TestCase):
 
     def test_what_is_not_eligible_does_not_stop_the_eligible_ones_after_it(self):
         bad, good = self.verified(1), self.verified(2)
-        self.change(bad, not_verified=["unchecked"])
+        self.checks(bad, [{"name": "unit", "verdict": "flaky", "head": {"status": "fail"}}])
         code, out = self.auto(bad, good)
         self.assertEqual(code, 1, out)
         self.assertEqual(self.reviews(1), [])

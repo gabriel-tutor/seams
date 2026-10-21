@@ -28,11 +28,12 @@ last hour, and whether GitHub has blocked a post), and one call posts at a time 
 With --auto a review posts without a person's yes only when it is fully verified at its head (CONTEXT.md) and the
 viewer can push to the repository; the rule is read from the evidence on disk, never from the model's say-so:
 checks/checks.json lists at least one check and none "could not run" or "flaky" (nor, while the review's batch is
-open, "broken by the PR" without its run alone after the batch), review.json's not_verified is empty,
-every finding but a question or praise is verified at the head, every blocking one has a proof (a check, a probe,
+open, "broken by the PR" without its run alone after the batch), review.json's not_verified is a list (what it
+holds does not stop the post: the body lists it for every reader), every finding but a question or praise is verified at the head, every blocking one has a proof (a check, a probe,
 a reproduction or a citation), and the reference's requirement lines (reference.json) each have a status, an unmet one
 a blocking finding citing it; an APPROVE needs a reference with at least one line, none unmet, and no commit of the
-pull request authored or committed by the viewer (its commit list read from GitHub; unreadable refuses). A review that
+pull request authored or committed by the viewer (its commit list read from GitHub; unreadable refuses; a commit
+GitHub names no account for is the viewer's when its email is the viewer's git email or GitHub no-reply address). A review that
 falls short is not posted: `needs your yes: <review>: <why>` is printed, it counts as not on GitHub (exit 1), and
 the reviews after it are still tried. Without --auto the poster posts what the person chose, as it always did.
 
@@ -186,7 +187,7 @@ def may_push(repo: str, known: dict) -> bool:
     return known[repo]
 
 
-def shortfalls(review: dict, can_push: bool, viewer: str) -> list:
+def shortfalls(review: dict, can_push: bool, viewer: str, emails: frozenset) -> list:
     """Why this review may not post without a yes: one line each, [] when it is fully verified at its head.
     Fails closed: evidence that is missing or unreadable is evidence of nothing."""
     data, reasons = review["review"], []
@@ -205,10 +206,8 @@ def shortfalls(review: dict, can_push: bool, viewer: str) -> list:
                 batch = in_open_batch(review["folder"]) if batch is None else batch
                 if batch:
                     reasons.append(f"broken by the PR, not yet run alone: {row.get('name')}")
-    left = data.get("not_verified")
-    if not isinstance(left, list) or left:
-        reasons.append("left under not verified: " + ("; ".join(map(str, left))[:200] if isinstance(left, list)
-                                                       else "review.json has no not_verified list"))
+    if not isinstance(data.get("not_verified"), list):     # its items post: the body lists them (the user, 21 Oct)
+        reasons.append("review.json has no not_verified list")
     findings = data.get("findings")
     if not isinstance(findings, list):
         findings = []
@@ -227,7 +226,7 @@ def shortfalls(review: dict, can_push: bool, viewer: str) -> list:
     reasons += reference_shortfalls(review, findings)
     if review["payload"].get("event") == "APPROVE":
         reasons += approval_shortfalls(review, rows, findings)
-        reasons += own_commit_shortfalls(review, viewer)
+        reasons += own_commit_shortfalls(review, viewer, emails)
     reasons += leak_shortfalls(review["payload"])
     return reasons
 
@@ -268,12 +267,30 @@ def approval_shortfalls(review: dict, rows, findings: list) -> list:
 LISTED_COMMITS = 250   # GitHub's pulls/{n}/commits lists at most this many
 
 
-def own_commit_shortfalls(review: dict, viewer: str) -> list:
+def viewer_emails(user: dict) -> frozenset:
+    """The emails the viewer's commits carry: the git identity on this machine (a take-over commits here), the
+    GitHub account's public email, and its no-reply addresses. A commit GitHub names no account for is matched on
+    these. ceiling: a commit the viewer made elsewhere under another unlinked email is not recognised; reading the
+    account's private emails needs the token's `user` scope."""
+    found = {str(user.get("email") or "")}
+    login, number = str(user.get("login") or ""), user.get("id")
+    if login:
+        found |= {f"{login}@users.noreply.github.com", f"{number}+{login}@users.noreply.github.com" if number else ""}
+    try:
+        found.add(subprocess.run(["git", "config", "--get", "user.email"], capture_output=True, text=True,
+                                 stdin=subprocess.DEVNULL, timeout=10).stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return frozenset(e.casefold() for e in found if e)
+
+
+def own_commit_shortfalls(review: dict, viewer: str, emails: frozenset) -> list:
     """An approval never stands on the viewer's own commits: a take-over or fix round the viewer wrote or committed
     is reviewed by someone else before it merges, since a reviewer judging its own fix round misses what it carried
     over. A merge commit GitHub made (committer web-flow) simply never matches the viewer. Fails closed: a commit list
     that cannot be read, one at GitHub's 250-commit listing limit (it lists no more), and a commit whose author or
-    committer GitHub cannot name (an email linked to no account) are evidence of nothing."""
+    committer GitHub cannot name and git recorded no email for are evidence of nothing. One GitHub names no account
+    for (an email linked to none) is the viewer's when its email is one of `emails`, and someone else's otherwise."""
     me = viewer.casefold()
     if not me:
         return ["an approval needs to know who is posting, to rule out the viewer's own commits"]
@@ -291,18 +308,24 @@ def own_commit_shortfalls(review: dict, viewer: str) -> list:
         return [f"an approval needs the pull request's commits, and its commits could not be read ({err})"]
     if len(commits) >= LISTED_COMMITS:
         return [f"an approval needs every commit, and GitHub lists only {LISTED_COMMITS}: check the rest by hand"]
-    logins = [(str(c.get("sha") or "")[:7], [str((c.get(role) or {}).get("login") or "").casefold()
-                                             for role in ("author", "committer")])
+    logins = [(str(c.get("sha") or "")[:7], [name_of(c, role) for role in ("author", "committer")])
               for c in commits if isinstance(c, dict)]
     unnamed = [sha for sha, names in logins if not all(names)]
     if unnamed:
         return [f"an approval needs to know who wrote each commit, and GitHub cannot name the author or committer of "
                 f"{', '.join(unnamed)}"]
-    mine = [sha for sha, names in logins if me in names]
+    mine = [sha for sha, names in logins if me in names or emails & set(names)]
     if mine:
         return [f"an approval of the viewer's own commits ({', '.join(mine)}): a take-over or fix round is reviewed "
                 "by someone else before it merges; post it as a comment"]
     return []
+
+
+def name_of(commit: dict, role: str) -> str:
+    """Who GitHub says is the commit's author or committer: the account's login, else the email git recorded."""
+    login = str((commit.get(role) or {}).get("login") or "")
+    email = str(((commit.get("commit") or {}).get(role) or {}).get("email") or "")
+    return (login or email).casefold()
 
 
 NEEDS_A_WRITER = ("issue", "pull", "pr ", "discussion")      # a source from GitHub: whoever opened it may be the author
@@ -370,7 +393,8 @@ def reference_shortfalls(review: dict, findings: list) -> list:
         except (OSError, ValueError, KeyError, TypeError):
             lines = []
             reasons.append("reference.json is unreadable")
-    elif isinstance(data.get("intent"), dict) and data["intent"].get("sources"):
+    elif isinstance(data.get("intent"), dict) and data["intent"].get("sources") and \
+            review["payload"].get("event") == "APPROVE":          # a comment or change request posts without it
         reasons.append("review.json names a reference but reference.json is missing (requirements.py extract writes it)")
     approve = review["payload"].get("event") == "APPROVE"
     if approve and not lines:
@@ -612,7 +636,8 @@ def main(argv: "list | None" = None) -> int:
         print(f"post_reviews.py: {err}", file=sys.stderr)
         return 2
     try:
-        viewer = gh_json("user")["login"]
+        user = gh_json("user")
+        viewer, emails = user["login"], viewer_emails(user)
     except (GhError, KeyError, ValueError, TypeError) as err:
         print(f"post_reviews.py: cannot tell who is posting: {err}", file=sys.stderr)
         return 2
@@ -635,7 +660,7 @@ def main(argv: "list | None" = None) -> int:
             continue
         if args.auto:
             try:
-                why = shortfalls(review, may_push(review["repo"], rights), viewer)
+                why = shortfalls(review, may_push(review["repo"], rights), viewer, emails)
             except Exception as err:                    # noqa: BLE001  evidence that cannot be read is evidence of nothing
                 why = [f"the evidence is unreadable ({type(err).__name__})"]
             if why:
