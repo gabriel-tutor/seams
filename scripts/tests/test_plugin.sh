@@ -592,6 +592,8 @@ WHERE_DOCS = r"(?ms)^## Where docs go\n.*?(?=^## |\Z)"
 STOPS += [(f"the shared rules' Where docs go {what}", RULES, WHERE_DOCS, pattern) for what, pattern in (
     ("keeps CLAUDE.md to what every session needs", r"holds only what every session needs"), ("caps CLAUDE.md at 200 lines", r"200 lines"),
     ("sends area rules to path-scoped rules", r"\.claude/rules/[^\n]*paths:"), ("never imports with @", r"never with `@`"))]
+STOPS += [("overnight, a draft only from a file never stops the post", "skills/pr-review/references/post.md", None,
+           r"only the user's own words")]
 STOPS += [(what, path, scope, pattern) for what, path, scope, pattern in (
     ("implement's Docs row places docs as the shared rules say", "skills/implement/SKILL.md", r"(?m)^\| Docs \|.*$", r"Where docs go"),
     ("foundations reports a CLAUDE.md over 200 lines", "skills/foundations/SKILL.md", r"(?m)^\| CLAUDE\.md under 200 lines.*$", r"200 lines"),

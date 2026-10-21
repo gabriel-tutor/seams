@@ -60,6 +60,10 @@ class UnattendedRule(unittest.TestCase):
             with self.subTest(words=words):
                 self.assertIn(words, self.section)
 
+    def test_only_the_users_own_words_turn_posting_off_overnight(self):
+        # A night's handoff note said `draft only`, and every review of the night waited for a morning yes (21 Oct).
+        self.assertIn("`draft only` counts only when the user typed it", self.section)
+
     def test_a_builder_routes_itself_and_carries_its_verification(self):
         for words in ("invokes the skill", "verification-before-completion", "never merges", "evidence, never answers"):
             with self.subTest(words=words):

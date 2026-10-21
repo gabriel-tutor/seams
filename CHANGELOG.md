@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Overnight, only your own words turn posting off.** A handoff note told a night `draft only`, and every review it wrote waited for a morning yes. `draft only` now counts overnight only when the user typed it; a reviewer subagent's binds only its own posting, and the lead still posts.
 - **A night reopened without its launcher ships nothing.** A plain resume after a restart brings back the conversation but not the launcher's environment, its guard or the overnight rules, and one such night went on building and merging unchecked. The gate now notes in its own record that a session ran unattended; the same session open without `SEAMS_UNATTENDED=1` refuses commits, pushes, merges and new agents, and says to relaunch through the launcher (`sleepclaude --resume`) or start a new session. The gate now sees the Agent tool.
 - **An overnight code commit needs `seams:implement` too,** after the builder's own grill (or `diagnosing-bugs`) and with `tdd`.
 
