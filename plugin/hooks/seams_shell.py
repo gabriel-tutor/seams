@@ -805,11 +805,14 @@ def ships(command: str, depth: int = 0) -> bool:
     if any(ships(run, depth + 1) for token in tokens for run in _word_runs(token)):
         return True
     for segment in _segments(tokens):
-        words = [w for w in _words(segment) if w]
+        words = [w for w in _words(_split_redirects(segment)[0]) if w]      # `bash <<EOF` runs stdin, not `<<`
         if not words:
             continue
         name = _command_name(words[0])
-        if name == "git" and _git_parts(words)[0] == "push":
+        if name == "git" and (_git_parts(words)[0] == "push"
+                              or any(o.startswith(("alias.", "--config-env=alias")) for o in _git_options(words))):
+            return True                           # an alias may be a push: fail closed
+        if name == "eval" and ships(" ".join(_unquote(w) for w in words[1:]), depth + 1):
             return True
         if name == "gh":
             rest = [_unquote(w) for w in words[1:]]
@@ -817,10 +820,20 @@ def ships(command: str, depth: int = 0) -> bool:
                 rest = rest[2:] if rest[0] in GH_VALUE_FLAGS and len(rest) > 1 else rest[1:]
             if rest[:2] == ["pr", "merge"] or (rest[:1] == ["api"] and any("merge" in a.lower() for a in rest[1:])):
                 return True
-        if name in ("bash", "sh", "zsh", "dash") and "-c" in words[1:-1]:
-            if ships(_unquote(words[words.index("-c", 1) + 1]), depth + 1):
+        if name in SHIP_SHELLS:
+            args, i, inline = [_unquote(w) for w in words[1:]], 0, False
+            while i < len(args) and args[i].startswith("-") and not inline:
+                inline = not args[i].startswith("--") and "c" in args[i][1:]       # -c, -lc, -ec
+                i += 1
+            if inline and i < len(args) and ships(args[i], depth + 1):
+                return True
+            if not inline and i >= len(args) and STDIN_SHIPS.search(command):  # its commands come on stdin
                 return True
     return False
+
+
+SHIP_SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+STDIN_SHIPS = re.compile(r"\bpush\b|\bmerge", re.I)        # a shell fed a pipe or heredoc: any such word, fail closed
 
 
 def commits(command: str) -> bool:
