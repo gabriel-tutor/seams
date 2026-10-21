@@ -468,6 +468,8 @@ for call in '"tool_name":"Bash","tool_input":{"command":"gh -R o/r pr merge 5 --
             '"tool_name":"Bash","tool_input":{"command":"echo \"git push\" | bash"}' \
             '"tool_name":"Bash","tool_input":{"command":"bash <<EOF\ngh pr merge 5\nEOF"}' \
             '"tool_name":"Bash","tool_input":{"command":"bash -lc \"git push\""}' \
+            '"tool_name":"Bash","tool_input":{"command":"bash -o pipefail -c \"git push\""}' \
+            '"tool_name":"Bash","tool_input":{"command":"echo \"git push\" | bash -s x"}' \
             '"tool_name":"Bash","tool_input":{"command":"gh api graphql -f query=mutation{mergePullRequest(input:{})}"}' \
             '"tool_name":"Bash","tool_input":{"command":"git -C /x push"}'; do
   OUT=$(reopened "$call"); denied "$OUT" && [[ $OUT == *"--resume"* ]] || fail "a reopened night should refuse $call: $OUT"

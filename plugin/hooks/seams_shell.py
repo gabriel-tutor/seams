@@ -820,20 +820,13 @@ def ships(command: str, depth: int = 0) -> bool:
                 rest = rest[2:] if rest[0] in GH_VALUE_FLAGS and len(rest) > 1 else rest[1:]
             if rest[:2] == ["pr", "merge"] or (rest[:1] == ["api"] and any("merge" in a.lower() for a in rest[1:])):
                 return True
-        if name in SHIP_SHELLS:
-            args, i, inline = [_unquote(w) for w in words[1:]], 0, False
-            while i < len(args) and args[i].startswith("-") and not inline:
-                inline = not args[i].startswith("--") and "c" in args[i][1:]       # -c, -lc, -ec
-                i += 1
-            if inline and i < len(args) and ships(args[i], depth + 1):
-                return True
-            if not inline and i >= len(args) and STDIN_SHIPS.search(command):  # its commands come on stdin
-                return True
+        if name in SHIP_SHELLS and SHELL_SHIPS.search(command):
+            return True                           # a shell's options and stdin are not parsed: any such word, fail closed
     return False
 
 
 SHIP_SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
-STDIN_SHIPS = re.compile(r"\bpush\b|\bmerge", re.I)        # a shell fed a pipe or heredoc: any such word, fail closed
+SHELL_SHIPS = re.compile(r"\bpush\b|\bmerge", re.I)
 
 
 def commits(command: str) -> bool:

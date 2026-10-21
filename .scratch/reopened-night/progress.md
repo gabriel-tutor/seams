@@ -39,6 +39,8 @@ those commits is refused with SEAMS_UNATTENDED=1 and allowed without it. Separat
     GraphQL merge and `bash -c` pass through the check); the builder brief names implement; the rules trim restored.
 11. Security review of f31a006: `eval`, a git alias (`-c alias.*`, fail closed), a shell's flag cluster (`-lc`) and a
     shell fed a pipe or heredoc (any push or merge word in the command, fail closed) are read as shipping too.
+12. A second security pass (`bash -o x -c`, `bash -s`): a shell's options and stdin are no longer parsed; in a
+    reopened night any shell command whose text names a push or merge is refused, fail closed.
 
 ## Facts
 - `claude --resume` keeps the session id: the night's transcript and its gate ledger continued in the same files.
